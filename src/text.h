@@ -15,7 +15,6 @@ void text_append(struct text *text, uint32_t line, uint32_t col, uint8_t *bytes,
 
 void text_delete(struct text *text, uint32_t line, uint32_t col,
                  uint32_t nchars);
-void text_delete_line(struct text *text, uint32_t line);
 
 uint32_t text_render(struct text *text, uint32_t line, uint32_t nlines,
                      struct render_cmd *cmds, uint32_t max_ncmds);
@@ -24,16 +23,18 @@ uint32_t text_num_lines(struct text *text);
 uint32_t text_line_length(struct text *text, uint32_t lineidx);
 uint32_t text_line_size(struct text *text, uint32_t lineidx);
 
-struct txt_line {
+struct text_chunk {
   uint8_t *text;
   uint32_t nbytes;
   uint32_t nchars;
 };
 
-typedef void (*line_cb)(struct txt_line *line);
+typedef void (*chunk_cb)(struct text_chunk *chunk);
 void text_for_each_line(struct text *text, uint32_t line, uint32_t nlines,
-                        line_cb callback);
+                        chunk_cb callback);
 
-struct txt_line text_get_line(struct text *text, uint32_t line);
+void text_for_each_chunk(struct text *text, chunk_cb callback);
+
+struct text_chunk text_get_line(struct text *text, uint32_t line);
 
 bool text_line_contains_unicode(struct text *text, uint32_t line);

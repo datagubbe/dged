@@ -40,6 +40,7 @@ void buffer_add_keymap(struct buffer *buffer, struct keymap *keymap);
 
 int buffer_add_text(struct buffer *buffer, uint8_t *text, uint32_t nbytes);
 
+void buffer_forward_delete_char(struct buffer *buffer);
 void buffer_backward_delete_char(struct buffer *buffer);
 void buffer_backward_char(struct buffer *buffer);
 void buffer_forward_char(struct buffer *buffer);

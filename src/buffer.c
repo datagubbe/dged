@@ -98,14 +98,13 @@ void moveh(struct buffer *buffer, int coldelta) {
   }
 }
 
+void buffer_forward_delete_char(struct buffer *buffer) {
+  text_delete(buffer->text, buffer->dot_line, buffer->dot_col, 1);
+}
+
 void buffer_backward_delete_char(struct buffer *buffer) {
-  // TODO: merge lines
-  if (text_line_length(buffer->text, buffer->dot_line) == 0) {
-    text_delete_line(buffer->text, buffer->dot_line);
-  } else if (buffer->dot_col > 0) {
-    text_delete(buffer->text, buffer->dot_line, buffer->dot_col - 1, 1);
-  }
   moveh(buffer, -1);
+  buffer_forward_delete_char(buffer);
 }
 
 void buffer_backward_char(struct buffer *buffer) { moveh(buffer, -1); }

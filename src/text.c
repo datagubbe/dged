@@ -48,39 +48,10 @@ void text_destroy(struct text *text) {
   free(text->lines);
 }
 
-void append_to_line(struct line *line, uint32_t col, uint8_t *text,
-                    uint32_t len, uint32_t nchars) {
-
-  if (len == 0) {
-    return;
-  }
-
-  line->nbytes += len;
-  line->nchars += nchars;
-  line->flags = LineChanged;
-  line->data = realloc(line->data, line->nbytes + len);
-
-  // move chars out of the way
-  memmove(line->data + col + 1, line->data + col, line->nbytes - (col + 1));
-
-  // insert new chars
-  memcpy(line->data + col, text, len);
-}
-
-uint32_t text_line_length(struct text *text, uint32_t lineidx) {
-  return text->lines[lineidx].nchars;
-}
-
-uint32_t text_line_size(struct text *text, uint32_t lineidx) {
-  return text->lines[lineidx].nbytes;
-}
-
-uint32_t text_num_lines(struct text *text) { return text->nlines; }
-
 // given `char_idx` as a character index, return the byte index
 uint32_t charidx_to_byteidx(struct line *line, uint32_t char_idx) {
   if (char_idx > line->nchars) {
-    return line->nchars;
+    return line->nbytes;
   }
   return utf8_nbytes(line->data, char_idx);
 }
@@ -98,6 +69,41 @@ uint32_t byteidx_to_charidx(struct line *line, uint32_t byte_idx) {
 uint32_t char_byte_size(struct line *line, uint32_t byte_idx) {
   return utf8_nbytes(line->data + byte_idx, 1);
 }
+
+void append_to_line(struct line *line, uint32_t col, uint8_t *text,
+                    uint32_t len, uint32_t nchars) {
+
+  if (len == 0) {
+    return;
+  }
+
+  line->nbytes += len;
+  line->nchars += nchars;
+  line->flags = LineChanged;
+  line->data = realloc(line->data, line->nbytes);
+
+  uint32_t bytei = charidx_to_byteidx(line, col);
+
+  // move chars out of the way
+  if (col + nchars < line->nchars) {
+    uint32_t nextcbytei = charidx_to_byteidx(line, col + nchars);
+    memmove(line->data + nextcbytei, line->data + bytei,
+            line->nbytes - nextcbytei);
+  }
+
+  // insert new chars
+  memcpy(line->data + bytei, text, len);
+}
+
+uint32_t text_line_length(struct text *text, uint32_t lineidx) {
+  return text->lines[lineidx].nchars;
+}
+
+uint32_t text_line_size(struct text *text, uint32_t lineidx) {
+  return text->lines[lineidx].nbytes;
+}
+
+uint32_t text_num_lines(struct text *text) { return text->nlines; }
 
 void split_line(uint32_t col, struct line *line, struct line *next) {
   uint8_t *data = line->data;
@@ -169,7 +175,7 @@ void new_line_at(struct text *text, uint32_t line, uint32_t col) {
   split_line(col, pl, cl);
 }
 
-void text_delete_line(struct text *text, uint32_t line) {
+void delete_line(struct text *text, uint32_t line) {
   // always keep a single line
   if (text->nlines == 1) {
     return;
@@ -230,20 +236,49 @@ void text_append(struct text *text, uint32_t line, uint32_t col, uint8_t *bytes,
 
 void text_delete(struct text *text, uint32_t line, uint32_t col,
                  uint32_t nchars) {
+
+  // delete chars from current line
   struct line *lp = &text->lines[line];
-  uint32_t max_chars = nchars > lp->nchars ? lp->nchars : nchars;
-  if (lp->nchars > 0) {
+  uint32_t chars_initial_line =
+      col + nchars > lp->nchars ? (lp->nchars - col) : nchars;
+  uint32_t bytei = charidx_to_byteidx(lp, col);
+  uint32_t nbytes = utf8_nbytes(lp->data + bytei, chars_initial_line);
 
-    // get byte index and size for char to remove
-    uint32_t bytei = charidx_to_byteidx(lp, col);
-    uint32_t nbytes = utf8_nbytes(lp->data + bytei, max_chars);
+  memcpy(lp->data + bytei, lp->data + bytei + nbytes,
+         lp->nbytes - (bytei + nbytes));
 
-    memcpy(lp->data + bytei, lp->data + bytei + nbytes,
-           lp->nbytes - (bytei + nbytes));
+  lp->nbytes -= nbytes;
+  lp->nchars -= chars_initial_line;
+  lp->flags |= LineChanged;
 
-    lp->nbytes -= nbytes;
-    lp->nchars -= max_chars;
-    lp->flags |= LineChanged;
+  uint32_t initial_line = line;
+  uint32_t left_to_delete = nchars - chars_initial_line;
+
+  // grab remaining chars from last line to delete from (if any)
+  uint32_t src_col = 0;
+  while (left_to_delete > 0 && line < text->nlines) {
+    ++line;
+    --left_to_delete; // newline char
+
+    struct line *lp = &text->lines[line];
+    uint32_t deleted_in_line =
+        left_to_delete > lp->nchars ? lp->nchars : left_to_delete;
+    src_col = deleted_in_line;
+    left_to_delete -= deleted_in_line;
+  }
+
+  if (line != initial_line) {
+    struct line *lp = &text->lines[line];
+    uint32_t bytei = charidx_to_byteidx(lp, src_col);
+    if (src_col < lp->nchars) {
+      append_to_line(&text->lines[initial_line], col, lp->data + bytei,
+                     lp->nbytes - bytei, lp->nchars - src_col);
+    }
+  }
+
+  // delete all lines from current line + 1 to (and including) last line
+  for (uint32_t li = initial_line + 1; li <= line; ++li) {
+    delete_line(text, li);
   }
 }
 
@@ -272,11 +307,16 @@ uint32_t text_render(struct text *text, uint32_t line, uint32_t nlines,
   return ncmds;
 }
 
+void text_for_each_chunk(struct text *text, chunk_cb callback) {
+  // if representation of text is changed, this can be changed as well
+  text_for_each_line(text, 0, text->nlines, callback);
+}
+
 void text_for_each_line(struct text *text, uint32_t line, uint32_t nlines,
-                        line_cb callback) {
+                        chunk_cb callback) {
   for (uint32_t li = line; li < (line + nlines); ++li) {
     struct line *src_line = &text->lines[li];
-    struct txt_line line = (struct txt_line){
+    struct text_chunk line = (struct text_chunk){
         .text = src_line->data,
         .nbytes = src_line->nbytes,
         .nchars = src_line->nchars,
@@ -285,9 +325,9 @@ void text_for_each_line(struct text *text, uint32_t line, uint32_t nlines,
   }
 }
 
-struct txt_line text_get_line(struct text *text, uint32_t line) {
+struct text_chunk text_get_line(struct text *text, uint32_t line) {
   struct line *src_line = &text->lines[line];
-  return (struct txt_line){
+  return (struct text_chunk){
       .text = src_line->data,
       .nbytes = src_line->nbytes,
       .nchars = src_line->nchars,
