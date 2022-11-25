@@ -1,11 +1,17 @@
 #include "keyboard.h"
+#include "reactor.h"
 
+#include <errno.h>
 #include <string.h>
 #include <unistd.h>
 
-struct keyboard keyboard_create() {
+struct keyboard keyboard_create(struct reactor *reactor) {
   // TODO: should input term stuff be set here?
-  return (struct keyboard){};
+  return (struct keyboard){
+      .reactor_event_id =
+          reactor_register_interest(reactor, STDIN_FILENO, ReadInterest),
+      .has_data = false,
+  };
 }
 
 void parse_keys(uint8_t *bytes, uint32_t nbytes, struct key *out_keys,
@@ -35,15 +41,27 @@ void parse_keys(uint8_t *bytes, uint32_t nbytes, struct key *out_keys,
   *out_nkeys = nkps;
 }
 
-struct keyboard_update keyboard_begin_frame(struct keyboard *kbd) {
-  uint8_t bytes[32] = {0};
-  int nbytes = read(STDIN_FILENO, bytes, 32);
+struct keyboard_update keyboard_begin_frame(struct keyboard *kbd,
+                                            struct reactor *reactor) {
 
   struct keyboard_update upd =
       (struct keyboard_update){.keys = {0}, .nkeys = 0};
 
+  if (!kbd->has_data) {
+    if (reactor_poll_event(reactor, kbd->reactor_event_id)) {
+      kbd->has_data = true;
+    } else {
+      return upd;
+    }
+  }
+
+  uint8_t bytes[32] = {0};
+  int nbytes = read(STDIN_FILENO, bytes, 32);
+
   if (nbytes > 0) {
     parse_keys(bytes, nbytes, upd.keys, &upd.nkeys);
+  } else if (nbytes == EAGAIN) {
+    kbd->has_data = false;
   }
 
   return upd;

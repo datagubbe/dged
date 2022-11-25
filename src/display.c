@@ -27,7 +27,6 @@ struct display display_create() {
   // set terminal to raw mode
   struct termios term;
   cfmakeraw(&term);
-  // non-blocking input
   // TODO: move to kbd?
   term.c_cc[VMIN] = 0;
   term.c_cc[VTIME] = 0;
