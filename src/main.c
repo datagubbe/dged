@@ -6,18 +6,11 @@
 
 #include <assert.h>
 #include <signal.h>
-#include <sys/epoll.h>
 
 #include "binding.h"
 #include "buffer.h"
 #include "display.h"
-
-struct reactor {
-  int epoll_fd;
-};
-
-struct reactor reactor_create();
-int reactor_register_interest(struct reactor *reactor, int fd);
+#include "reactor.h"
 
 struct frame_allocator {
   uint8_t *buf;
@@ -67,6 +60,7 @@ int main(int argc, char *argv[]) {
   }
 
   setlocale(LC_ALL, "");
+
   signal(SIGTERM, terminate);
 
   frame_allocator = frame_allocator_create(1024 * 1024);
@@ -79,7 +73,7 @@ int main(int argc, char *argv[]) {
   display_clear(&display);
 
   // init keyboard
-  struct keyboard kbd = keyboard_create();
+  struct keyboard kbd = keyboard_create(&reactor);
 
   // commands
   struct commands commands = command_list_create(32);
@@ -102,10 +96,22 @@ int main(int argc, char *argv[]) {
   buffer_add_text(&curbuf, (uint8_t *)welcome_txt, strlen(welcome_txt));
 
   while (running) {
-    // update keyboard
+
+    // update current buffer
+    struct buffer_update buf_upd = buffer_begin_frame(
+        &curbuf, display.width, display.height - 1, frame_alloc);
+
+    // update screen
+    if (buf_upd.ncmds > 0) {
+      display_update(&display, buf_upd.cmds, buf_upd.ncmds, curbuf.dot_line,
+                     curbuf.dot_col);
+    }
+
+    reactor_update(&reactor);
+
     struct keymap *local_keymaps = NULL;
     uint32_t nbuffer_keymaps = buffer_keymaps(&curbuf, &local_keymaps);
-    struct keyboard_update kbd_upd = keyboard_begin_frame(&kbd);
+    struct keyboard_update kbd_upd = keyboard_begin_frame(&kbd, &reactor);
     for (uint32_t ki = 0; ki < kbd_upd.nkeys; ++ki) {
       struct key *k = &kbd_upd.keys[ki];
 
@@ -122,16 +128,7 @@ int main(int argc, char *argv[]) {
       }
     }
 
-    // update current buffer
-    struct buffer_update buf_upd = buffer_begin_frame(
-        &curbuf, display.width, display.height - 1, frame_alloc);
-
-    // update screen
-    if (buf_upd.ncmds > 0) {
-      display_update(&display, buf_upd.cmds, buf_upd.ncmds, curbuf.dot_line,
-                     curbuf.dot_col);
-    }
-
+    keyboard_end_frame(&kbd);
     buffer_end_frame(&curbuf, &buf_upd);
     frame_allocator_clear(&frame_allocator);
   }
@@ -142,25 +139,4 @@ int main(int argc, char *argv[]) {
   command_list_destroy(&commands);
 
   return 0;
-}
-
-struct reactor reactor_create() {
-  int epollfd = epoll_create1(0);
-  if (epollfd == -1) {
-    perror("epoll_create1");
-  }
-
-  return (struct reactor){.epoll_fd = epollfd};
-}
-
-int reactor_register_interest(struct reactor *reactor, int fd) {
-  struct epoll_event ev;
-  ev.events = EPOLLIN;
-  ev.data.fd = fd;
-  if (epoll_ctl(reactor->epoll_fd, EPOLL_CTL_ADD, fd, &ev) < 0) {
-    perror("epoll_ctl");
-    return -1;
-  }
-
-  return fd;
 }
