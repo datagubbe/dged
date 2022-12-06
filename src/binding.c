@@ -34,8 +34,8 @@ void keymap_destroy(struct keymap *keymap) {
   keymap->nbindings = 0;
 }
 
-struct command *lookup_key(struct keymap *keymaps, uint32_t nkeymaps,
-                           struct key *key, struct commands *commands) {
+struct lookup_result lookup_key(struct keymap *keymaps, uint32_t nkeymaps,
+                                struct key *key, struct commands *commands) {
   // lookup in order in the keymaps
   for (uint32_t kmi = 0; kmi < nkeymaps; ++kmi) {
     struct keymap *keymap = &keymaps[kmi];
@@ -44,14 +44,21 @@ struct command *lookup_key(struct keymap *keymaps, uint32_t nkeymaps,
       struct binding *binding = &keymap->bindings[bi];
       if (key->c == binding->key.c && key->mod == binding->key.mod) {
         if (binding->type == BindingType_Command) {
-          return lookup_command_by_hash(commands, binding->command);
+          return (struct lookup_result){
+              .found = true,
+              .type = BindingType_Command,
+              .command = lookup_command_by_hash(commands, binding->command),
+          };
         } else if (binding->type == BindingType_Keymap) {
-          // TODO
-          return NULL;
+          return (struct lookup_result){
+              .found = true,
+              .type = BindingType_Keymap,
+              .keymap = binding->keymap,
+          };
         }
       }
     }
   }
 
-  return NULL;
+  return (struct lookup_result){.found = false};
 }

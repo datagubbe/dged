@@ -1,6 +1,8 @@
 #include "keyboard.h"
 #include "reactor.h"
+#include "stdio.h"
 
+#include <ctype.h>
 #include <errno.h>
 #include <string.h>
 #include <unistd.h>
@@ -41,8 +43,8 @@ void parse_keys(uint8_t *bytes, uint32_t nbytes, struct key *out_keys,
   *out_nkeys = nkps;
 }
 
-struct keyboard_update keyboard_begin_frame(struct keyboard *kbd,
-                                            struct reactor *reactor) {
+struct keyboard_update keyboard_update(struct keyboard *kbd,
+                                       struct reactor *reactor) {
 
   struct keyboard_update upd =
       (struct keyboard_update){.keys = {0}, .nkeys = 0};
@@ -67,8 +69,20 @@ struct keyboard_update keyboard_begin_frame(struct keyboard *kbd,
   return upd;
 }
 
-void keyboard_end_frame(struct keyboard *kbd) {}
-
 bool key_equal(struct key *key, uint8_t mod, uint8_t c) {
   return key->c == c && key->mod == mod;
+}
+
+void key_name(struct key *key, char *buf, size_t capacity) {
+  const char *mod = "";
+  switch (key->mod) {
+  case Ctrl:
+    mod = "c-";
+    break;
+  case Meta:
+    mod = "m-";
+    break;
+  }
+
+  snprintf(buf, capacity, "%s%c", mod, tolower((char)key->c));
 }

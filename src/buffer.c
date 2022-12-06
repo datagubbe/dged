@@ -1,12 +1,17 @@
 #include "buffer.h"
 #include "binding.h"
+#include "bits/stdint-uintn.h"
 #include "display.h"
+#include "minibuffer.h"
+#include "reactor.h"
 
+#include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 struct buffer buffer_create(const char *name) {
   struct buffer b =
@@ -119,12 +124,52 @@ void buffer_end_of_line(struct buffer *buffer) {
 
 void buffer_beginning_of_line(struct buffer *buffer) { buffer->dot_col = 0; }
 
-struct buffer buffer_from_file(const char *filename) {
-  // TODO: create a reader for the file that calls add_text
-  return (struct buffer){.filename = filename, .name = filename};
+struct buffer buffer_from_file(const char *filename, struct reactor *reactor) {
+  struct buffer b = buffer_create(filename);
+  b.filename = filename;
+  if (access(b.filename, F_OK) == 0) {
+    FILE *file = fopen(filename, "r");
+
+    while (true) {
+      uint8_t buff[4096];
+      int bytes = fread(buff, 1, 4096, file);
+      if (bytes > 0) {
+        buffer_add_text(&b, buff, bytes);
+      } else if (bytes == 0) {
+        break; // EOF
+      } else {
+        // TODO: handle error
+      }
+    }
+
+    fclose(file);
+  }
+
+  b.dot_col = 0;
+  b.dot_line = 0;
+
+  return b;
 }
 
-int buffer_to_file(struct buffer *buffer) { return 0; }
+void write_line(struct text_chunk *chunk, void *userdata) {
+  FILE *file = (FILE *)userdata;
+  fwrite(chunk->text, 1, chunk->nbytes, file);
+  fputc('\n', file);
+}
+
+void buffer_to_file(struct buffer *buffer) {
+  // TODO: handle errors
+  FILE *file = fopen(buffer->filename, "w");
+
+  uint32_t nlines = text_num_lines(buffer->text);
+  struct text_chunk lastline = text_get_line(buffer->text, nlines - 1);
+  uint32_t nlines_to_write = lastline.nbytes == 0 ? nlines - 1 : nlines;
+
+  text_for_each_line(buffer->text, 0, nlines_to_write, write_line, file);
+  minibuffer_echo_timeout(4, "wrote %d lines to %s", nlines_to_write,
+                          buffer->filename);
+  fclose(file);
+}
 
 int buffer_add_text(struct buffer *buffer, uint8_t *text, uint32_t nbytes) {
   uint32_t lines_added, cols_added;
@@ -140,15 +185,27 @@ void buffer_newline(struct buffer *buffer) {
   buffer_add_text(buffer, (uint8_t *)"\n", 1);
 }
 
-bool modeline_update(struct buffer *buffer, uint32_t width) {
+bool modeline_update(struct buffer *buffer, uint32_t width,
+                     uint64_t frame_time) {
   char buf[width * 4];
+
+  static uint64_t samples[10] = {0};
+  static uint32_t samplei = 0;
+  static uint64_t avg = 0;
+
+  // calc a moving average with a window of the last 10 frames
+  ++samplei;
+  samplei %= 10;
+  avg += 0.1 * (frame_time - samples[samplei]);
+  samples[samplei] = frame_time;
 
   time_t now = time(NULL);
   struct tm *lt = localtime(&now);
   char left[128], right[128];
-  snprintf(left, 128, "--- %-16s (%d, %d)", buffer->name, buffer->dot_line + 1,
+  snprintf(left, 128, "  %-16s (%d, %d)", buffer->name, buffer->dot_line + 1,
            buffer->dot_col);
-  snprintf(right, 128, "%02d:%02d", lt->tm_hour, lt->tm_min);
+  snprintf(right, 128, "(%.2f ms) %02d:%02d", frame_time / 1e6, lt->tm_hour,
+           lt->tm_min);
 
   snprintf(buf, width * 4, "\x1b[100m%s%*s%s\x1b[0m", left,
            (int)(width - (strlen(left) + strlen(right))), "", right);
@@ -161,8 +218,13 @@ bool modeline_update(struct buffer *buffer, uint32_t width) {
   }
 }
 
-struct buffer_update buffer_begin_frame(struct buffer *buffer, uint32_t width,
-                                        uint32_t height, alloc_fn frame_alloc) {
+struct buffer_update buffer_update(struct buffer *buffer, uint32_t width,
+                                   uint32_t height, alloc_fn frame_alloc,
+                                   struct reactor *reactor,
+                                   uint64_t frame_time) {
+
+  struct buffer_update upd = (struct buffer_update){.cmds = 0, .ncmds = 0};
+
   // reserve space for modeline
   uint32_t bufheight = height - 1;
   uint32_t nlines =
@@ -175,7 +237,7 @@ struct buffer_update buffer_begin_frame(struct buffer *buffer, uint32_t width,
 
   buffer->lines_rendered = text_num_lines(buffer->text);
 
-  if (modeline_update(buffer, width)) {
+  if (modeline_update(buffer, width, frame_time)) {
     cmds[ncmds] = (struct render_cmd){
         .col = 0,
         .row = height - 1,
@@ -185,7 +247,7 @@ struct buffer_update buffer_begin_frame(struct buffer *buffer, uint32_t width,
     ++ncmds;
   }
 
-  return (struct buffer_update){.cmds = cmds, .ncmds = ncmds};
+  upd.cmds = cmds;
+  upd.ncmds = ncmds;
+  return upd;
 }
-
-void buffer_end_frame(struct buffer *buffer, struct buffer_update *upd) {}

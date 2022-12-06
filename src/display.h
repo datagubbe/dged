@@ -28,5 +28,5 @@ void display_destroy(struct display *display);
 
 void display_clear(struct display *display);
 void display_move_cursor(struct display *display, uint32_t row, uint32_t col);
-void display_update(struct display *display, struct render_cmd *cmds,
-                    uint32_t ncmds, uint32_t currow, uint32_t curcol);
+void display_update(struct display *display, struct render_cmd_buf *cmd_bufs,
+                    uint32_t ncmd_bufs, uint32_t currow, uint32_t curcol);

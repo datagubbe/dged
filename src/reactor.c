@@ -38,6 +38,10 @@ uint32_t reactor_register_interest(struct reactor *reactor, int fd,
   return fd;
 }
 
+void reactor_unregister_interest(struct reactor *reactor, uint32_t ev_id) {
+  epoll_ctl(reactor->epoll_fd, EPOLL_CTL_DEL, ev_id, NULL);
+}
+
 bool reactor_poll_event(struct reactor *reactor, uint32_t ev_id) {
   struct events *events = (struct events *)reactor->events;
   for (uint32_t ei = 0; ei < events->nevents; ++ei) {

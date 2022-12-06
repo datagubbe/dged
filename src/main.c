@@ -1,15 +1,16 @@
+#include <assert.h>
 #include <locale.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include <assert.h>
-#include <signal.h>
+#include <time.h>
 
 #include "binding.h"
 #include "buffer.h"
 #include "display.h"
+#include "minibuffer.h"
 #include "reactor.h"
 
 struct frame_allocator {
@@ -46,12 +47,34 @@ bool running = true;
 
 void terminate() { running = false; }
 
-void unimplemented_command(struct buffer *buffer) {}
-void exit_editor(struct buffer *buffer) { terminate(); }
+void _abort(struct command_ctx ctx, int argc, const char *argv[]) {
+  minibuffer_echo_timeout(4, "💣 aborted");
+}
+
+void unimplemented_command(struct command_ctx ctx, int argc,
+                           const char *argv[]) {}
+void exit_editor(struct command_ctx ctx, int argc, const char *argv[]) {
+  terminate();
+}
 
 static struct command GLOBAL_COMMANDS[] = {
     {.name = "find-file", .fn = unimplemented_command},
+    {.name = "abort", .fn = _abort},
     {.name = "exit", .fn = exit_editor}};
+
+uint64_t calc_frame_time_ns(struct timespec *timers, uint32_t num_timer_pairs) {
+  uint64_t total = 0;
+  for (uint32_t ti = 0; ti < num_timer_pairs * 2; ti += 2) {
+    struct timespec *start_timer = &timers[ti];
+    struct timespec *end_timer = &timers[ti + 1];
+
+    total +=
+        ((uint64_t)end_timer->tv_sec * 1e9 + (uint64_t)end_timer->tv_nsec) -
+        ((uint64_t)start_timer->tv_sec * 1e9 + (uint64_t)start_timer->tv_nsec);
+  }
+
+  return total;
+}
 
 int main(int argc, char *argv[]) {
   const char *filename = NULL;
@@ -83,53 +106,119 @@ int main(int argc, char *argv[]) {
                     sizeof(BUFFER_COMMANDS) / sizeof(BUFFER_COMMANDS[0]));
 
   // keymaps
+  struct keymap *current_keymap = NULL;
   struct keymap global_keymap = keymap_create("global", 32);
+  struct keymap ctrlx_map = keymap_create("c-x", 32);
   struct binding global_binds[] = {
-      BINDING(Ctrl, 'X', "exit"),
+      PREFIX(Ctrl, 'X', &ctrlx_map),
+  };
+  struct binding ctrlx_bindings[] = {
+      BINDING(Ctrl, 'C', "exit"),
+      BINDING(Ctrl, 'G', "abort"),
+      BINDING(Ctrl, 'S', "buffer-write-to-file"),
   };
   keymap_bind_keys(&global_keymap, global_binds,
                    sizeof(global_binds) / sizeof(global_binds[0]));
+  keymap_bind_keys(&ctrlx_map, ctrlx_bindings,
+                   sizeof(ctrlx_bindings) / sizeof(ctrlx_bindings[0]));
 
-  // TODO: load initial buffer
   struct buffer curbuf = buffer_create("welcome");
-  const char *welcome_txt = "Welcome to the editor for datagubbar 👴\n";
-  buffer_add_text(&curbuf, (uint8_t *)welcome_txt, strlen(welcome_txt));
+  if (filename != NULL) {
+    curbuf = buffer_from_file(filename, &reactor);
+  } else {
+    const char *welcome_txt = "Welcome to the editor for datagubbar 👴\n";
+    buffer_add_text(&curbuf, (uint8_t *)welcome_txt, strlen(welcome_txt));
+  }
+
+  minibuffer_init(display.height - 1);
+
+  struct timespec buffer_begin, buffer_end, display_begin, display_end,
+      keyboard_begin, keyboard_end;
+
+  uint64_t frame_time = 0;
+
+  struct render_cmd_buf render_bufs[2] = {
+      {.source = "minibuffer"},
+      {.source = "buffer"},
+  };
 
   while (running) {
 
+    clock_gettime(CLOCK_MONOTONIC, &buffer_begin);
+
+    // update minibuffer
+    struct minibuffer_update minibuf_upd = minibuffer_update(frame_alloc);
+    render_bufs[0].cmds = minibuf_upd.cmds;
+    render_bufs[0].ncmds = minibuf_upd.ncmds;
+
     // update current buffer
-    struct buffer_update buf_upd = buffer_begin_frame(
-        &curbuf, display.width, display.height - 1, frame_alloc);
+    struct buffer_update buf_upd =
+        buffer_update(&curbuf, display.width, display.height - 1, frame_alloc,
+                      &reactor, frame_time);
+    render_bufs[1].cmds = buf_upd.cmds;
+    render_bufs[1].ncmds = buf_upd.ncmds;
+
+    clock_gettime(CLOCK_MONOTONIC, &buffer_end);
 
     // update screen
-    if (buf_upd.ncmds > 0) {
-      display_update(&display, buf_upd.cmds, buf_upd.ncmds, curbuf.dot_line,
-                     curbuf.dot_col);
+    clock_gettime(CLOCK_MONOTONIC, &display_begin);
+    if (render_bufs[0].ncmds > 0 || render_bufs[1].ncmds > 0) {
+      display_update(&display, render_bufs, 2, curbuf.dot_line, curbuf.dot_col);
     }
+
+    clock_gettime(CLOCK_MONOTONIC, &display_end);
 
     reactor_update(&reactor);
 
+    clock_gettime(CLOCK_MONOTONIC, &keyboard_begin);
     struct keymap *local_keymaps = NULL;
     uint32_t nbuffer_keymaps = buffer_keymaps(&curbuf, &local_keymaps);
-    struct keyboard_update kbd_upd = keyboard_begin_frame(&kbd, &reactor);
+    struct keyboard_update kbd_upd = keyboard_update(&kbd, &reactor);
     for (uint32_t ki = 0; ki < kbd_upd.nkeys; ++ki) {
       struct key *k = &kbd_upd.keys[ki];
 
-      // check first the global keymap, then the buffer ones
-      struct command *cmd = lookup_key(&global_keymap, 1, k, &commands);
-      if (cmd == NULL) {
-        cmd = lookup_key(local_keymaps, nbuffer_keymaps, k, &commands);
+      struct lookup_result res = {.found = false};
+      if (current_keymap != NULL) {
+        res = lookup_key(current_keymap, 1, k, &commands);
+      } else {
+        // check first the global keymap, then the buffer ones
+        res = lookup_key(&global_keymap, 1, k, &commands);
+        if (!res.found) {
+          res = lookup_key(local_keymaps, nbuffer_keymaps, k, &commands);
+        }
       }
 
-      if (cmd != NULL) {
-        cmd->fn(&curbuf);
+      if (res.found) {
+        switch (res.type) {
+        case BindingType_Command: {
+          const char *argv[] = {};
+          res.command->fn((struct command_ctx){.current_buffer = &curbuf}, 0,
+                          argv);
+          current_keymap = NULL;
+          break;
+        }
+        case BindingType_Keymap: {
+          char keyname[16];
+          key_name(k, keyname, 16);
+          minibuffer_echo("%s", keyname);
+          current_keymap = res.keymap;
+          break;
+        }
+        }
+      } else if (current_keymap != NULL) {
+        minibuffer_echo_timeout(4, "key is not bound!");
+        current_keymap = NULL;
       } else {
         buffer_add_text(&curbuf, &k->c, 1);
       }
     }
+    clock_gettime(CLOCK_MONOTONIC, &keyboard_end);
 
-    keyboard_end_frame(&kbd);
-    buffer_end_frame(&curbuf, &buf_upd);
+    // calculate frame time
+    struct timespec timers[] = {buffer_begin, buffer_end,     display_begin,
+                                display_end,  keyboard_begin, keyboard_end};
+    frame_time = calc_frame_time_ns(timers, 3);
+
     frame_allocator_clear(&frame_allocator);
   }
 

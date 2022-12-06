@@ -1,4 +1,5 @@
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 enum modifiers {
@@ -27,9 +28,8 @@ struct reactor;
 
 struct keyboard keyboard_create(struct reactor *reactor);
 
-struct keyboard_update keyboard_begin_frame(struct keyboard *kbd,
-                                            struct reactor *reactor);
-
-void keyboard_end_frame(struct keyboard *kbd);
+struct keyboard_update keyboard_update(struct keyboard *kbd,
+                                       struct reactor *reactor);
 
 bool key_equal(struct key *key, uint8_t mod, uint8_t c);
+void key_name(struct key *key, char *buf, size_t capacity);

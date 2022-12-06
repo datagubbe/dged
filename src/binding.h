@@ -32,6 +32,15 @@ struct binding {
   };
 };
 
+struct lookup_result {
+  bool found;
+  uint8_t type;
+  union {
+    struct command *command;
+    struct keymap *keymap;
+  };
+};
+
 struct commands;
 
 struct keymap keymap_create(const char *name, uint32_t capacity);
@@ -39,5 +48,5 @@ void keymap_bind_keys(struct keymap *keymap, struct binding *bindings,
                       uint32_t nbindings);
 void keymap_destroy(struct keymap *keymap);
 
-struct command *lookup_key(struct keymap *keymaps, uint32_t nkeymaps,
-                           struct key *key, struct commands *commands);
+struct lookup_result lookup_key(struct keymap *keymaps, uint32_t nkeymaps,
+                                struct key *key, struct commands *commands);

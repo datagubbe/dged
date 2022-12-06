@@ -17,7 +17,7 @@ UNAME_S != uname -s
 CFLAGS = -Werror -g -std=c99
 
 ifeq ($(UNAME_S),Linux)
-	DEFINES += -DLINUX
+	DEFINES += -DLINUX -D_XOPEN_SOURCE=700
 endif
 
 $(objs-path)/test/%.o: %.c $(headers)

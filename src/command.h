@@ -2,7 +2,12 @@
 
 struct buffer;
 
-typedef void (*command_fn)(struct buffer *buffer);
+struct command_ctx {
+  struct buffer *current_buffer;
+};
+
+typedef void (*command_fn)(struct command_ctx ctx, int argc,
+                           const char *argv[]);
 
 struct command {
   const char *name;

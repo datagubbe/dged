@@ -1,10 +1,12 @@
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #include "command.h"
 #include "text.h"
 
 struct keymap;
+struct reactor;
 
 struct buffer {
   const char *name;
@@ -50,20 +52,44 @@ void buffer_end_of_line(struct buffer *buffer);
 void buffer_beginning_of_line(struct buffer *buffer);
 void buffer_newline(struct buffer *buffer);
 
-struct buffer buffer_from_file(const char *filename);
-int buffer_to_file(struct buffer *buffer);
+uint32_t buffer_add_pre_update_hook(struct buffer *buffer);
+uint32_t buffer_add_post_update_hook(struct buffer *buffer);
+uint32_t buffer_remove_pre_update_hook(struct buffer *buffer, uint32_t hook_id);
+uint32_t buffer_remove_post_update_hook(struct buffer *buffer,
+                                        uint32_t hook_id);
 
-struct buffer_update buffer_begin_frame(struct buffer *buffer, uint32_t width,
-                                        uint32_t height, alloc_fn frame_alloc);
-void buffer_end_frame(struct buffer *buffer, struct buffer_update *upd);
+struct buffer buffer_from_file(const char *filename, struct reactor *reactor);
+void buffer_to_file(struct buffer *buffer);
+
+struct buffer_update buffer_update(struct buffer *buffer, uint32_t width,
+                                   uint32_t height, alloc_fn frame_alloc,
+                                   struct reactor *reactor,
+                                   uint64_t frame_time);
+
+// commands
+#define BUFFER_WRAPCMD(fn)                                                     \
+  static void fn##_cmd(struct command_ctx ctx, int argc, const char *argv[]) { \
+    fn(ctx.current_buffer);                                                    \
+  }
+
+BUFFER_WRAPCMD(buffer_backward_delete_char);
+BUFFER_WRAPCMD(buffer_backward_char);
+BUFFER_WRAPCMD(buffer_forward_char);
+BUFFER_WRAPCMD(buffer_backward_line);
+BUFFER_WRAPCMD(buffer_forward_line);
+BUFFER_WRAPCMD(buffer_end_of_line);
+BUFFER_WRAPCMD(buffer_beginning_of_line);
+BUFFER_WRAPCMD(buffer_newline)
+BUFFER_WRAPCMD(buffer_to_file);
 
 static struct command BUFFER_COMMANDS[] = {
-    {.name = "backward-delete-char", .fn = buffer_backward_delete_char},
-    {.name = "backward-char", .fn = buffer_backward_char},
-    {.name = "forward-char", .fn = buffer_forward_char},
-    {.name = "backward-line", .fn = buffer_backward_line},
-    {.name = "forward-line", .fn = buffer_forward_line},
-    {.name = "end-of-line", .fn = buffer_end_of_line},
-    {.name = "beginning-of-line", .fn = buffer_beginning_of_line},
-    {.name = "newline", .fn = buffer_newline},
+    {.name = "backward-delete-char", .fn = buffer_backward_delete_char_cmd},
+    {.name = "backward-char", .fn = buffer_backward_char_cmd},
+    {.name = "forward-char", .fn = buffer_forward_char_cmd},
+    {.name = "backward-line", .fn = buffer_backward_line_cmd},
+    {.name = "forward-line", .fn = buffer_forward_line_cmd},
+    {.name = "end-of-line", .fn = buffer_end_of_line_cmd},
+    {.name = "beginning-of-line", .fn = buffer_beginning_of_line_cmd},
+    {.name = "newline", .fn = buffer_newline_cmd},
+    {.name = "buffer-write-to-file", .fn = buffer_to_file_cmd},
 };

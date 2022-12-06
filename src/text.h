@@ -29,11 +29,11 @@ struct text_chunk {
   uint32_t nchars;
 };
 
-typedef void (*chunk_cb)(struct text_chunk *chunk);
+typedef void (*chunk_cb)(struct text_chunk *chunk, void *userdata);
 void text_for_each_line(struct text *text, uint32_t line, uint32_t nlines,
-                        chunk_cb callback);
+                        chunk_cb callback, void *userdata);
 
-void text_for_each_chunk(struct text *text, chunk_cb callback);
+void text_for_each_chunk(struct text *text, chunk_cb callback, void *userdata);
 
 struct text_chunk text_get_line(struct text *text, uint32_t line);
 

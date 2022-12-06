@@ -307,13 +307,13 @@ uint32_t text_render(struct text *text, uint32_t line, uint32_t nlines,
   return ncmds;
 }
 
-void text_for_each_chunk(struct text *text, chunk_cb callback) {
+void text_for_each_chunk(struct text *text, chunk_cb callback, void *userdata) {
   // if representation of text is changed, this can be changed as well
-  text_for_each_line(text, 0, text->nlines, callback);
+  text_for_each_line(text, 0, text->nlines, callback, userdata);
 }
 
 void text_for_each_line(struct text *text, uint32_t line, uint32_t nlines,
-                        chunk_cb callback) {
+                        chunk_cb callback, void *userdata) {
   for (uint32_t li = line; li < (line + nlines); ++li) {
     struct line *src_line = &text->lines[li];
     struct text_chunk line = (struct text_chunk){
@@ -321,7 +321,7 @@ void text_for_each_line(struct text *text, uint32_t line, uint32_t nlines,
         .nbytes = src_line->nbytes,
         .nchars = src_line->nchars,
     };
-    callback(&line);
+    callback(&line, userdata);
   }
 }
 
