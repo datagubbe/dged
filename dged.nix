@@ -1,6 +1,7 @@
 { stdenv
 , clang-tools
 , gnumake
+, bmake
 , pkg-config
 , tree-sitter
 , bear
@@ -12,6 +13,7 @@ stdenv.mkDerivation {
 
   nativeBuildInputs = [
     gnumake
+    bmake
     pkg-config
     clang-tools
     bear
