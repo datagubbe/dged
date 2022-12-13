@@ -163,7 +163,8 @@ int main(int argc, char *argv[]) {
     // update screen
     clock_gettime(CLOCK_MONOTONIC, &display_begin);
     if (render_bufs[0].ncmds > 0 || render_bufs[1].ncmds > 0) {
-      display_update(&display, render_bufs, 2, curbuf.dot_line, curbuf.dot_col);
+      display_update(&display, render_bufs, 2, buf_upd.dot_line,
+                     buf_upd.dot_col);
     }
 
     clock_gettime(CLOCK_MONOTONIC, &display_end);

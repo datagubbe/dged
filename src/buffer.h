@@ -24,12 +24,15 @@ struct buffer {
   uint32_t nkeymaps;
   uint32_t nkeymaps_max;
 
-  uint32_t lines_rendered;
+  uint32_t scroll_line;
+  uint32_t scroll_col;
 };
 
 struct buffer_update {
   struct render_cmd *cmds;
   uint64_t ncmds;
+  uint32_t dot_col;
+  uint32_t dot_line;
 };
 
 typedef void *(alloc_fn)(size_t);

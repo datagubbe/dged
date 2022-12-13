@@ -16,9 +16,6 @@ void text_append(struct text *text, uint32_t line, uint32_t col, uint8_t *bytes,
 void text_delete(struct text *text, uint32_t line, uint32_t col,
                  uint32_t nchars);
 
-uint32_t text_render(struct text *text, uint32_t line, uint32_t nlines,
-                     struct render_cmd *cmds, uint32_t max_ncmds);
-
 uint32_t text_num_lines(struct text *text);
 uint32_t text_line_length(struct text *text, uint32_t lineidx);
 uint32_t text_line_size(struct text *text, uint32_t lineidx);
@@ -27,6 +24,7 @@ struct text_chunk {
   uint8_t *text;
   uint32_t nbytes;
   uint32_t nchars;
+  uint32_t line;
 };
 
 typedef void (*chunk_cb)(struct text_chunk *chunk, void *userdata);

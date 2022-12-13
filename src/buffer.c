@@ -1,5 +1,6 @@
 #include "buffer.h"
 #include "binding.h"
+#include "bits/stdint-intn.h"
 #include "bits/stdint-uintn.h"
 #include "display.h"
 #include "minibuffer.h"
@@ -23,7 +24,8 @@ struct buffer buffer_create(const char *name) {
                       .modeline_buf = (uint8_t *)malloc(1024),
                       .keymaps = calloc(10, sizeof(struct keymap)),
                       .nkeymaps = 1,
-                      .lines_rendered = -1,
+                      .scroll_col = 0,
+                      .scroll_line = 0,
                       .nkeymaps_max = 10};
 
   b.keymaps[0] = keymap_create("buffer-default", 128);
@@ -176,6 +178,11 @@ int buffer_add_text(struct buffer *buffer, uint8_t *text, uint32_t nbytes) {
   text_append(buffer->text, buffer->dot_line, buffer->dot_col, text, nbytes,
               &lines_added, &cols_added);
   movev(buffer, lines_added);
+
+  if (lines_added > 0) {
+    // does not make sense to use position from another line
+    buffer->dot_col = 0;
+  }
   moveh(buffer, cols_added);
 
   return lines_added;
@@ -218,36 +225,109 @@ bool modeline_update(struct buffer *buffer, uint32_t width,
   }
 }
 
+struct cmdbuf {
+  struct render_cmd *cmds;
+  uint32_t ncmds;
+  uint32_t first_line;
+};
+
+void render_line(struct text_chunk *line, void *userdata) {
+  struct cmdbuf *cmdbuf = (struct cmdbuf *)userdata;
+
+  struct render_cmd *cmd = &cmdbuf->cmds[cmdbuf->ncmds];
+  cmd->col = 0;
+  cmd->data = line->text;
+  cmd->len = line->nbytes;
+  cmd->row = line->line - cmdbuf->first_line;
+
+  ++cmdbuf->ncmds;
+}
+
+void scroll(struct buffer *buffer, int line_delta, int col_delta) {
+  uint32_t nlines = text_num_lines(buffer->text);
+  int64_t new_line = (int64_t)buffer->scroll_line + line_delta;
+  if (new_line >= 0 && new_line < nlines) {
+    buffer->scroll_line = (uint32_t)new_line;
+  }
+
+  int64_t new_col = (int64_t)buffer->scroll_col + col_delta;
+  if (new_col >= 0 &&
+      new_col < text_line_length(buffer->text, buffer->dot_line)) {
+    buffer->scroll_col = (uint32_t)new_col;
+  }
+}
+
+void to_relative(struct buffer *buffer, uint32_t line, uint32_t col,
+                 int64_t *rel_line, int64_t *rel_col) {
+  *rel_col = (int64_t)col - (int64_t)buffer->scroll_col;
+  *rel_line = (int64_t)line - (int64_t)buffer->scroll_line;
+}
+
 struct buffer_update buffer_update(struct buffer *buffer, uint32_t width,
                                    uint32_t height, alloc_fn frame_alloc,
                                    struct reactor *reactor,
                                    uint64_t frame_time) {
 
-  struct buffer_update upd = (struct buffer_update){.cmds = 0, .ncmds = 0};
-
   // reserve space for modeline
   uint32_t bufheight = height - 1;
-  uint32_t nlines =
-      buffer->lines_rendered > bufheight ? bufheight : buffer->lines_rendered;
+
+  int64_t rel_line, rel_col;
+  to_relative(buffer, buffer->dot_line, buffer->dot_col, &rel_line, &rel_col);
+  int line_delta = 0, col_delta = 0;
+  if (rel_line < 0) {
+    line_delta = -(int)bufheight / 2;
+  } else if (rel_line >= bufheight) {
+    line_delta = bufheight / 2;
+  }
+
+  if (rel_col < 0) {
+    col_delta = rel_col;
+  } else if (rel_col > width) {
+    col_delta = rel_col - width;
+  }
+
+  scroll(buffer, line_delta, col_delta);
 
   struct render_cmd *cmds =
       (struct render_cmd *)frame_alloc(sizeof(struct render_cmd) * (height));
 
-  uint32_t ncmds = text_render(buffer->text, 0, nlines, cmds, nlines);
+  struct cmdbuf cmdbuf = (struct cmdbuf){
+      .cmds = cmds,
+      .ncmds = 0,
+      .first_line = buffer->scroll_line,
+  };
+  text_for_each_line(buffer->text, buffer->scroll_line, bufheight, render_line,
+                     &cmdbuf);
 
-  buffer->lines_rendered = text_num_lines(buffer->text);
+  uint32_t nlines = text_num_lines(buffer->text);
+  uint32_t ncmds = cmdbuf.ncmds;
+  for (uint32_t linei = nlines - buffer->scroll_line; linei < bufheight;
+       ++linei) {
+    cmds[ncmds] = (struct render_cmd){
+        .col = 0,
+        .row = linei,
+        .data = NULL,
+        .len = 0,
+    };
+    ++ncmds;
+  }
 
   if (modeline_update(buffer, width, frame_time)) {
     cmds[ncmds] = (struct render_cmd){
         .col = 0,
-        .row = height - 1,
+        .row = bufheight,
         .data = buffer->modeline_buf,
         .len = strlen((char *)buffer->modeline_buf),
     };
     ++ncmds;
   }
 
-  upd.cmds = cmds;
-  upd.ncmds = ncmds;
+  struct buffer_update upd =
+      (struct buffer_update){.cmds = cmds, .ncmds = ncmds};
+
+  int64_t new_line, new_col;
+  to_relative(buffer, buffer->dot_line, buffer->dot_col, &new_line, &new_col);
+  upd.dot_line = (uint32_t)new_line;
+  upd.dot_col = (uint32_t)new_col;
   return upd;
 }

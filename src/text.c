@@ -282,31 +282,6 @@ void text_delete(struct text *text, uint32_t line, uint32_t col,
   }
 }
 
-uint32_t text_render(struct text *text, uint32_t line, uint32_t nlines,
-                     struct render_cmd *cmds, uint32_t max_ncmds) {
-  uint32_t nlines_max = nlines > text->capacity ? text->capacity : nlines;
-
-  uint32_t ncmds = 0;
-  for (uint32_t lineidx = line; lineidx < nlines_max; ++lineidx) {
-    struct line *lp = &text->lines[lineidx];
-    if (lp->flags & LineChanged) {
-
-      cmds[ncmds] = (struct render_cmd){
-          .row = lineidx,
-          .col = 0, // TODO: do not redraw full line
-          .data = lp->data,
-          .len = lp->nbytes,
-      };
-
-      lp->flags &= ~(LineChanged);
-
-      ++ncmds;
-    }
-  }
-
-  return ncmds;
-}
-
 void text_for_each_chunk(struct text *text, chunk_cb callback, void *userdata) {
   // if representation of text is changed, this can be changed as well
   text_for_each_line(text, 0, text->nlines, callback, userdata);
@@ -314,12 +289,15 @@ void text_for_each_chunk(struct text *text, chunk_cb callback, void *userdata) {
 
 void text_for_each_line(struct text *text, uint32_t line, uint32_t nlines,
                         chunk_cb callback, void *userdata) {
-  for (uint32_t li = line; li < (line + nlines); ++li) {
+  uint32_t nlines_max =
+      (line + nlines) > text->nlines ? text->nlines : (line + nlines);
+  for (uint32_t li = line; li < nlines_max; ++li) {
     struct line *src_line = &text->lines[li];
     struct text_chunk line = (struct text_chunk){
         .text = src_line->data,
         .nbytes = src_line->nbytes,
         .nchars = src_line->nchars,
+        .line = li,
     };
     callback(&line, userdata);
   }
@@ -331,6 +309,7 @@ struct text_chunk text_get_line(struct text *text, uint32_t line) {
       .text = src_line->data,
       .nbytes = src_line->nbytes,
       .nchars = src_line->nchars,
+      .line = line,
   };
 }
 

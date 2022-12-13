@@ -2,7 +2,7 @@
 
 .include "common.mk"
 
-.include "$(UNAME_S).mk"
+.sinclude "$(UNAME_S).mk"
 
 # in this case we need a separate depend target
 depend: $(DEPS)
