@@ -1,4 +1,3 @@
-#include <assert.h>
 #include <locale.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -52,15 +51,20 @@ void _abort(struct command_ctx ctx, int argc, const char *argv[]) {
 }
 
 void unimplemented_command(struct command_ctx ctx, int argc,
-                           const char *argv[]) {}
+                           const char *argv[]) {
+  minibuffer_echo("TODO: %s is not implemented", (const char *)ctx.userdata);
+}
 void exit_editor(struct command_ctx ctx, int argc, const char *argv[]) {
   terminate();
 }
 
-static struct command GLOBAL_COMMANDS[] = {
-    {.name = "find-file", .fn = unimplemented_command},
-    {.name = "abort", .fn = _abort},
-    {.name = "exit", .fn = exit_editor}};
+static struct command GLOBAL_COMMANDS[] = {{
+                                               .name = "find-file",
+                                               .fn = unimplemented_command,
+                                               .userdata = (void *)"find-file",
+                                           },
+                                           {.name = "abort", .fn = _abort},
+                                           {.name = "exit", .fn = exit_editor}};
 
 uint64_t calc_frame_time_ns(struct timespec *timers, uint32_t num_timer_pairs) {
   uint64_t total = 0;
@@ -74,6 +78,41 @@ uint64_t calc_frame_time_ns(struct timespec *timers, uint32_t num_timer_pairs) {
   }
 
   return total;
+}
+
+struct buffers {
+  // TODO: more buffers
+  struct buffer buffers[32];
+  uint32_t nbuffers;
+};
+
+struct window {
+  uint32_t x;
+  uint32_t y;
+  uint32_t width;
+  uint32_t height;
+  struct buffer *buffer;
+};
+
+struct buffer_update window_update_buffer(struct window *window,
+                                          uint64_t frame_time) {
+  return buffer_update(window->buffer, window->width, window->height,
+                       frame_alloc, frame_time);
+}
+
+void buffers_init(struct buffers *buffers) { buffers->nbuffers = 0; }
+
+void buffers_add(struct buffers *buffers, struct buffer buffer) {
+  buffers->buffers[buffers->nbuffers] = buffer;
+  ++buffers->nbuffers;
+}
+
+void buffers_destroy(struct buffers *buffers) {
+  for (uint32_t bufi = 0; bufi < buffers->nbuffers; ++bufi) {
+    buffer_destroy(&buffers->buffers[bufi]);
+  }
+
+  buffers->nbuffers = 0;
 }
 
 int main(int argc, char *argv[]) {
@@ -111,18 +150,21 @@ int main(int argc, char *argv[]) {
   struct keymap ctrlx_map = keymap_create("c-x", 32);
   struct binding global_binds[] = {
       PREFIX(Ctrl, 'X', &ctrlx_map),
+      BINDING(Ctrl, 'G', "abort"),
   };
   struct binding ctrlx_bindings[] = {
       BINDING(Ctrl, 'C', "exit"),
-      BINDING(Ctrl, 'G', "abort"),
       BINDING(Ctrl, 'S', "buffer-write-to-file"),
+      BINDING(Ctrl, 'F', "find-file"),
   };
   keymap_bind_keys(&global_keymap, global_binds,
                    sizeof(global_binds) / sizeof(global_binds[0]));
   keymap_bind_keys(&ctrlx_map, ctrlx_bindings,
                    sizeof(ctrlx_bindings) / sizeof(ctrlx_bindings[0]));
 
-  struct buffer curbuf = buffer_create("welcome");
+  struct buffers buflist = {0};
+  buffers_init(&buflist);
+  struct buffer curbuf = buffer_create("welcome", true);
   if (filename != NULL) {
     curbuf = buffer_from_file(filename, &reactor);
   } else {
@@ -130,41 +172,68 @@ int main(int argc, char *argv[]) {
     buffer_add_text(&curbuf, (uint8_t *)welcome_txt, strlen(welcome_txt));
   }
 
-  minibuffer_init(display.height - 1);
+  buffers_add(&buflist, curbuf);
+
+  // one main window
+  struct window main_window = (struct window){
+      .buffer = &curbuf,
+      .height = display.height - 1,
+      .width = display.width,
+      .x = 0,
+      .y = 0,
+  };
+
+  // and one for the minibuffer
+  struct buffer minibuffer = buffer_create("minibuffer", false);
+  buffers_add(&buflist, minibuffer);
+
+  minibuffer_init(&minibuffer);
+  struct window minibuffer_window = (struct window){
+      .buffer = &minibuffer,
+      .x = 0,
+      .y = display.height - 1,
+      .height = 1,
+      .width = display.width,
+  };
 
   struct timespec buffer_begin, buffer_end, display_begin, display_end,
       keyboard_begin, keyboard_end;
 
   uint64_t frame_time = 0;
 
-  struct render_cmd_buf render_bufs[2] = {
-      {.source = "minibuffer"},
-      {.source = "buffer"},
+  struct render_cmd_buf render_bufs[2] = {0};
+
+  struct window *windows[2] = {
+      &minibuffer_window,
+      &main_window,
   };
+
+  // TODO: not always
+  struct window *active_window = &main_window;
 
   while (running) {
 
     clock_gettime(CLOCK_MONOTONIC, &buffer_begin);
 
-    // update minibuffer
-    struct minibuffer_update minibuf_upd = minibuffer_update(frame_alloc);
-    render_bufs[0].cmds = minibuf_upd.cmds;
-    render_bufs[0].ncmds = minibuf_upd.ncmds;
-
-    // update current buffer
-    struct buffer_update buf_upd =
-        buffer_update(&curbuf, display.width, display.height - 1, frame_alloc,
-                      &reactor, frame_time);
-    render_bufs[1].cmds = buf_upd.cmds;
-    render_bufs[1].ncmds = buf_upd.ncmds;
+    // update windows
+    uint32_t dot_line = 0, dot_col = 0;
+    for (uint32_t windowi = 0; windowi < 2; ++windowi) {
+      struct window *win = windows[windowi];
+      struct buffer_update buf_upd = window_update_buffer(win, frame_time);
+      render_bufs[windowi].cmds = buf_upd.cmds;
+      render_bufs[windowi].ncmds = buf_upd.ncmds;
+      render_bufs[windowi].xoffset = win->x;
+      render_bufs[windowi].yoffset = win->y;
+    }
 
     clock_gettime(CLOCK_MONOTONIC, &buffer_end);
 
     // update screen
     clock_gettime(CLOCK_MONOTONIC, &display_begin);
+    uint32_t relline, relcol;
+    buffer_relative_dot_pos(active_window->buffer, &relline, &relcol);
     if (render_bufs[0].ncmds > 0 || render_bufs[1].ncmds > 0) {
-      display_update(&display, render_bufs, 2, buf_upd.dot_line,
-                     buf_upd.dot_col);
+      display_update(&display, render_bufs, 2, relline, relcol);
     }
 
     clock_gettime(CLOCK_MONOTONIC, &display_end);
@@ -175,6 +244,10 @@ int main(int argc, char *argv[]) {
     struct keymap *local_keymaps = NULL;
     uint32_t nbuffer_keymaps = buffer_keymaps(&curbuf, &local_keymaps);
     struct keyboard_update kbd_upd = keyboard_update(&kbd, &reactor);
+
+    // buffer up chars to handle utf-8 "correctly"
+    uint8_t chars[kbd_upd.nkeys];
+    uint8_t nchars;
     for (uint32_t ki = 0; ki < kbd_upd.nkeys; ++ki) {
       struct key *k = &kbd_upd.keys[ki];
 
@@ -190,11 +263,13 @@ int main(int argc, char *argv[]) {
       }
 
       if (res.found) {
+        if (nchars > 0) {
+          buffer_add_text(active_window->buffer, chars, nchars);
+          nchars = 0;
+        }
         switch (res.type) {
         case BindingType_Command: {
-          const char *argv[] = {};
-          res.command->fn((struct command_ctx){.current_buffer = &curbuf}, 0,
-                          argv);
+          execute_command(res.command, active_window->buffer, 0, NULL);
           current_keymap = NULL;
           break;
         }
@@ -207,11 +282,20 @@ int main(int argc, char *argv[]) {
         }
         }
       } else if (current_keymap != NULL) {
+        if (nchars > 0) {
+          buffer_add_text(active_window->buffer, chars, nchars);
+          nchars = 0;
+        }
         minibuffer_echo_timeout(4, "key is not bound!");
         current_keymap = NULL;
       } else {
-        buffer_add_text(&curbuf, &k->c, 1);
+        chars[nchars] = k->c;
+        ++nchars;
       }
+    }
+    if (nchars > 0) {
+      buffer_add_text(active_window->buffer, chars, nchars);
+      nchars = 0;
     }
     clock_gettime(CLOCK_MONOTONIC, &keyboard_end);
 
@@ -223,6 +307,7 @@ int main(int argc, char *argv[]) {
     frame_allocator_clear(&frame_allocator);
   }
 
+  buffers_destroy(&buflist);
   display_clear(&display);
   display_destroy(&display);
   keymap_destroy(&global_keymap);

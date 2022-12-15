@@ -6,7 +6,7 @@
 #include <string.h>
 
 void test_move() {
-  struct buffer b = buffer_create("test-buffer");
+  struct buffer b = buffer_create("test-buffer", false);
   ASSERT(b.dot_col == 0 && b.dot_line == 0,
          "Expected dot to be at buffer start");
 

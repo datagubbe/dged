@@ -64,3 +64,14 @@ struct command *lookup_command_by_hash(struct commands *commands,
 
   return NULL;
 }
+
+int32_t execute_command(struct command *command, struct buffer *current_buffer,
+                        int argc, const char *argv[]) {
+
+  command->fn((struct command_ctx){.current_buffer = current_buffer,
+                                   .userdata = command->userdata},
+              argc, argv);
+
+  // TODO
+  return 0;
+}

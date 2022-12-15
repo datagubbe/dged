@@ -8,6 +8,9 @@
 struct keymap;
 struct reactor;
 
+typedef void (*pre_update_hook)(struct buffer *);
+typedef void (*post_update_hook)(struct buffer *);
+
 struct buffer {
   const char *name;
   const char *filename;
@@ -26,24 +29,29 @@ struct buffer {
 
   uint32_t scroll_line;
   uint32_t scroll_col;
+
+  pre_update_hook pre_update_hooks[32];
+  uint32_t npre_update_hooks;
+  post_update_hook post_update_hooks[32];
+  uint32_t npost_update_hooks;
 };
 
 struct buffer_update {
   struct render_cmd *cmds;
   uint64_t ncmds;
-  uint32_t dot_col;
-  uint32_t dot_line;
 };
 
 typedef void *(alloc_fn)(size_t);
 
-struct buffer buffer_create(const char *name);
+struct buffer buffer_create(const char *name, bool modeline);
 void buffer_destroy(struct buffer *buffer);
 
 uint32_t buffer_keymaps(struct buffer *buffer, struct keymap **keymaps_out);
 void buffer_add_keymap(struct buffer *buffer, struct keymap *keymap);
 
 int buffer_add_text(struct buffer *buffer, uint8_t *text, uint32_t nbytes);
+void buffer_clear(struct buffer *buffer);
+bool buffer_is_empty(struct buffer *buffer);
 
 void buffer_forward_delete_char(struct buffer *buffer);
 void buffer_backward_delete_char(struct buffer *buffer);
@@ -55,18 +63,21 @@ void buffer_end_of_line(struct buffer *buffer);
 void buffer_beginning_of_line(struct buffer *buffer);
 void buffer_newline(struct buffer *buffer);
 
-uint32_t buffer_add_pre_update_hook(struct buffer *buffer);
-uint32_t buffer_add_post_update_hook(struct buffer *buffer);
-uint32_t buffer_remove_pre_update_hook(struct buffer *buffer, uint32_t hook_id);
-uint32_t buffer_remove_post_update_hook(struct buffer *buffer,
-                                        uint32_t hook_id);
+void buffer_relative_dot_pos(struct buffer *buffer, uint32_t *relline,
+                             uint32_t *relcol);
+
+uint32_t buffer_add_pre_update_hook(struct buffer *buffer,
+                                    pre_update_hook hook);
+uint32_t buffer_add_post_update_hook(struct buffer *buffer,
+                                     post_update_hook hook);
+void buffer_remove_pre_update_hook(struct buffer *buffer, uint32_t hook_id);
+void buffer_remove_post_update_hook(struct buffer *buffer, uint32_t hook_id);
 
 struct buffer buffer_from_file(const char *filename, struct reactor *reactor);
 void buffer_to_file(struct buffer *buffer);
 
 struct buffer_update buffer_update(struct buffer *buffer, uint32_t width,
                                    uint32_t height, alloc_fn frame_alloc,
-                                   struct reactor *reactor,
                                    uint64_t frame_time);
 
 // commands

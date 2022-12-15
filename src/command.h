@@ -4,6 +4,7 @@ struct buffer;
 
 struct command_ctx {
   struct buffer *current_buffer;
+  void *userdata;
 };
 
 typedef void (*command_fn)(struct command_ctx ctx, int argc,
@@ -12,6 +13,7 @@ typedef void (*command_fn)(struct command_ctx ctx, int argc,
 struct command {
   const char *name;
   command_fn fn;
+  void *userdata;
 };
 
 struct hashed_command {
@@ -31,6 +33,9 @@ void command_list_destroy(struct commands *commands);
 uint32_t register_command(struct commands *commands, struct command *command);
 void register_commands(struct commands *command_list, struct command *commands,
                        uint32_t ncommands);
+
+int32_t execute_command(struct command *command, struct buffer *current_buffer,
+                        int argc, const char *argv[]);
 
 uint32_t hash_command_name(const char *name);
 

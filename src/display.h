@@ -18,9 +18,10 @@ struct render_cmd {
 };
 
 struct render_cmd_buf {
-  char source[16];
   struct render_cmd *cmds;
   uint64_t ncmds;
+  uint32_t xoffset;
+  uint32_t yoffset;
 };
 
 struct display display_create();

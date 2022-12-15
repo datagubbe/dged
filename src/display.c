@@ -87,12 +87,14 @@ void delete_to_eol() {
 void display_update(struct display *display, struct render_cmd_buf *cmd_bufs,
                     uint32_t ncmd_bufs, uint32_t currow, uint32_t curcol) {
   for (uint32_t bufi = 0; bufi < ncmd_bufs; ++bufi) {
-    uint64_t ncmds = cmd_bufs[bufi].ncmds;
-    struct render_cmd *cmds = cmd_bufs[bufi].cmds;
+    struct render_cmd_buf *buf = &cmd_bufs[bufi];
+    uint64_t ncmds = buf->ncmds;
+    struct render_cmd *cmds = buf->cmds;
 
     for (uint64_t cmdi = 0; cmdi < ncmds; ++cmdi) {
       struct render_cmd *cmd = &cmds[cmdi];
-      display_move_cursor(display, cmd->row, cmd->col);
+      display_move_cursor(display, cmd->row + buf->yoffset,
+                          cmd->col + buf->xoffset);
       putbytes(cmd->data, cmd->len);
       delete_to_eol();
     }

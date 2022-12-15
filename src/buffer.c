@@ -1,7 +1,5 @@
 #include "buffer.h"
 #include "binding.h"
-#include "bits/stdint-intn.h"
-#include "bits/stdint-uintn.h"
 #include "display.h"
 #include "minibuffer.h"
 #include "reactor.h"
@@ -14,18 +12,22 @@
 #include <time.h>
 #include <unistd.h>
 
-struct buffer buffer_create(const char *name) {
+struct buffer buffer_create(const char *name, bool modeline) {
   struct buffer b =
       (struct buffer){.filename = NULL,
                       .name = name,
                       .text = text_create(10),
                       .dot_col = 0,
                       .dot_line = 0,
-                      .modeline_buf = (uint8_t *)malloc(1024),
+                      .modeline_buf = modeline ? (uint8_t *)malloc(1024) : NULL,
                       .keymaps = calloc(10, sizeof(struct keymap)),
                       .nkeymaps = 1,
                       .scroll_col = 0,
                       .scroll_line = 0,
+                      .npre_update_hooks = 0,
+                      .pre_update_hooks = {0},
+                      .npost_update_hooks = 0,
+                      .post_update_hooks = {0},
                       .nkeymaps_max = 10};
 
   b.keymaps[0] = keymap_create("buffer-default", 128);
@@ -53,6 +55,16 @@ void buffer_destroy(struct buffer *buffer) {
   free(buffer->modeline_buf);
   text_destroy(buffer->text);
   free(buffer->text);
+}
+
+void buffer_clear(struct buffer *buffer) {
+  text_clear(buffer->text);
+  buffer->dot_col = buffer->dot_line = 0;
+}
+
+bool buffer_is_empty(struct buffer *buffer) {
+  return text_num_lines(buffer->text) == 0 &&
+         text_line_size(buffer->text, 0) == 0;
 }
 
 uint32_t buffer_keymaps(struct buffer *buffer, struct keymap **keymaps_out) {
@@ -127,7 +139,7 @@ void buffer_end_of_line(struct buffer *buffer) {
 void buffer_beginning_of_line(struct buffer *buffer) { buffer->dot_col = 0; }
 
 struct buffer buffer_from_file(const char *filename, struct reactor *reactor) {
-  struct buffer b = buffer_create(filename);
+  struct buffer b = buffer_create(filename, true);
   b.filename = filename;
   if (access(b.filename, F_OK) == 0) {
     FILE *file = fopen(filename, "r");
@@ -190,6 +202,29 @@ int buffer_add_text(struct buffer *buffer, uint8_t *text, uint32_t nbytes) {
 
 void buffer_newline(struct buffer *buffer) {
   buffer_add_text(buffer, (uint8_t *)"\n", 1);
+}
+
+uint32_t buffer_add_pre_update_hook(struct buffer *buffer,
+                                    pre_update_hook hook) {
+  buffer->pre_update_hooks[buffer->npre_update_hooks] = hook;
+  ++buffer->npre_update_hooks;
+
+  return buffer->npre_update_hooks - 1;
+}
+uint32_t buffer_add_post_update_hook(struct buffer *buffer,
+                                     post_update_hook hook) {
+  buffer->post_update_hooks[buffer->npost_update_hooks] = hook;
+  ++buffer->npost_update_hooks;
+
+  return buffer->npost_update_hooks - 1;
+}
+
+void buffer_remove_pre_update_hook(struct buffer *buffer, uint32_t hook_id) {
+  // TODO: is it needed?
+}
+
+void buffer_remove_post_update_hook(struct buffer *buffer, uint32_t hook_id) {
+  // TODO: is it needed?
 }
 
 bool modeline_update(struct buffer *buffer, uint32_t width,
@@ -263,13 +298,29 @@ void to_relative(struct buffer *buffer, uint32_t line, uint32_t col,
   *rel_line = (int64_t)line - (int64_t)buffer->scroll_line;
 }
 
+void buffer_relative_dot_pos(struct buffer *buffer, uint32_t *relline,
+                             uint32_t *relcol) {
+  int64_t rel_col, rel_line;
+  to_relative(buffer, buffer->dot_line, buffer->dot_col, &rel_line, &rel_col);
+
+  *relline = rel_line < 0 ? 0 : (uint32_t)rel_line;
+  *relcol = rel_col < 0 ? 0 : (uint32_t)rel_col;
+}
+
 struct buffer_update buffer_update(struct buffer *buffer, uint32_t width,
                                    uint32_t height, alloc_fn frame_alloc,
-                                   struct reactor *reactor,
                                    uint64_t frame_time) {
 
+  if (width == 0 || height == 0) {
+    return (struct buffer_update){.cmds = NULL, .ncmds = 0};
+  }
+
+  for (uint32_t hooki = 0; hooki < buffer->npre_update_hooks; ++hooki) {
+    buffer->pre_update_hooks[hooki](buffer);
+  }
+
   // reserve space for modeline
-  uint32_t bufheight = height - 1;
+  uint32_t bufheight = buffer->modeline_buf != NULL ? height - 1 : height;
 
   int64_t rel_line, rel_col;
   to_relative(buffer, buffer->dot_line, buffer->dot_col, &rel_line, &rel_col);
@@ -312,7 +363,8 @@ struct buffer_update buffer_update(struct buffer *buffer, uint32_t width,
     ++ncmds;
   }
 
-  if (modeline_update(buffer, width, frame_time)) {
+  if (buffer->modeline_buf != NULL &&
+      modeline_update(buffer, width, frame_time)) {
     cmds[ncmds] = (struct render_cmd){
         .col = 0,
         .row = bufheight,
@@ -322,12 +374,12 @@ struct buffer_update buffer_update(struct buffer *buffer, uint32_t width,
     ++ncmds;
   }
 
+  for (uint32_t hooki = 0; hooki < buffer->npost_update_hooks; ++hooki) {
+    buffer->post_update_hooks[hooki](buffer);
+  }
+
   struct buffer_update upd =
       (struct buffer_update){.cmds = cmds, .ncmds = ncmds};
 
-  int64_t new_line, new_col;
-  to_relative(buffer, buffer->dot_line, buffer->dot_col, &new_line, &new_col);
-  upd.dot_line = (uint32_t)new_line;
-  upd.dot_col = (uint32_t)new_col;
   return upd;
 }

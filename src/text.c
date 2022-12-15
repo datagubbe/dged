@@ -48,6 +48,16 @@ void text_destroy(struct text *text) {
   free(text->lines);
 }
 
+void text_clear(struct text *text) {
+  for (uint32_t li = 0; li < text->nlines; ++li) {
+    text->lines[li].flags = 0;
+    text->lines[li].nbytes = 0;
+    text->lines[li].nchars = 0;
+  }
+
+  text->nlines = 1;
+}
+
 // given `char_idx` as a character index, return the byte index
 uint32_t charidx_to_byteidx(struct line *line, uint32_t char_idx) {
   if (char_idx > line->nchars) {

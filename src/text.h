@@ -10,6 +10,11 @@ struct render_cmd;
 struct text *text_create(uint32_t initial_capacity);
 void text_destroy(struct text *text);
 
+/**
+ * Clear the text without reclaiming memory
+ */
+void text_clear(struct text *text);
+
 void text_append(struct text *text, uint32_t line, uint32_t col, uint8_t *bytes,
                  uint32_t nbytes, uint32_t *lines_added, uint32_t *cols_added);
 
