@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "bits/stdint-uintn.h"
 #include "display.h"
 #include "utf8.h"
 
@@ -80,20 +81,37 @@ uint32_t char_byte_size(struct line *line, uint32_t byte_idx) {
   return utf8_nbytes(line->data + byte_idx, 1);
 }
 
-void append_to_line(struct line *line, uint32_t col, uint8_t *text,
-                    uint32_t len, uint32_t nchars) {
+void extend_line(struct line *line, uint32_t nbytes, uint32_t nchars) {
+  if (nbytes == 0) {
+    return;
+  }
+
+  line->nbytes += nbytes;
+  line->nchars += nchars;
+  line->flags = LineChanged;
+  line->data = realloc(line->data, line->nbytes);
+}
+
+void insert_at(struct line *line, uint32_t byte_index, uint8_t *text,
+               uint32_t len, uint32_t nchars) {
+  if (len == 0) {
+    return;
+  }
+
+  extend_line(line, len, nchars);
+  memcpy(line->data + byte_index, text, len);
+}
+
+void insert_at_col(struct line *line, uint32_t col, uint8_t *text, uint32_t len,
+                   uint32_t nchars) {
 
   if (len == 0) {
     return;
   }
 
-  line->nbytes += len;
-  line->nchars += nchars;
-  line->flags = LineChanged;
-  line->data = realloc(line->data, line->nbytes);
+  extend_line(line, len, nchars);
 
   uint32_t bytei = charidx_to_byteidx(line, col);
-
   // move chars out of the way
   if (col + nchars < line->nchars) {
     uint32_t nextcbytei = charidx_to_byteidx(line, col + nchars);
@@ -129,6 +147,9 @@ void split_line(uint32_t col, struct line *line, struct line *next) {
   next->nchars = nchars - chari;
   line->flags = next->flags = line->flags;
 
+  next->data = NULL;
+  line->data = NULL;
+
   // first, handle some cases where the new line or the pre-existing one is
   // empty
   if (next->nbytes == 0) {
@@ -137,10 +158,10 @@ void split_line(uint32_t col, struct line *line, struct line *next) {
     next->data = data;
   } else {
     // actually split the line
-    next->data = (uint8_t *)malloc(next->nbytes);
+    next->data = (uint8_t *)realloc(next->data, next->nbytes);
     memcpy(next->data, data + bytei, next->nbytes);
 
-    line->data = (uint8_t *)malloc(line->nbytes);
+    line->data = (uint8_t *)realloc(line->data, line->nbytes);
     memcpy(line->data, data, line->nbytes);
 
     free(data);
@@ -154,8 +175,8 @@ void mark_lines_changed(struct text *text, uint32_t line, uint32_t nlines) {
 }
 
 void shift_lines(struct text *text, uint32_t start, int32_t direction) {
-  struct line *dest = text->lines + ((int64_t)start + direction);
-  struct line *src = text->lines + start;
+  struct line *dest = &text->lines[((int64_t)start + direction)];
+  struct line *src = &text->lines[start];
   uint32_t nlines = text->nlines - (dest > src ? (start + direction) : start);
   memmove(dest, src, nlines * sizeof(struct line));
 }
@@ -205,8 +226,47 @@ void delete_line(struct text *text, uint32_t line) {
   }
 }
 
-void text_append(struct text *text, uint32_t line, uint32_t col, uint8_t *bytes,
-                 uint32_t nbytes, uint32_t *lines_added, uint32_t *cols_added) {
+void text_append(struct text *text, uint8_t *bytes, uint32_t nbytes,
+                 uint32_t *lines_added, uint32_t *cols_added) {
+
+  uint32_t linelen = 0, nchars_counted = 0, nlines_added = 0, ncols_added = 0;
+  uint32_t line = text->nlines - 1;
+
+  for (uint32_t bytei = 0; bytei < nbytes; ++bytei) {
+    uint8_t byte = bytes[bytei];
+    if (byte == '\n') {
+      insert_at(&text->lines[line], text->lines[line].nbytes,
+                bytes + (bytei - linelen), linelen, nchars_counted);
+
+      new_line_at(text, line, text->lines[line].nchars);
+
+      ++line;
+      ++nlines_added;
+
+      linelen = 0;
+      nchars_counted = 0;
+    } else {
+      if (utf8_byte_is_ascii(byte) || utf8_byte_is_unicode_start(byte)) {
+        ++nchars_counted;
+      }
+      ++linelen;
+    }
+  }
+
+  // handle remaining
+  if (linelen > 0) {
+    insert_at(&text->lines[line], text->lines[line].nbytes,
+              bytes + (nbytes - linelen), linelen, nchars_counted);
+    ncols_added = nchars_counted;
+  }
+
+  *lines_added = nlines_added;
+  *cols_added = ncols_added;
+}
+
+void text_append_at(struct text *text, uint32_t line, uint32_t col,
+                    uint8_t *bytes, uint32_t nbytes, uint32_t *lines_added,
+                    uint32_t *cols_added) {
   uint32_t linelen = 0;
   uint32_t nchars_counted = 0;
   uint32_t nlines_added = 0;
@@ -214,8 +274,8 @@ void text_append(struct text *text, uint32_t line, uint32_t col, uint8_t *bytes,
   for (uint32_t bytei = 0; bytei < nbytes; ++bytei) {
     uint8_t byte = bytes[bytei];
     if (byte == '\n') {
-      append_to_line(&text->lines[line], col, bytes + (bytei - linelen),
-                     linelen, nchars_counted);
+      insert_at_col(&text->lines[line], col, bytes + (bytei - linelen), linelen,
+                    nchars_counted);
 
       col += nchars_counted;
       new_line_at(text, line, col);
@@ -235,8 +295,8 @@ void text_append(struct text *text, uint32_t line, uint32_t col, uint8_t *bytes,
 
   // handle remaining
   if (linelen > 0) {
-    append_to_line(&text->lines[line], col, bytes + (nbytes - linelen), linelen,
-                   nchars_counted);
+    insert_at_col(&text->lines[line], col, bytes + (nbytes - linelen), linelen,
+                  nchars_counted);
     ncols_added = nchars_counted;
   }
 
@@ -281,8 +341,8 @@ void text_delete(struct text *text, uint32_t line, uint32_t col,
     struct line *lp = &text->lines[line];
     uint32_t bytei = charidx_to_byteidx(lp, src_col);
     if (src_col < lp->nchars) {
-      append_to_line(&text->lines[initial_line], col, lp->data + bytei,
-                     lp->nbytes - bytei, lp->nchars - src_col);
+      insert_at_col(&text->lines[initial_line], col, lp->data + bytei,
+                    lp->nbytes - bytei, lp->nchars - src_col);
     }
   }
 

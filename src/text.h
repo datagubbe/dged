@@ -15,8 +15,12 @@ void text_destroy(struct text *text);
  */
 void text_clear(struct text *text);
 
-void text_append(struct text *text, uint32_t line, uint32_t col, uint8_t *bytes,
-                 uint32_t nbytes, uint32_t *lines_added, uint32_t *cols_added);
+void text_append_at(struct text *text, uint32_t line, uint32_t col,
+                    uint8_t *bytes, uint32_t nbytes, uint32_t *lines_added,
+                    uint32_t *cols_added);
+
+void text_append(struct text *text, uint8_t *bytes, uint32_t nbytes,
+                 uint32_t *lines_added, uint32_t *cols_added);
 
 void text_delete(struct text *text, uint32_t line, uint32_t col,
                  uint32_t nchars);

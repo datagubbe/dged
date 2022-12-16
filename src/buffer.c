@@ -148,7 +148,8 @@ struct buffer buffer_from_file(const char *filename, struct reactor *reactor) {
       uint8_t buff[4096];
       int bytes = fread(buff, 1, 4096, file);
       if (bytes > 0) {
-        buffer_add_text(&b, buff, bytes);
+        uint32_t ignore;
+        text_append(b.text, buff, bytes, &ignore, &ignore);
       } else if (bytes == 0) {
         break; // EOF
       } else {
@@ -158,9 +159,6 @@ struct buffer buffer_from_file(const char *filename, struct reactor *reactor) {
 
     fclose(file);
   }
-
-  b.dot_col = 0;
-  b.dot_line = 0;
 
   return b;
 }
@@ -187,8 +185,8 @@ void buffer_to_file(struct buffer *buffer) {
 
 int buffer_add_text(struct buffer *buffer, uint8_t *text, uint32_t nbytes) {
   uint32_t lines_added, cols_added;
-  text_append(buffer->text, buffer->dot_line, buffer->dot_col, text, nbytes,
-              &lines_added, &cols_added);
+  text_append_at(buffer->text, buffer->dot_line, buffer->dot_col, text, nbytes,
+                 &lines_added, &cols_added);
   movev(buffer, lines_added);
 
   if (lines_added > 0) {
