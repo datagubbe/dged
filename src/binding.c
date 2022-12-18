@@ -42,7 +42,7 @@ struct lookup_result lookup_key(struct keymap *keymaps, uint32_t nkeymaps,
 
     for (uint32_t bi = 0; bi < keymap->nbindings; ++bi) {
       struct binding *binding = &keymap->bindings[bi];
-      if (key->c == binding->key.c && key->mod == binding->key.mod) {
+      if (key_equal(key, &binding->key)) {
         if (binding->type == BindingType_Command) {
           return (struct lookup_result){
               .found = true,

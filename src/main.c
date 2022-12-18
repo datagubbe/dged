@@ -58,13 +58,19 @@ void exit_editor(struct command_ctx ctx, int argc, const char *argv[]) {
   terminate();
 }
 
-static struct command GLOBAL_COMMANDS[] = {{
-                                               .name = "find-file",
-                                               .fn = unimplemented_command,
-                                               .userdata = (void *)"find-file",
-                                           },
-                                           {.name = "abort", .fn = _abort},
-                                           {.name = "exit", .fn = exit_editor}};
+static struct command GLOBAL_COMMANDS[] = {
+    {
+        .name = "find-file",
+        .fn = unimplemented_command,
+        .userdata = (void *)"find-file",
+    },
+    {
+        .name = "run-command-interactive",
+        .fn = unimplemented_command,
+        .userdata = (void *)"run-command-interactive",
+    },
+    {.name = "abort", .fn = _abort},
+    {.name = "exit", .fn = exit_editor}};
 
 uint64_t calc_frame_time_ns(struct timespec *timers, uint32_t num_timer_pairs) {
   uint64_t total = 0;
@@ -151,6 +157,7 @@ int main(int argc, char *argv[]) {
   struct binding global_binds[] = {
       PREFIX(Ctrl, 'X', &ctrlx_map),
       BINDING(Ctrl, 'G', "abort"),
+      BINDING(Meta, 'x', "run-command-interactive"),
   };
   struct binding ctrlx_bindings[] = {
       BINDING(Ctrl, 'C', "exit"),
@@ -245,9 +252,6 @@ int main(int argc, char *argv[]) {
     uint32_t nbuffer_keymaps = buffer_keymaps(&curbuf, &local_keymaps);
     struct keyboard_update kbd_upd = keyboard_update(&kbd, &reactor);
 
-    // buffer up chars to handle utf-8 "correctly"
-    uint8_t chars[kbd_upd.nkeys];
-    uint8_t nchars;
     for (uint32_t ki = 0; ki < kbd_upd.nkeys; ++ki) {
       struct key *k = &kbd_upd.keys[ki];
 
@@ -263,10 +267,6 @@ int main(int argc, char *argv[]) {
       }
 
       if (res.found) {
-        if (nchars > 0) {
-          buffer_add_text(active_window->buffer, chars, nchars);
-          nchars = 0;
-        }
         switch (res.type) {
         case BindingType_Command: {
           execute_command(res.command, active_window->buffer, 0, NULL);
@@ -282,20 +282,11 @@ int main(int argc, char *argv[]) {
         }
         }
       } else if (current_keymap != NULL) {
-        if (nchars > 0) {
-          buffer_add_text(active_window->buffer, chars, nchars);
-          nchars = 0;
-        }
         minibuffer_echo_timeout(4, "key is not bound!");
         current_keymap = NULL;
       } else {
-        chars[nchars] = k->c;
-        ++nchars;
+        buffer_add_text(active_window->buffer, k->bytes, k->nbytes);
       }
-    }
-    if (nchars > 0) {
-      buffer_add_text(active_window->buffer, chars, nchars);
-      nchars = 0;
     }
     clock_gettime(CLOCK_MONOTONIC, &keyboard_end);
 
