@@ -1,3 +1,4 @@
+#include <stddef.h>
 #include <stdint.h>
 
 #include <termios.h>
@@ -9,7 +10,7 @@ struct display {
   uint32_t height;
 };
 
-struct render_cmd {
+struct render_command {
   uint32_t col;
   uint32_t row;
 
@@ -17,11 +18,15 @@ struct render_cmd {
   uint32_t len;
 };
 
-struct render_cmd_buf {
-  struct render_cmd *cmds;
+struct command_list {
+  struct render_command *cmds;
   uint64_t ncmds;
+  uint64_t capacity;
   uint32_t xoffset;
   uint32_t yoffset;
+
+  uint8_t format[64];
+  uint32_t format_len;
 };
 
 struct display display_create();
@@ -29,5 +34,23 @@ void display_destroy(struct display *display);
 
 void display_clear(struct display *display);
 void display_move_cursor(struct display *display, uint32_t row, uint32_t col);
-void display_update(struct display *display, struct render_cmd_buf *cmd_bufs,
-                    uint32_t ncmd_bufs, uint32_t currow, uint32_t curcol);
+
+void display_begin_render(struct display *display);
+void display_render(struct display *display, struct command_list *command_list);
+void display_end_render(struct display *display);
+
+typedef void *(*alloc_fn)(size_t);
+struct command_list *command_list_create(uint32_t capacity, alloc_fn allocator,
+                                         uint32_t xoffset, uint32_t yoffset);
+
+void command_list_set_index_color_bg(struct command_list *list,
+                                     uint8_t color_idx);
+void command_list_set_color_bg(struct command_list *list, uint8_t red,
+                               uint8_t green, uint8_t blue);
+void command_list_set_index_color_fg(struct command_list *list,
+                                     uint8_t color_idx);
+void command_list_set_color_fg(struct command_list *list, uint8_t red,
+                               uint8_t green, uint8_t blue);
+void command_list_reset_color(struct command_list *list);
+void command_list_draw_text(struct command_list *list, uint32_t col,
+                            uint32_t row, uint8_t *data, uint32_t len);

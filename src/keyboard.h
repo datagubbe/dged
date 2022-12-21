@@ -8,9 +8,10 @@ enum modifiers {
 };
 
 struct key {
-  uint8_t bytes[6];
-  uint8_t nbytes;
+  uint8_t key;
   uint8_t mod;
+  uint8_t start;
+  uint8_t end;
 };
 
 struct keyboard {
@@ -22,6 +23,9 @@ struct keyboard {
 struct keyboard_update {
   struct key keys[32];
   uint32_t nkeys;
+
+  uint8_t raw[32];
+  uint32_t nbytes;
 };
 
 struct reactor;

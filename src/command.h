@@ -7,8 +7,8 @@ struct command_ctx {
   void *userdata;
 };
 
-typedef void (*command_fn)(struct command_ctx ctx, int argc,
-                           const char *argv[]);
+typedef int32_t (*command_fn)(struct command_ctx ctx, int argc,
+                              const char *argv[]);
 
 struct command {
   const char *name;
@@ -27,8 +27,8 @@ struct commands {
   uint32_t capacity;
 };
 
-struct commands command_list_create(uint32_t capacity);
-void command_list_destroy(struct commands *commands);
+struct commands command_registry_create(uint32_t capacity);
+void command_registry_destroy(struct commands *commands);
 
 uint32_t register_command(struct commands *commands, struct command *command);
 void register_commands(struct commands *command_list, struct command *commands,

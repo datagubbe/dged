@@ -46,16 +46,20 @@ bool running = true;
 
 void terminate() { running = false; }
 
-void _abort(struct command_ctx ctx, int argc, const char *argv[]) {
+int32_t _abort(struct command_ctx ctx, int argc, const char *argv[]) {
   minibuffer_echo_timeout(4, "💣 aborted");
+  return 0;
 }
 
-void unimplemented_command(struct command_ctx ctx, int argc,
-                           const char *argv[]) {
+int32_t unimplemented_command(struct command_ctx ctx, int argc,
+                              const char *argv[]) {
   minibuffer_echo("TODO: %s is not implemented", (const char *)ctx.userdata);
+  return 0;
 }
-void exit_editor(struct command_ctx ctx, int argc, const char *argv[]) {
+
+int32_t exit_editor(struct command_ctx ctx, int argc, const char *argv[]) {
   terminate();
+  return 0;
 }
 
 static struct command GLOBAL_COMMANDS[] = {
@@ -100,10 +104,10 @@ struct window {
   struct buffer *buffer;
 };
 
-struct buffer_update window_update_buffer(struct window *window,
-                                          uint64_t frame_time) {
-  return buffer_update(window->buffer, window->width, window->height,
-                       frame_alloc, frame_time);
+void window_update_buffer(struct window *window, struct command_list *commands,
+                          uint64_t frame_time) {
+  buffer_update(window->buffer, window->width, window->height, commands,
+                frame_time);
 }
 
 void buffers_init(struct buffers *buffers) { buffers->nbuffers = 0; }
@@ -131,7 +135,7 @@ int main(int argc, char *argv[]) {
 
   signal(SIGTERM, terminate);
 
-  frame_allocator = frame_allocator_create(1024 * 1024);
+  frame_allocator = frame_allocator_create(16 * 1024 * 1024);
 
   // create reactor
   struct reactor reactor = reactor_create();
@@ -144,7 +148,7 @@ int main(int argc, char *argv[]) {
   struct keyboard kbd = keyboard_create(&reactor);
 
   // commands
-  struct commands commands = command_list_create(32);
+  struct commands commands = command_registry_create(32);
   register_commands(&commands, GLOBAL_COMMANDS,
                     sizeof(GLOBAL_COMMANDS) / sizeof(GLOBAL_COMMANDS[0]));
   register_commands(&commands, BUFFER_COMMANDS,
@@ -171,19 +175,20 @@ int main(int argc, char *argv[]) {
 
   struct buffers buflist = {0};
   buffers_init(&buflist);
-  struct buffer curbuf = buffer_create("welcome", true);
+  struct buffer initial_buffer = buffer_create("welcome", true);
   if (filename != NULL) {
-    curbuf = buffer_from_file(filename, &reactor);
+    initial_buffer = buffer_from_file(filename, &reactor);
   } else {
     const char *welcome_txt = "Welcome to the editor for datagubbar 👴\n";
-    buffer_add_text(&curbuf, (uint8_t *)welcome_txt, strlen(welcome_txt));
+    buffer_add_text(&initial_buffer, (uint8_t *)welcome_txt,
+                    strlen(welcome_txt));
   }
 
-  buffers_add(&buflist, curbuf);
+  buffers_add(&buflist, initial_buffer);
 
   // one main window
   struct window main_window = (struct window){
-      .buffer = &curbuf,
+      .buffer = &initial_buffer,
       .height = display.height - 1,
       .width = display.width,
       .x = 0,
@@ -208,12 +213,12 @@ int main(int argc, char *argv[]) {
 
   uint64_t frame_time = 0;
 
-  struct render_cmd_buf render_bufs[2] = {0};
-
   struct window *windows[2] = {
       &minibuffer_window,
       &main_window,
   };
+
+  struct command_list *command_lists[2] = {0};
 
   // TODO: not always
   struct window *active_window = &main_window;
@@ -224,13 +229,13 @@ int main(int argc, char *argv[]) {
 
     // update windows
     uint32_t dot_line = 0, dot_col = 0;
-    for (uint32_t windowi = 0; windowi < 2; ++windowi) {
+    for (uint32_t windowi = 0; windowi < sizeof(windows) / sizeof(windows[0]);
+         ++windowi) {
       struct window *win = windows[windowi];
-      struct buffer_update buf_upd = window_update_buffer(win, frame_time);
-      render_bufs[windowi].cmds = buf_upd.cmds;
-      render_bufs[windowi].ncmds = buf_upd.ncmds;
-      render_bufs[windowi].xoffset = win->x;
-      render_bufs[windowi].yoffset = win->y;
+      // TODO: better capacity
+      command_lists[windowi] =
+          command_list_create(win->height * 2, frame_alloc, win->x, win->y);
+      window_update_buffer(win, command_lists[windowi], frame_time);
     }
 
     clock_gettime(CLOCK_MONOTONIC, &buffer_end);
@@ -239,21 +244,35 @@ int main(int argc, char *argv[]) {
     clock_gettime(CLOCK_MONOTONIC, &display_begin);
     uint32_t relline, relcol;
     buffer_relative_dot_pos(active_window->buffer, &relline, &relcol);
-    if (render_bufs[0].ncmds > 0 || render_bufs[1].ncmds > 0) {
-      display_update(&display, render_bufs, 2, relline, relcol);
-    }
 
+    display_begin_render(&display);
+    for (uint32_t windowi = 0; windowi < sizeof(windows) / sizeof(windows[0]);
+         ++windowi) {
+      display_render(&display, command_lists[windowi]);
+    }
+    display_move_cursor(&display, relline + active_window->y,
+                        relcol + active_window->x);
+    display_end_render(&display);
     clock_gettime(CLOCK_MONOTONIC, &display_end);
 
+    // this blocks for events, so if nothing has happened we block here.
     reactor_update(&reactor);
 
     clock_gettime(CLOCK_MONOTONIC, &keyboard_begin);
     struct keymap *local_keymaps = NULL;
-    uint32_t nbuffer_keymaps = buffer_keymaps(&curbuf, &local_keymaps);
+    uint32_t nbuffer_keymaps = buffer_keymaps(&initial_buffer, &local_keymaps);
     struct keyboard_update kbd_upd = keyboard_update(&kbd, &reactor);
 
+    uint32_t input_data_idx = 0;
     for (uint32_t ki = 0; ki < kbd_upd.nkeys; ++ki) {
       struct key *k = &kbd_upd.keys[ki];
+
+      // insert any data from last key
+      if (k->start > input_data_idx) {
+        buffer_add_text(active_window->buffer, &kbd_upd.raw[input_data_idx],
+                        k->start - input_data_idx);
+      }
+      input_data_idx = k->end;
 
       struct lookup_result res = {.found = false};
       if (current_keymap != NULL) {
@@ -269,7 +288,17 @@ int main(int argc, char *argv[]) {
       if (res.found) {
         switch (res.type) {
         case BindingType_Command: {
-          execute_command(res.command, active_window->buffer, 0, NULL);
+          if (res.command == NULL) {
+            minibuffer_echo_timeout(
+                4, "binding found for key %s but not command", k);
+          } else {
+            int32_t ec =
+                execute_command(res.command, active_window->buffer, 0, NULL);
+            if (ec != 0) {
+              minibuffer_echo_timeout(4, "command %s failed with exit code %d",
+                                      res.command->name, ec);
+            }
+          }
           current_keymap = NULL;
           break;
         }
@@ -284,9 +313,11 @@ int main(int argc, char *argv[]) {
       } else if (current_keymap != NULL) {
         minibuffer_echo_timeout(4, "key is not bound!");
         current_keymap = NULL;
-      } else {
-        buffer_add_text(active_window->buffer, k->bytes, k->nbytes);
       }
+    }
+    if (input_data_idx < kbd_upd.nbytes) {
+      buffer_add_text(active_window->buffer, &kbd_upd.raw[input_data_idx],
+                      kbd_upd.nbytes - input_data_idx);
     }
     clock_gettime(CLOCK_MONOTONIC, &keyboard_end);
 
@@ -302,7 +333,7 @@ int main(int argc, char *argv[]) {
   display_clear(&display);
   display_destroy(&display);
   keymap_destroy(&global_keymap);
-  command_list_destroy(&commands);
+  command_registry_destroy(&commands);
 
   return 0;
 }

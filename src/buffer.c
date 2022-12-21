@@ -19,40 +19,47 @@ struct buffer buffer_create(const char *name, bool modeline) {
                       .text = text_create(10),
                       .dot_col = 0,
                       .dot_line = 0,
-                      .modeline_buf = modeline ? (uint8_t *)malloc(1024) : NULL,
                       .keymaps = calloc(10, sizeof(struct keymap)),
                       .nkeymaps = 1,
                       .scroll_col = 0,
                       .scroll_line = 0,
-                      .npre_update_hooks = 0,
-                      .pre_update_hooks = {0},
-                      .npost_update_hooks = 0,
-                      .post_update_hooks = {0},
+                      .update_hooks = {0},
                       .nkeymaps_max = 10};
 
   b.keymaps[0] = keymap_create("buffer-default", 128);
   struct binding bindings[] = {
       BINDING(Ctrl, 'B', "backward-char"),
+      BINDING(Meta, 'D', "backward-char"),
       BINDING(Ctrl, 'F', "forward-char"),
+      BINDING(Meta, 'C', "forward-char"),
 
       BINDING(Ctrl, 'P', "backward-line"),
+      BINDING(Meta, 'A', "backward-line"),
       BINDING(Ctrl, 'N', "forward-line"),
+      BINDING(Meta, 'B', "forward-line"),
 
       BINDING(Ctrl, 'A', "beginning-of-line"),
       BINDING(Ctrl, 'E', "end-of-line"),
 
       BINDING(Ctrl, 'M', "newline"),
 
+      BINDING(Ctrl, 'K', "kill-line"),
+      BINDING(Meta, '~', "delete-char"),
       BINDING(Ctrl, '?', "backward-delete-char"),
   };
   keymap_bind_keys(&b.keymaps[0], bindings,
                    sizeof(bindings) / sizeof(bindings[0]));
 
+  if (modeline) {
+    struct modeline *modeline = calloc(1, sizeof(struct modeline));
+    modeline->buffer = malloc(1024);
+    buffer_add_update_hook(&b, buffer_modeline_hook, modeline);
+  }
+
   return b;
 }
 
 void buffer_destroy(struct buffer *buffer) {
-  free(buffer->modeline_buf);
   text_destroy(buffer->text);
   free(buffer->text);
 }
@@ -115,6 +122,16 @@ void moveh(struct buffer *buffer, int coldelta) {
   } else {
     buffer->dot_col = new_col;
   }
+}
+
+void buffer_kill_line(struct buffer *buffer) {
+  uint32_t nchars =
+      text_line_length(buffer->text, buffer->dot_line) - buffer->dot_col;
+  if (nchars == 0) {
+    nchars = 1;
+  }
+
+  text_delete(buffer->text, buffer->dot_line, buffer->dot_col, nchars);
 }
 
 void buffer_forward_delete_char(struct buffer *buffer) {
@@ -185,7 +202,7 @@ void buffer_to_file(struct buffer *buffer) {
 
 int buffer_add_text(struct buffer *buffer, uint8_t *text, uint32_t nbytes) {
   uint32_t lines_added, cols_added;
-  text_append_at(buffer->text, buffer->dot_line, buffer->dot_col, text, nbytes,
+  text_insert_at(buffer->text, buffer->dot_line, buffer->dot_col, text, nbytes,
                  &lines_added, &cols_added);
   movev(buffer, lines_added);
 
@@ -202,78 +219,28 @@ void buffer_newline(struct buffer *buffer) {
   buffer_add_text(buffer, (uint8_t *)"\n", 1);
 }
 
-uint32_t buffer_add_pre_update_hook(struct buffer *buffer,
-                                    pre_update_hook hook) {
-  buffer->pre_update_hooks[buffer->npre_update_hooks] = hook;
-  ++buffer->npre_update_hooks;
+uint32_t buffer_add_update_hook(struct buffer *buffer, update_hook_cb hook,
+                                void *userdata) {
+  struct update_hook *h =
+      &buffer->update_hooks.hooks[buffer->update_hooks.nhooks];
+  h->callback = hook;
+  h->userdata = userdata;
 
-  return buffer->npre_update_hooks - 1;
-}
-uint32_t buffer_add_post_update_hook(struct buffer *buffer,
-                                     post_update_hook hook) {
-  buffer->post_update_hooks[buffer->npost_update_hooks] = hook;
-  ++buffer->npost_update_hooks;
+  ++buffer->update_hooks.nhooks;
 
-  return buffer->npost_update_hooks - 1;
-}
-
-void buffer_remove_pre_update_hook(struct buffer *buffer, uint32_t hook_id) {
-  // TODO: is it needed?
-}
-
-void buffer_remove_post_update_hook(struct buffer *buffer, uint32_t hook_id) {
-  // TODO: is it needed?
-}
-
-bool modeline_update(struct buffer *buffer, uint32_t width,
-                     uint64_t frame_time) {
-  char buf[width * 4];
-
-  static uint64_t samples[10] = {0};
-  static uint32_t samplei = 0;
-  static uint64_t avg = 0;
-
-  // calc a moving average with a window of the last 10 frames
-  ++samplei;
-  samplei %= 10;
-  avg += 0.1 * (frame_time - samples[samplei]);
-  samples[samplei] = frame_time;
-
-  time_t now = time(NULL);
-  struct tm *lt = localtime(&now);
-  char left[128], right[128];
-  snprintf(left, 128, "  %-16s (%d, %d)", buffer->name, buffer->dot_line + 1,
-           buffer->dot_col);
-  snprintf(right, 128, "(%.2f ms) %02d:%02d", frame_time / 1e6, lt->tm_hour,
-           lt->tm_min);
-
-  snprintf(buf, width * 4, "\x1b[100m%s%*s%s\x1b[0m", left,
-           (int)(width - (strlen(left) + strlen(right))), "", right);
-  if (strcmp(buf, (char *)buffer->modeline_buf) != 0) {
-    buffer->modeline_buf = realloc(buffer->modeline_buf, width * 4);
-    strcpy((char *)buffer->modeline_buf, buf);
-    return true;
-  } else {
-    return false;
-  }
+  // TODO: cant really have this if someone wants to remove a hook
+  return buffer->update_hooks.nhooks - 1;
 }
 
 struct cmdbuf {
-  struct render_cmd *cmds;
-  uint32_t ncmds;
+  struct command_list *cmds;
   uint32_t first_line;
 };
 
 void render_line(struct text_chunk *line, void *userdata) {
   struct cmdbuf *cmdbuf = (struct cmdbuf *)userdata;
-
-  struct render_cmd *cmd = &cmdbuf->cmds[cmdbuf->ncmds];
-  cmd->col = 0;
-  cmd->data = line->text;
-  cmd->len = line->nbytes;
-  cmd->row = line->line - cmdbuf->first_line;
-
-  ++cmdbuf->ncmds;
+  command_list_draw_text(cmdbuf->cmds, 0, line->line - cmdbuf->first_line,
+                         line->text, line->nbytes);
 }
 
 void scroll(struct buffer *buffer, int line_delta, int col_delta) {
@@ -296,29 +263,107 @@ void to_relative(struct buffer *buffer, uint32_t line, uint32_t col,
   *rel_line = (int64_t)line - (int64_t)buffer->scroll_line;
 }
 
+uint32_t visual_dot_col(struct buffer *buffer, uint32_t dot_col) {
+  uint32_t visual_dot_col = dot_col;
+  struct text_chunk line = text_get_line(buffer->text, buffer->dot_line);
+  for (uint32_t bytei = 0;
+       bytei <
+       text_col_to_byteindex(buffer->text, buffer->dot_line, buffer->dot_col);
+       ++bytei) {
+    if (line.text[bytei] == '\t') {
+      visual_dot_col += 3;
+    }
+  }
+
+  return visual_dot_col;
+}
+
 void buffer_relative_dot_pos(struct buffer *buffer, uint32_t *relline,
                              uint32_t *relcol) {
   int64_t rel_col, rel_line;
-  to_relative(buffer, buffer->dot_line, buffer->dot_col, &rel_line, &rel_col);
+  uint32_t visual_col = visual_dot_col(buffer, buffer->dot_col);
+  to_relative(buffer, buffer->dot_line, visual_col, &rel_line, &rel_col);
 
   *relline = rel_line < 0 ? 0 : (uint32_t)rel_line;
   *relcol = rel_col < 0 ? 0 : (uint32_t)rel_col;
 }
 
-struct buffer_update buffer_update(struct buffer *buffer, uint32_t width,
-                                   uint32_t height, alloc_fn frame_alloc,
-                                   uint64_t frame_time) {
+struct margin buffer_modeline_hook(struct buffer *buffer,
+                                   struct command_list *commands,
+                                   uint32_t width, uint32_t height,
+                                   uint64_t frame_time, void *userdata) {
+  char buf[width * 4];
 
-  if (width == 0 || height == 0) {
-    return (struct buffer_update){.cmds = NULL, .ncmds = 0};
+  static uint64_t samples[10] = {0};
+  static uint32_t samplei = 0;
+  static uint64_t avg = 0;
+
+  // calc a moving average with a window of the last 10 frames
+  ++samplei;
+  samplei %= 10;
+  avg += 0.1 * (frame_time - samples[samplei]);
+  samples[samplei] = frame_time;
+
+  time_t now = time(NULL);
+  struct tm *lt = localtime(&now);
+  char left[128], right[128];
+
+  uint32_t relcol, relline;
+  buffer_relative_dot_pos(buffer, &relline, &relcol);
+
+  snprintf(left, 128, "  %-16s (%d, %d)", buffer->name, relline + 1, relcol);
+  snprintf(right, 128, "(%.2f ms) %02d:%02d", frame_time / 1e6, lt->tm_hour,
+           lt->tm_min);
+
+  snprintf(buf, width * 4, "%s%*s%s", left,
+           (int)(width - (strlen(left) + strlen(right))), "", right);
+
+  struct modeline *modeline = (struct modeline *)userdata;
+  if (strcmp(buf, (char *)modeline->buffer) != 0) {
+    modeline->buffer = realloc(modeline->buffer, width * 4);
+    strcpy((char *)modeline->buffer, buf);
+
+    command_list_set_index_color_bg(commands, 8);
+    command_list_draw_text(commands, 0, height - 1, modeline->buffer,
+                           strlen((char *)modeline->buffer));
+    command_list_reset_color(commands);
   }
 
-  for (uint32_t hooki = 0; hooki < buffer->npre_update_hooks; ++hooki) {
-    buffer->pre_update_hooks[hooki](buffer);
+  struct margin m = {0};
+  m.bottom = 1;
+  return m;
+}
+
+void buffer_update(struct buffer *buffer, uint32_t width, uint32_t height,
+                   struct command_list *commands, uint64_t frame_time) {
+
+  if (width == 0 || height == 0) {
+    return;
+  }
+
+  struct margin total_margins = {0};
+  for (uint32_t hooki = 0; hooki < buffer->update_hooks.nhooks; ++hooki) {
+    struct update_hook *h = &buffer->update_hooks.hooks[hooki];
+    struct margin margins =
+        h->callback(buffer, commands, width, height, frame_time, h->userdata);
+
+    if (margins.left > total_margins.left) {
+      total_margins.left = margins.left;
+    }
+    if (margins.right > total_margins.right) {
+      total_margins.right = margins.right;
+    }
+    if (margins.top > total_margins.top) {
+      total_margins.top = margins.top;
+    }
+    if (margins.bottom > total_margins.bottom) {
+      total_margins.bottom = margins.bottom;
+    }
   }
 
   // reserve space for modeline
-  uint32_t bufheight = buffer->modeline_buf != NULL ? height - 1 : height;
+  uint32_t bufheight = height - (total_margins.top + total_margins.bottom);
+  uint32_t bufwidth = width - (total_margins.left + total_margins.right);
 
   int64_t rel_line, rel_col;
   to_relative(buffer, buffer->dot_line, buffer->dot_col, &rel_line, &rel_col);
@@ -331,53 +376,22 @@ struct buffer_update buffer_update(struct buffer *buffer, uint32_t width,
 
   if (rel_col < 0) {
     col_delta = rel_col;
-  } else if (rel_col > width) {
-    col_delta = rel_col - width;
+  } else if (rel_col > bufwidth) {
+    col_delta = rel_col - bufwidth;
   }
 
   scroll(buffer, line_delta, col_delta);
 
-  struct render_cmd *cmds =
-      (struct render_cmd *)frame_alloc(sizeof(struct render_cmd) * (height));
-
   struct cmdbuf cmdbuf = (struct cmdbuf){
-      .cmds = cmds,
-      .ncmds = 0,
+      .cmds = commands,
       .first_line = buffer->scroll_line,
   };
   text_for_each_line(buffer->text, buffer->scroll_line, bufheight, render_line,
                      &cmdbuf);
 
   uint32_t nlines = text_num_lines(buffer->text);
-  uint32_t ncmds = cmdbuf.ncmds;
   for (uint32_t linei = nlines - buffer->scroll_line; linei < bufheight;
        ++linei) {
-    cmds[ncmds] = (struct render_cmd){
-        .col = 0,
-        .row = linei,
-        .data = NULL,
-        .len = 0,
-    };
-    ++ncmds;
+    command_list_draw_text(commands, 0, linei, NULL, 0);
   }
-
-  if (buffer->modeline_buf != NULL &&
-      modeline_update(buffer, width, frame_time)) {
-    cmds[ncmds] = (struct render_cmd){
-        .col = 0,
-        .row = bufheight,
-        .data = buffer->modeline_buf,
-        .len = strlen((char *)buffer->modeline_buf),
-    };
-    ++ncmds;
-  }
-
-  for (uint32_t hooki = 0; hooki < buffer->npost_update_hooks; ++hooki) {
-    buffer->post_update_hooks[hooki](buffer);
-  }
-
-  struct buffer_update upd =
-      (struct buffer_update){.cmds = cmds, .ncmds = ncmds};
-
-  return upd;
 }

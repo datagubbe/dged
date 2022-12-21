@@ -8,7 +8,7 @@
 uint32_t utf8_nchars(uint8_t *bytes, uint32_t nbytes);
 
 /* Return the number of bytes used to make up the next `nchars` characters */
-uint32_t utf8_nbytes(uint8_t *bytes, uint32_t nchars);
+uint32_t utf8_nbytes(uint8_t *bytes, uint32_t nbytes, uint32_t nchars);
 
 /* true if `byte` is a unicode byte sequence start byte */
 bool utf8_byte_is_unicode_start(uint8_t byte);

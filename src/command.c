@@ -2,7 +2,7 @@
 
 #include <stdlib.h>
 
-struct commands command_list_create(uint32_t capacity) {
+struct commands command_registry_create(uint32_t capacity) {
   return (struct commands){
       .commands = calloc(capacity, sizeof(struct hashed_command)),
       .ncommands = 0,
@@ -10,7 +10,7 @@ struct commands command_list_create(uint32_t capacity) {
   };
 }
 
-void command_list_destroy(struct commands *commands) {
+void command_registry_destroy(struct commands *commands) {
   free(commands->commands);
   commands->ncommands = 0;
   commands->capacity = 0;
@@ -68,10 +68,7 @@ struct command *lookup_command_by_hash(struct commands *commands,
 int32_t execute_command(struct command *command, struct buffer *current_buffer,
                         int argc, const char *argv[]) {
 
-  command->fn((struct command_ctx){.current_buffer = current_buffer,
-                                   .userdata = command->userdata},
-              argc, argv);
-
-  // TODO
-  return 0;
+  return command->fn((struct command_ctx){.current_buffer = current_buffer,
+                                          .userdata = command->userdata},
+                     argc, argv);
 }

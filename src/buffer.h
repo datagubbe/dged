@@ -7,9 +7,33 @@
 
 struct keymap;
 struct reactor;
+struct command_list;
 
-typedef void (*pre_update_hook)(struct buffer *);
-typedef void (*post_update_hook)(struct buffer *);
+struct margin {
+  uint32_t left;
+  uint32_t right;
+  uint32_t top;
+  uint32_t bottom;
+};
+
+typedef struct margin (*update_hook_cb)(struct buffer *buffer,
+                                        struct command_list *commands,
+                                        uint32_t width, uint32_t height,
+                                        uint64_t frame_time, void *userdata);
+
+struct update_hook {
+  update_hook_cb callback;
+  void *userdata;
+};
+
+struct update_hooks {
+  struct update_hook hooks[32];
+  uint32_t nhooks;
+};
+
+struct modeline {
+  uint8_t *buffer;
+};
 
 struct buffer {
   const char *name;
@@ -20,8 +44,6 @@ struct buffer {
   uint32_t dot_line;
   uint32_t dot_col;
 
-  uint8_t *modeline_buf;
-
   // local keymaps
   struct keymap *keymaps;
   uint32_t nkeymaps;
@@ -30,18 +52,8 @@ struct buffer {
   uint32_t scroll_line;
   uint32_t scroll_col;
 
-  pre_update_hook pre_update_hooks[32];
-  uint32_t npre_update_hooks;
-  post_update_hook post_update_hooks[32];
-  uint32_t npost_update_hooks;
+  struct update_hooks update_hooks;
 };
-
-struct buffer_update {
-  struct render_cmd *cmds;
-  uint64_t ncmds;
-};
-
-typedef void *(alloc_fn)(size_t);
 
 struct buffer buffer_create(const char *name, bool modeline);
 void buffer_destroy(struct buffer *buffer);
@@ -53,6 +65,7 @@ int buffer_add_text(struct buffer *buffer, uint8_t *text, uint32_t nbytes);
 void buffer_clear(struct buffer *buffer);
 bool buffer_is_empty(struct buffer *buffer);
 
+void buffer_kill_line(struct buffer *buffer);
 void buffer_forward_delete_char(struct buffer *buffer);
 void buffer_backward_delete_char(struct buffer *buffer);
 void buffer_backward_char(struct buffer *buffer);
@@ -66,26 +79,30 @@ void buffer_newline(struct buffer *buffer);
 void buffer_relative_dot_pos(struct buffer *buffer, uint32_t *relline,
                              uint32_t *relcol);
 
-uint32_t buffer_add_pre_update_hook(struct buffer *buffer,
-                                    pre_update_hook hook);
-uint32_t buffer_add_post_update_hook(struct buffer *buffer,
-                                     post_update_hook hook);
-void buffer_remove_pre_update_hook(struct buffer *buffer, uint32_t hook_id);
-void buffer_remove_post_update_hook(struct buffer *buffer, uint32_t hook_id);
+uint32_t buffer_add_update_hook(struct buffer *buffer, update_hook_cb hook,
+                                void *userdata);
 
 struct buffer buffer_from_file(const char *filename, struct reactor *reactor);
 void buffer_to_file(struct buffer *buffer);
 
-struct buffer_update buffer_update(struct buffer *buffer, uint32_t width,
-                                   uint32_t height, alloc_fn frame_alloc,
-                                   uint64_t frame_time);
+void buffer_update(struct buffer *buffer, uint32_t width, uint32_t height,
+                   struct command_list *commands, uint64_t frame_time);
+
+struct margin buffer_modeline_hook(struct buffer *buffer,
+                                   struct command_list *commands,
+                                   uint32_t width, uint32_t height,
+                                   uint64_t frame_time, void *userdata);
 
 // commands
 #define BUFFER_WRAPCMD(fn)                                                     \
-  static void fn##_cmd(struct command_ctx ctx, int argc, const char *argv[]) { \
+  static int32_t fn##_cmd(struct command_ctx ctx, int argc,                    \
+                          const char *argv[]) {                                \
     fn(ctx.current_buffer);                                                    \
+    return 0;                                                                  \
   }
 
+BUFFER_WRAPCMD(buffer_kill_line);
+BUFFER_WRAPCMD(buffer_forward_delete_char);
 BUFFER_WRAPCMD(buffer_backward_delete_char);
 BUFFER_WRAPCMD(buffer_backward_char);
 BUFFER_WRAPCMD(buffer_forward_char);
@@ -97,6 +114,8 @@ BUFFER_WRAPCMD(buffer_newline)
 BUFFER_WRAPCMD(buffer_to_file);
 
 static struct command BUFFER_COMMANDS[] = {
+    {.name = "kill-line", .fn = buffer_kill_line_cmd},
+    {.name = "delete-char", .fn = buffer_forward_delete_char_cmd},
     {.name = "backward-delete-char", .fn = buffer_backward_delete_char_cmd},
     {.name = "backward-char", .fn = buffer_backward_char_cmd},
     {.name = "forward-char", .fn = buffer_forward_char_cmd},

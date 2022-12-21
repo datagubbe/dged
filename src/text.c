@@ -64,10 +64,13 @@ uint32_t charidx_to_byteidx(struct line *line, uint32_t char_idx) {
   if (char_idx > line->nchars) {
     return line->nbytes;
   }
-  return utf8_nbytes(line->data, char_idx);
+  return utf8_nbytes(line->data, line->nbytes, char_idx);
 }
 
-// TODO: grapheme clusters
+uint32_t text_col_to_byteindex(struct text *text, uint32_t line, uint32_t col) {
+  return charidx_to_byteidx(&text->lines[line], col);
+}
+
 // given `byte_idx` as a byte index, return the character index
 uint32_t byteidx_to_charidx(struct line *line, uint32_t byte_idx) {
   if (byte_idx > line->nbytes) {
@@ -77,31 +80,6 @@ uint32_t byteidx_to_charidx(struct line *line, uint32_t byte_idx) {
   return utf8_nchars(line->data, byte_idx);
 }
 
-uint32_t char_byte_size(struct line *line, uint32_t byte_idx) {
-  return utf8_nbytes(line->data + byte_idx, 1);
-}
-
-void extend_line(struct line *line, uint32_t nbytes, uint32_t nchars) {
-  if (nbytes == 0) {
-    return;
-  }
-
-  line->nbytes += nbytes;
-  line->nchars += nchars;
-  line->flags = LineChanged;
-  line->data = realloc(line->data, line->nbytes);
-}
-
-void insert_at(struct line *line, uint32_t byte_index, uint8_t *text,
-               uint32_t len, uint32_t nchars) {
-  if (len == 0) {
-    return;
-  }
-
-  extend_line(line, len, nchars);
-  memcpy(line->data + byte_index, text, len);
-}
-
 void insert_at_col(struct line *line, uint32_t col, uint8_t *text, uint32_t len,
                    uint32_t nchars) {
 
@@ -109,14 +87,17 @@ void insert_at_col(struct line *line, uint32_t col, uint8_t *text, uint32_t len,
     return;
   }
 
-  extend_line(line, len, nchars);
+  line->nbytes += len;
+  line->nchars += nchars;
+  line->flags = LineChanged;
+  line->data = realloc(line->data, line->nbytes);
 
   uint32_t bytei = charidx_to_byteidx(line, col);
-  // move chars out of the way
-  if (col + nchars < line->nchars) {
-    uint32_t nextcbytei = charidx_to_byteidx(line, col + nchars);
-    memmove(line->data + nextcbytei, line->data + bytei,
-            line->nbytes - nextcbytei);
+
+  // move following bytes out of the way
+  if (bytei + len < line->nbytes) {
+    uint32_t start = bytei + len;
+    memmove(line->data + start, line->data + bytei, line->nbytes - start);
   }
 
   // insert new chars
@@ -228,91 +209,61 @@ void delete_line(struct text *text, uint32_t line) {
 
 void text_append(struct text *text, uint8_t *bytes, uint32_t nbytes,
                  uint32_t *lines_added, uint32_t *cols_added) {
-
-  uint32_t linelen = 0, nchars_counted = 0, nlines_added = 0, ncols_added = 0;
   uint32_t line = text->nlines - 1;
+  uint32_t col = text_line_length(text, line);
 
-  for (uint32_t bytei = 0; bytei < nbytes; ++bytei) {
-    uint8_t byte = bytes[bytei];
-    if (byte == '\n') {
-      insert_at(&text->lines[line], text->lines[line].nbytes,
-                bytes + (bytei - linelen), linelen, nchars_counted);
-
-      new_line_at(text, line, text->lines[line].nchars);
-
-      ++line;
-      ++nlines_added;
-
-      linelen = 0;
-      nchars_counted = 0;
-    } else {
-      if (utf8_byte_is_ascii(byte) || utf8_byte_is_unicode_start(byte)) {
-        ++nchars_counted;
-      }
-      ++linelen;
-    }
-  }
-
-  // handle remaining
-  if (linelen > 0) {
-    insert_at(&text->lines[line], text->lines[line].nbytes,
-              bytes + (nbytes - linelen), linelen, nchars_counted);
-    ncols_added = nchars_counted;
-  }
-
-  *lines_added = nlines_added;
-  *cols_added = ncols_added;
+  text_insert_at(text, line, col, bytes, nbytes, lines_added, cols_added);
 }
 
-void text_append_at(struct text *text, uint32_t line, uint32_t col,
+void text_insert_at(struct text *text, uint32_t line, uint32_t col,
                     uint8_t *bytes, uint32_t nbytes, uint32_t *lines_added,
                     uint32_t *cols_added) {
-  uint32_t linelen = 0;
-  uint32_t nchars_counted = 0;
-  uint32_t nlines_added = 0;
-  uint32_t ncols_added = 0;
+  uint32_t linelen = 0, start_line = line;
+  *cols_added = 0;
+
   for (uint32_t bytei = 0; bytei < nbytes; ++bytei) {
     uint8_t byte = bytes[bytei];
     if (byte == '\n') {
-      insert_at_col(&text->lines[line], col, bytes + (bytei - linelen), linelen,
-                    nchars_counted);
+      uint8_t *line_data = bytes + (bytei - linelen);
+      uint32_t nchars = utf8_nchars(line_data, linelen);
+      insert_at_col(&text->lines[line], col, line_data, linelen, nchars);
 
-      col += nchars_counted;
+      col += nchars;
       new_line_at(text, line, col);
       ++line;
-      ++nlines_added;
 
       col = text_line_length(text, line);
       linelen = 0;
-      nchars_counted = 0;
     } else {
-      if (utf8_byte_is_ascii(byte) || utf8_byte_is_unicode_start(byte)) {
-        ++nchars_counted;
-      }
       ++linelen;
     }
   }
 
   // handle remaining
   if (linelen > 0) {
-    insert_at_col(&text->lines[line], col, bytes + (nbytes - linelen), linelen,
-                  nchars_counted);
-    ncols_added = nchars_counted;
+    uint8_t *line_data = bytes + (nbytes - linelen);
+    uint32_t nchars = utf8_nchars(line_data, linelen);
+    insert_at_col(&text->lines[line], col, line_data, linelen, nchars);
+    *cols_added = nchars;
   }
 
-  *lines_added = nlines_added;
-  *cols_added = ncols_added;
+  *lines_added = line - start_line;
 }
 
 void text_delete(struct text *text, uint32_t line, uint32_t col,
                  uint32_t nchars) {
 
-  // delete chars from current line
   struct line *lp = &text->lines[line];
+  if (col > lp->nchars) {
+    return;
+  }
+
+  // delete chars from current line
   uint32_t chars_initial_line =
       col + nchars > lp->nchars ? (lp->nchars - col) : nchars;
   uint32_t bytei = charidx_to_byteidx(lp, col);
-  uint32_t nbytes = utf8_nbytes(lp->data + bytei, chars_initial_line);
+  uint32_t nbytes =
+      utf8_nbytes(lp->data + bytei, lp->nbytes - bytei, chars_initial_line);
 
   memcpy(lp->data + bytei, lp->data + bytei + nbytes,
          lp->nbytes - (bytei + nbytes));
@@ -347,7 +298,7 @@ void text_delete(struct text *text, uint32_t line, uint32_t col,
   }
 
   // delete all lines from current line + 1 to (and including) last line
-  for (uint32_t li = initial_line + 1; li <= line; ++li) {
+  for (uint32_t li = initial_line + 1; li <= line && li < text->nlines; ++li) {
     delete_line(text, li);
   }
 }

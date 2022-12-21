@@ -26,33 +26,28 @@ void parse_keys(uint8_t *bytes, uint32_t nbytes, struct key *out_keys,
     uint8_t b = bytes[bytei];
 
     struct key *kp = &out_keys[nkps];
-    kp->nbytes = 1;
+    kp->start = bytei;
 
+    bool inserted = true;
     if (b == 0x1b) { // meta
       kp->mod |= Meta;
     } else if (b >= 0x00 && b <= 0x1f) { // ctrl char
       kp->mod |= Ctrl;
-      kp->bytes[0] = b | 0x40;
-      ++nkps;
-      prevkp = kp;
+      kp->key = b | 0x40;
     } else if (b == 0x7f) { // ^?
       kp->mod |= Ctrl;
-      kp->bytes[0] = '?';
-      ++nkps;
-      prevkp = kp;
-    } else if (utf8_byte_is_unicode_start((uint8_t)b)) {
-      kp->bytes[0] = b;
-      ++nkps;
-      prevkp = kp;
-    } else if (utf8_byte_is_unicode_continuation((uint8_t)b)) {
-      prevkp->bytes[prevkp->nbytes] = b;
-      ++prevkp->nbytes;
-    } else { /* ascii char */
-      if (prevkp->mod & Meta) {
-        prevkp->bytes[0] = b;
-      } else {
-        kp->bytes[0] = b;
-      }
+      kp->key = '?';
+    } else if (prevkp->mod & Meta) {
+      prevkp->key = b;
+      prevkp->end = bytei + 1;
+      inserted = false;
+    } else {
+      inserted = false;
+    }
+
+    kp->end = bytei + 1;
+
+    if (inserted) {
       ++nkps;
       prevkp = kp;
     }
@@ -64,8 +59,12 @@ void parse_keys(uint8_t *bytes, uint32_t nbytes, struct key *out_keys,
 struct keyboard_update keyboard_update(struct keyboard *kbd,
                                        struct reactor *reactor) {
 
-  struct keyboard_update upd =
-      (struct keyboard_update){.keys = {0}, .nkeys = 0};
+  struct keyboard_update upd = (struct keyboard_update){
+      .keys = {0},
+      .nkeys = 0,
+      .nbytes = 0,
+      .raw = {0},
+  };
 
   if (!kbd->has_data) {
     if (reactor_poll_event(reactor, kbd->reactor_event_id)) {
@@ -75,11 +74,15 @@ struct keyboard_update keyboard_update(struct keyboard *kbd,
     }
   }
 
-  uint8_t bytes[32] = {0};
-  int nbytes = read(STDIN_FILENO, bytes, 32);
+  int nbytes = read(STDIN_FILENO, upd.raw, 32);
 
   if (nbytes > 0) {
-    parse_keys(bytes, nbytes, upd.keys, &upd.nkeys, &kbd->last_key);
+    upd.nbytes = nbytes;
+    parse_keys(upd.raw, upd.nbytes, upd.keys, &upd.nkeys, &kbd->last_key);
+
+    if (nbytes < 32) {
+      kbd->has_data = false;
+    }
   } else if (nbytes == EAGAIN) {
     kbd->has_data = false;
   }
@@ -88,12 +91,11 @@ struct keyboard_update keyboard_update(struct keyboard *kbd,
 }
 
 bool key_equal_char(struct key *key, uint8_t mod, uint8_t c) {
-  return key->bytes[0] == c && key->mod == mod;
+  return key->key == c && key->mod == mod;
 }
 
 bool key_equal(struct key *key1, struct key *key2) {
-  return memcmp(key1->bytes, key2->bytes, key1->nbytes) == 0 &&
-         key1->mod == key2->mod && key1->nbytes == key2->nbytes;
+  return key1->key == key2->key && key1->mod == key2->mod;
 }
 
 void key_name(struct key *key, char *buf, size_t capacity) {
@@ -107,10 +109,5 @@ void key_name(struct key *key, char *buf, size_t capacity) {
     break;
   }
 
-  uint8_t lower[6];
-  for (uint32_t bytei = 0; bytei < key->nbytes; ++bytei) {
-    lower[bytei] = tolower(key->bytes[bytei]);
-  }
-
-  snprintf(buf, capacity, "%s%.*s", mod, key->nbytes, lower);
+  snprintf(buf, capacity, "%s%c", mod, tolower(key->key));
 }

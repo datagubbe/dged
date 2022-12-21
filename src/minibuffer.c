@@ -11,17 +11,22 @@ static struct minibuffer {
   struct timespec expires;
 } g_minibuffer = {0};
 
-void update(struct buffer *buffer) {
+struct margin update(struct buffer *buffer, struct command_list *commands,
+                     uint32_t width, uint32_t height, uint64_t frame_time,
+                     void *userdata) {
   struct timespec current;
+  struct minibuffer *mb = (struct minibuffer *)userdata;
   clock_gettime(CLOCK_MONOTONIC, &current);
-  if (current.tv_sec >= g_minibuffer.expires.tv_sec) {
+  if (current.tv_sec >= mb->expires.tv_sec) {
     buffer_clear(buffer);
   }
+
+  return (struct margin){0};
 }
 
 void minibuffer_init(struct buffer *buffer) {
   g_minibuffer.buffer = buffer;
-  buffer_add_pre_update_hook(g_minibuffer.buffer, update);
+  buffer_add_update_hook(g_minibuffer.buffer, update, &g_minibuffer);
 }
 
 void echo(uint32_t timeout, const char *fmt, va_list args) {

@@ -11,14 +11,14 @@ enum binding_type { BindingType_Command, BindingType_Keymap };
 
 #define BINDING(mod_, c_, command_)                                            \
   (struct binding) {                                                           \
-    .key = {.mod = mod_, .bytes[0] = c_, .nbytes = 1},                         \
-    .type = BindingType_Command, .command = hash_command_name(command_)        \
+    .key = {.mod = mod_, .key = c_}, .type = BindingType_Command,              \
+    .command = hash_command_name(command_)                                     \
   }
 
 #define PREFIX(mod_, c_, keymap_)                                              \
   (struct binding) {                                                           \
-    .key = {.mod = mod_, .bytes[0] = c_, .nbytes = 1},                         \
-    .type = BindingType_Keymap, .keymap = keymap_                              \
+    .key = {.mod = mod_, .key = c_}, .type = BindingType_Keymap,               \
+    .keymap = keymap_                                                          \
   }
 
 struct binding {

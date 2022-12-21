@@ -5,7 +5,7 @@
 // opaque so it is easier to change representation to gap, rope etc.
 struct text;
 
-struct render_cmd;
+struct render_command;
 
 struct text *text_create(uint32_t initial_capacity);
 void text_destroy(struct text *text);
@@ -15,7 +15,7 @@ void text_destroy(struct text *text);
  */
 void text_clear(struct text *text);
 
-void text_append_at(struct text *text, uint32_t line, uint32_t col,
+void text_insert_at(struct text *text, uint32_t line, uint32_t col,
                     uint8_t *bytes, uint32_t nbytes, uint32_t *lines_added,
                     uint32_t *cols_added);
 
@@ -28,6 +28,7 @@ void text_delete(struct text *text, uint32_t line, uint32_t col,
 uint32_t text_num_lines(struct text *text);
 uint32_t text_line_length(struct text *text, uint32_t lineidx);
 uint32_t text_line_size(struct text *text, uint32_t lineidx);
+uint32_t text_col_to_byteindex(struct text *text, uint32_t line, uint32_t col);
 
 struct text_chunk {
   uint8_t *text;
