@@ -1,3 +1,4 @@
+#define _DEFAULT_SOURCE
 #include "keyboard.h"
 #include "reactor.h"
 #include "stdio.h"
@@ -6,10 +7,18 @@
 #include <ctype.h>
 #include <errno.h>
 #include <string.h>
+#include <termios.h>
 #include <unistd.h>
 
 struct keyboard keyboard_create(struct reactor *reactor) {
-  // TODO: should input term stuff be set here?
+  struct termios term;
+  tcgetattr(0, &term);
+
+  // set input to non-blocking
+  term.c_cc[VMIN] = 0;
+  term.c_cc[VTIME] = 0;
+  tcsetattr(0, TCSADRAIN, &term);
+
   return (struct keyboard){
       .reactor_event_id =
           reactor_register_interest(reactor, STDIN_FILENO, ReadInterest),

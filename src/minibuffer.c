@@ -11,9 +11,10 @@ static struct minibuffer {
   struct timespec expires;
 } g_minibuffer = {0};
 
-struct margin update(struct buffer *buffer, struct command_list *commands,
-                     uint32_t width, uint32_t height, uint64_t frame_time,
-                     void *userdata) {
+struct update_hook_result update(struct buffer *buffer,
+                                 struct command_list *commands, uint32_t width,
+                                 uint32_t height, uint64_t frame_time,
+                                 void *userdata) {
   struct timespec current;
   struct minibuffer *mb = (struct minibuffer *)userdata;
   clock_gettime(CLOCK_MONOTONIC, &current);
@@ -21,7 +22,7 @@ struct margin update(struct buffer *buffer, struct command_list *commands,
     buffer_clear(buffer);
   }
 
-  return (struct margin){0};
+  return (struct update_hook_result){0};
 }
 
 void minibuffer_init(struct buffer *buffer) {

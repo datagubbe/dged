@@ -46,6 +46,15 @@ bool running = true;
 
 void terminate() { running = false; }
 
+static struct display display;
+static bool display_resized = false;
+void resized() {
+  display_resize(&display);
+  display_resized = true;
+
+  signal(SIGWINCH, resized);
+}
+
 int32_t _abort(struct command_ctx ctx, int argc, const char *argv[]) {
   minibuffer_echo_timeout(4, "💣 aborted");
   return 0;
@@ -105,9 +114,10 @@ struct window {
 };
 
 void window_update_buffer(struct window *window, struct command_list *commands,
-                          uint64_t frame_time) {
+                          uint64_t frame_time, uint32_t *relline,
+                          uint32_t *relcol) {
   buffer_update(window->buffer, window->width, window->height, commands,
-                frame_time);
+                frame_time, relline, relcol);
 }
 
 void buffers_init(struct buffers *buffers) { buffers->nbuffers = 0; }
@@ -141,8 +151,9 @@ int main(int argc, char *argv[]) {
   struct reactor reactor = reactor_create();
 
   // initialize display
-  struct display display = display_create();
+  display = display_create();
   display_clear(&display);
+  signal(SIGWINCH, resized);
 
   // init keyboard
   struct keyboard kbd = keyboard_create(&reactor);
@@ -227,6 +238,13 @@ int main(int argc, char *argv[]) {
 
     clock_gettime(CLOCK_MONOTONIC, &buffer_begin);
 
+    if (display_resized) {
+      minibuffer_window.width = display.width;
+      main_window.height = display.height - 1;
+      main_window.width = display.width;
+      display_resized = false;
+    }
+
     // update windows
     uint32_t dot_line = 0, dot_col = 0;
     for (uint32_t windowi = 0; windowi < sizeof(windows) / sizeof(windows[0]);
@@ -234,8 +252,17 @@ int main(int argc, char *argv[]) {
       struct window *win = windows[windowi];
       // TODO: better capacity
       command_lists[windowi] =
-          command_list_create(win->height * 2, frame_alloc, win->x, win->y);
-      window_update_buffer(win, command_lists[windowi], frame_time);
+          command_list_create(win->height * win->width, frame_alloc, win->x,
+                              win->y, win->buffer->name);
+
+      uint32_t relline, relcol;
+      window_update_buffer(win, command_lists[windowi], frame_time, &relline,
+                           &relcol);
+
+      if (win == active_window) {
+        dot_line = relline;
+        dot_col = relcol;
+      }
     }
 
     clock_gettime(CLOCK_MONOTONIC, &buffer_end);
@@ -243,15 +270,14 @@ int main(int argc, char *argv[]) {
     // update screen
     clock_gettime(CLOCK_MONOTONIC, &display_begin);
     uint32_t relline, relcol;
-    buffer_relative_dot_pos(active_window->buffer, &relline, &relcol);
 
     display_begin_render(&display);
     for (uint32_t windowi = 0; windowi < sizeof(windows) / sizeof(windows[0]);
          ++windowi) {
       display_render(&display, command_lists[windowi]);
     }
-    display_move_cursor(&display, relline + active_window->y,
-                        relcol + active_window->x);
+    display_move_cursor(&display, dot_line + active_window->y,
+                        dot_col + active_window->x);
     display_end_render(&display);
     clock_gettime(CLOCK_MONOTONIC, &display_end);
 

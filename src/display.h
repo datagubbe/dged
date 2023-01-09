@@ -10,26 +10,11 @@ struct display {
   uint32_t height;
 };
 
-struct render_command {
-  uint32_t col;
-  uint32_t row;
-
-  uint8_t *data;
-  uint32_t len;
-};
-
-struct command_list {
-  struct render_command *cmds;
-  uint64_t ncmds;
-  uint64_t capacity;
-  uint32_t xoffset;
-  uint32_t yoffset;
-
-  uint8_t format[64];
-  uint32_t format_len;
-};
+struct render_command;
+struct command_list;
 
 struct display display_create();
+void display_resize(struct display *display);
 void display_destroy(struct display *display);
 
 void display_clear(struct display *display);
@@ -41,7 +26,8 @@ void display_end_render(struct display *display);
 
 typedef void *(*alloc_fn)(size_t);
 struct command_list *command_list_create(uint32_t capacity, alloc_fn allocator,
-                                         uint32_t xoffset, uint32_t yoffset);
+                                         uint32_t xoffset, uint32_t yoffset,
+                                         const char *name);
 
 void command_list_set_index_color_bg(struct command_list *list,
                                      uint8_t color_idx);
@@ -54,3 +40,5 @@ void command_list_set_color_fg(struct command_list *list, uint8_t red,
 void command_list_reset_color(struct command_list *list);
 void command_list_draw_text(struct command_list *list, uint32_t col,
                             uint32_t row, uint8_t *data, uint32_t len);
+void command_list_draw_text_copy(struct command_list *list, uint32_t col,
+                                 uint32_t row, uint8_t *data, uint32_t len);
