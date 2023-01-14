@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -29,6 +30,7 @@ struct command_list *command_list_create(uint32_t capacity, alloc_fn allocator,
                                          uint32_t xoffset, uint32_t yoffset,
                                          const char *name);
 
+void command_list_set_show_whitespace(struct command_list *list, bool show);
 void command_list_set_index_color_bg(struct command_list *list,
                                      uint8_t color_idx);
 void command_list_set_color_bg(struct command_list *list, uint8_t red,
@@ -42,3 +44,5 @@ void command_list_draw_text(struct command_list *list, uint32_t col,
                             uint32_t row, uint8_t *data, uint32_t len);
 void command_list_draw_text_copy(struct command_list *list, uint32_t col,
                                  uint32_t row, uint8_t *data, uint32_t len);
+void command_list_draw_repeated(struct command_list *list, uint32_t col,
+                                uint32_t row, uint8_t c, uint32_t nrepeat);

@@ -258,6 +258,7 @@ struct cmdbuf {
   uint32_t scroll_line;
   uint32_t line_offset;
   uint32_t col_offset;
+  uint32_t width;
   struct line_render_hook *line_render_hooks;
   uint32_t nlinerender_hooks;
 };
@@ -270,8 +271,19 @@ void render_line(struct text_chunk *line, void *userdata) {
     hook->callback(line, visual_line, cmdbuf->cmds, hook->userdata);
   }
 
+  command_list_set_show_whitespace(cmdbuf->cmds, true);
   command_list_draw_text(cmdbuf->cmds, cmdbuf->col_offset, visual_line,
                          line->text, line->nbytes);
+  command_list_set_show_whitespace(cmdbuf->cmds, false);
+
+  uint32_t col = line->nchars + cmdbuf->col_offset;
+  for (uint32_t bytei = 0; bytei < line->nbytes; ++bytei) {
+    if (line->text[bytei] == '\t') {
+      col += 3;
+    }
+  }
+  command_list_draw_repeated(cmdbuf->cmds, col, visual_line, ' ',
+                             cmdbuf->width - line->nchars);
 }
 
 void scroll(struct buffer *buffer, int line_delta, int col_delta) {
@@ -342,12 +354,12 @@ struct update_hook_result buffer_modeline_hook(struct buffer *buffer,
   if (strcmp(buf, (char *)modeline->buffer) != 0) {
     modeline->buffer = realloc(modeline->buffer, width * 4);
     strcpy((char *)modeline->buffer, buf);
-
-    command_list_set_index_color_bg(commands, 8);
-    command_list_draw_text(commands, 0, height - 1, modeline->buffer,
-                           strlen((char *)modeline->buffer));
-    command_list_reset_color(commands);
   }
+
+  command_list_set_index_color_bg(commands, 8);
+  command_list_draw_text(commands, 0, height - 1, modeline->buffer,
+                         strlen((char *)modeline->buffer));
+  command_list_reset_color(commands);
 
   struct update_hook_result res = {0};
   res.margins.bottom = 1;
@@ -356,6 +368,7 @@ struct update_hook_result buffer_modeline_hook(struct buffer *buffer,
 
 struct linenumdata {
   uint32_t longest_nchars;
+  uint32_t dot_line;
 } linenum_data;
 
 void linenum_render_hook(struct text_chunk *line_data, uint32_t line,
@@ -364,9 +377,10 @@ void linenum_render_hook(struct text_chunk *line_data, uint32_t line,
   struct linenumdata *data = (struct linenumdata *)userdata;
   static char buf[16];
   command_list_set_index_color_bg(commands, 236);
-  command_list_set_index_color_fg(commands, 244);
+  command_list_set_index_color_fg(
+      commands, line_data->line == data->dot_line ? 253 : 244);
   uint32_t chars =
-      snprintf(buf, 16, "%*d", data->longest_nchars, line_data->line + 1);
+      snprintf(buf, 16, "%*d", data->longest_nchars + 1, line_data->line + 1);
   command_list_draw_text_copy(commands, 0, line, (uint8_t *)buf, chars);
   command_list_reset_color(commands);
   command_list_draw_text(commands, data->longest_nchars + 1, line,
@@ -401,6 +415,7 @@ struct update_hook_result buffer_linenum_hook(struct buffer *buffer,
   }
 
   linenum_data.longest_nchars = longest_nchars;
+  linenum_data.dot_line = buffer->dot_line;
   struct update_hook_result res = {0};
   res.margins.left = longest_nchars + 2;
   res.line_render_hook.callback = linenum_render_hook;
@@ -416,6 +431,7 @@ void buffer_update(struct buffer *buffer, uint32_t width, uint32_t height,
     return;
   }
 
+  uint32_t total_width = width, total_height = height;
   struct margin total_margins = {0};
   struct line_render_hook line_hooks[16];
   uint32_t nlinehooks = 0;
@@ -461,6 +477,7 @@ void buffer_update(struct buffer *buffer, uint32_t width, uint32_t height,
       .cmds = commands,
       .scroll_line = buffer->scroll_line,
       .col_offset = total_margins.left,
+      .width = width,
       .line_offset = total_margins.top,
       .line_render_hooks = line_hooks,
       .nlinerender_hooks = nlinehooks,
@@ -472,7 +489,7 @@ void buffer_update(struct buffer *buffer, uint32_t width, uint32_t height,
   uint32_t nlines = text_num_lines(buffer->text);
   for (uint32_t linei = nlines - buffer->scroll_line + total_margins.top;
        linei < height; ++linei) {
-    command_list_draw_text(commands, total_margins.left, linei, NULL, 0);
+    command_list_draw_repeated(commands, 0, linei, ' ', total_width);
   }
 
   // update the visual cursor position
