@@ -5,6 +5,7 @@
 enum modifiers {
   Ctrl = 1 << 0,
   Meta = 1 << 1,
+  Spec = 1 << 2,
 };
 
 struct key {
@@ -17,7 +18,6 @@ struct key {
 struct keyboard {
   uint32_t reactor_event_id;
   bool has_data;
-  struct key last_key;
 };
 
 struct keyboard_update {

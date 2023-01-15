@@ -87,6 +87,7 @@ void buffer_forward_line(struct buffer *buffer);
 void buffer_end_of_line(struct buffer *buffer);
 void buffer_beginning_of_line(struct buffer *buffer);
 void buffer_newline(struct buffer *buffer);
+void buffer_indent(struct buffer *buffer);
 
 uint32_t buffer_add_update_hook(struct buffer *buffer, update_hook_cb hook,
                                 void *userdata);
@@ -115,7 +116,8 @@ BUFFER_WRAPCMD(buffer_backward_line);
 BUFFER_WRAPCMD(buffer_forward_line);
 BUFFER_WRAPCMD(buffer_end_of_line);
 BUFFER_WRAPCMD(buffer_beginning_of_line);
-BUFFER_WRAPCMD(buffer_newline)
+BUFFER_WRAPCMD(buffer_newline);
+BUFFER_WRAPCMD(buffer_indent);
 BUFFER_WRAPCMD(buffer_to_file);
 
 static struct command BUFFER_COMMANDS[] = {
@@ -129,5 +131,6 @@ static struct command BUFFER_COMMANDS[] = {
     {.name = "end-of-line", .fn = buffer_end_of_line_cmd},
     {.name = "beginning-of-line", .fn = buffer_beginning_of_line_cmd},
     {.name = "newline", .fn = buffer_newline_cmd},
+    {.name = "indent", .fn = buffer_indent_cmd},
     {.name = "buffer-write-to-file", .fn = buffer_to_file_cmd},
 };

@@ -3,6 +3,7 @@
 #include "display.h"
 #include "minibuffer.h"
 #include "reactor.h"
+#include "utf8.h"
 
 #include <fcntl.h>
 #include <stdbool.h>
@@ -11,6 +12,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <wchar.h>
 
 struct update_hook_result buffer_linenum_hook(struct buffer *buffer,
                                               struct command_list *commands,
@@ -41,22 +43,23 @@ struct buffer buffer_create(const char *name, bool modeline) {
   b.keymaps[0] = keymap_create("buffer-default", 128);
   struct binding bindings[] = {
       BINDING(Ctrl, 'B', "backward-char"),
-      BINDING(Meta, 'D', "backward-char"),
+      BINDING(Spec, 'D', "backward-char"),
       BINDING(Ctrl, 'F', "forward-char"),
-      BINDING(Meta, 'C', "forward-char"),
+      BINDING(Spec, 'C', "forward-char"),
 
       BINDING(Ctrl, 'P', "backward-line"),
-      BINDING(Meta, 'A', "backward-line"),
+      BINDING(Spec, 'A', "backward-line"),
       BINDING(Ctrl, 'N', "forward-line"),
-      BINDING(Meta, 'B', "forward-line"),
+      BINDING(Spec, 'B', "forward-line"),
 
       BINDING(Ctrl, 'A', "beginning-of-line"),
       BINDING(Ctrl, 'E', "end-of-line"),
 
       BINDING(Ctrl, 'M', "newline"),
+      BINDING(Ctrl, 'I', "indent"),
 
       BINDING(Ctrl, 'K', "kill-line"),
-      BINDING(Meta, '~', "delete-char"),
+      BINDING(Spec, '3', "delete-char"),
       BINDING(Ctrl, '?', "backward-delete-char"),
   };
   keymap_bind_keys(&b.keymaps[0], bindings,
@@ -240,6 +243,10 @@ void buffer_newline(struct buffer *buffer) {
   buffer_add_text(buffer, (uint8_t *)"\n", 1);
 }
 
+void buffer_indent(struct buffer *buffer) {
+  buffer_add_text(buffer, (uint8_t *)"    ", 4);
+}
+
 uint32_t buffer_add_update_hook(struct buffer *buffer, update_hook_cb hook,
                                 void *userdata) {
   struct update_hook *h =
@@ -280,10 +287,18 @@ void render_line(struct text_chunk *line, void *userdata) {
   for (uint32_t bytei = 0; bytei < line->nbytes; ++bytei) {
     if (line->text[bytei] == '\t') {
       col += 3;
+    } else if (utf8_byte_is_unicode_start(line->text[bytei])) {
+      wchar_t wc;
+      if (mbrtowc(&wc, (char *)line->text + bytei, 6, NULL) >= 0) {
+        col += wcwidth(wc) - 1;
+      }
     }
   }
-  command_list_draw_repeated(cmdbuf->cmds, col, visual_line, ' ',
-                             cmdbuf->width - line->nchars);
+
+  if (cmdbuf->width > line->nchars) {
+    command_list_draw_repeated(cmdbuf->cmds, col, visual_line, ' ',
+                               cmdbuf->width - line->nchars);
+  }
 }
 
 void scroll(struct buffer *buffer, int line_delta, int col_delta) {
@@ -315,6 +330,11 @@ uint32_t visual_dot_col(struct buffer *buffer, uint32_t dot_col) {
        ++bytei) {
     if (line.text[bytei] == '\t') {
       visual_dot_col += 3;
+    } else if (utf8_byte_is_unicode_start(line.text[bytei])) {
+      wchar_t wc;
+      if (mbrtowc(&wc, (char *)line.text + bytei, 6, NULL) >= 0) {
+        visual_dot_col += wcwidth(wc) - 1;
+      }
     }
   }
 

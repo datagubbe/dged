@@ -5,6 +5,7 @@
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
@@ -289,7 +290,8 @@ void display_render(struct display *display,
     switch (cmd->type) {
     case RenderCommand_DrawText: {
       struct draw_text_cmd *txt_cmd = cmd->draw_txt;
-      display_move_cursor(display, txt_cmd->row, txt_cmd->col);
+      display_move_cursor(display, txt_cmd->row + cl->yoffset,
+                          txt_cmd->col + cl->xoffset);
       putbytes(fmt_stack, fmt_stack_len, false);
       putbyte('m');
       putbytes(txt_cmd->data, txt_cmd->len, show_whitespace_state);
@@ -298,11 +300,20 @@ void display_render(struct display *display,
 
     case RenderCommand_Repeat: {
       struct repeat_cmd *repeat_cmd = cmd->repeat;
-      display_move_cursor(display, repeat_cmd->row, repeat_cmd->col);
+      display_move_cursor(display, repeat_cmd->row + cl->yoffset,
+                          repeat_cmd->col + cl->xoffset);
       putbytes(fmt_stack, fmt_stack_len, false);
       putbyte('m');
-      for (uint32_t i = 0; i < repeat_cmd->nrepeat; ++i) {
-        putbyte_ws(repeat_cmd->c, show_whitespace_state);
+      if (show_whitespace_state) {
+        for (uint32_t i = 0; i < repeat_cmd->nrepeat; ++i) {
+          putbyte_ws(repeat_cmd->c, show_whitespace_state);
+        }
+      } else {
+        char *buf = malloc(repeat_cmd->nrepeat + 1);
+        memset(buf, repeat_cmd->c, repeat_cmd->nrepeat);
+        buf[repeat_cmd->nrepeat] = '\0';
+        fputs(buf, stdout);
+        free(buf);
       }
       break;
     }

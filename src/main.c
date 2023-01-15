@@ -240,8 +240,11 @@ int main(int argc, char *argv[]) {
 
     if (display_resized) {
       minibuffer_window.width = display.width;
+      minibuffer_window.y = display.height - 1;
+
       main_window.height = display.height - 1;
       main_window.width = display.width;
+
       display_resized = false;
     }
 
@@ -336,8 +339,10 @@ int main(int argc, char *argv[]) {
           break;
         }
         }
-      } else if (current_keymap != NULL) {
-        minibuffer_echo_timeout(4, "key is not bound!");
+      } else {
+        char keyname[16];
+        key_name(k, keyname, 16);
+        minibuffer_echo_timeout(4, "key \"%s\" is not bound!", keyname);
         current_keymap = NULL;
       }
     }
