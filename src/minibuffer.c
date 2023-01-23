@@ -31,6 +31,7 @@ int32_t execute(struct command_ctx ctx, int argc, const char *argv[]) {
     struct text_chunk line = buffer_get_line(g_minibuffer.buffer, 0);
     char *l = (char *)malloc(line.nbytes + 1);
     memcpy(l, line.text, line.nbytes);
+    l[line.nbytes] = '\0';
 
     // split on ' '
     const char *argv[128] = {l};

@@ -6,10 +6,13 @@
 , tree-sitter
 , bear
 , lib
+, doxygen
 }:
 stdenv.mkDerivation {
   name = "dged";
   src = ./.;
+
+  doCheck = true;
 
   nativeBuildInputs = [
     gnumake
@@ -17,10 +20,12 @@ stdenv.mkDerivation {
     pkg-config
     clang-tools
     bear
+    doxygen
   ];
 
   buildPhase = ''
     bmake dged
+    bmake docs
   '';
 
   installPhase = ''

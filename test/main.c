@@ -19,6 +19,9 @@ int main() {
   printf("\n🕴️ \x1b[1;36mRunning buffer tests...\x1b[0m\n");
   run_buffer_tests();
 
+  printf("\n🐒 \x1b[1;36mRunning command tests...\x1b[0m\n");
+  run_command_tests();
+
   printf("\n🎉 \x1b[1;32mDone! All tests successful!\x1b[0m\n");
   return 0;
 }

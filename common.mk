@@ -8,7 +8,8 @@ SOURCES = src/binding.c src/buffer.c src/command.c src/display.c \
 	src/utf8.c src/buffers.c src/window.c
 
 DGED_SOURCES = $(SOURCES) src/main.c
-TEST_SOURCES = test/assert.c test/buffer.c test/text.c test/utf8.c test/main.c
+TEST_SOURCES = test/assert.c test/buffer.c test/text.c test/utf8.c test/main.c \
+		test/command.c
 
 prefix != if [ -n "$$prefix" ]; then echo "$$prefix"; else echo "/usr"; fi
 
@@ -64,7 +65,14 @@ debug-tests: run-tests
 
 clean:
 	rm -f $(FILES)
+	rm -rf docs
 
 install: dged
 	install -d $(prefix)/bin
 	install -m 755 dged $(prefix)/bin/dged
+
+	install -d $(prefix)/share/man/man1
+	install -m 644 dged.1 $(prefix)/share/man/man1/dged.1
+
+docs:
+	doxygen Doxyfile

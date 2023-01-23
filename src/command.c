@@ -28,14 +28,14 @@ uint32_t hash_command_name(const char *name) {
   return hash;
 }
 
-uint32_t register_command(struct commands *commands, struct command *command) {
+uint32_t register_command(struct commands *commands, struct command command) {
   if (commands->ncommands == commands->capacity) {
     commands->capacity *= 2;
     commands->commands = realloc(
         commands->commands, sizeof(struct hashed_command) * commands->capacity);
   }
 
-  uint32_t hash = hash_command_name(command->name);
+  uint32_t hash = hash_command_name(command.name);
   commands->commands[commands->ncommands] =
       (struct hashed_command){.command = command, .hash = hash};
 
@@ -46,7 +46,7 @@ uint32_t register_command(struct commands *commands, struct command *command) {
 void register_commands(struct commands *command_list, struct command *commands,
                        uint32_t ncommands) {
   for (uint32_t ci = 0; ci < ncommands; ++ci) {
-    register_command(command_list, &commands[ci]);
+    register_command(command_list, commands[ci]);
   }
 }
 
@@ -60,7 +60,7 @@ struct command *lookup_command_by_hash(struct commands *commands,
                                        uint32_t hash) {
   for (uint32_t ci = 0; ci < commands->ncommands; ++ci) {
     if (commands->commands[ci].hash == hash) {
-      return commands->commands[ci].command;
+      return &commands->commands[ci].command;
     }
   }
 
@@ -88,7 +88,7 @@ int32_t find_file(struct command_ctx ctx, int argc, const char *argv[]) {
     pth = argv[0];
     ctx.active_window->buffer =
         buffers_add(ctx.buffers, buffer_from_file((char *)pth));
-    minibuffer_echo_timeout(4, "buffer %s loaded",
+    minibuffer_echo_timeout(4, "buffer \"%s\" loaded",
                             ctx.active_window->buffer->name);
   } else {
     minibuffer_prompt(ctx, "find file: ");
