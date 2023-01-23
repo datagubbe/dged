@@ -1,14 +1,16 @@
 .POSIX:
-.PHONY: default clean check run debug debug-tests
+.PHONY: default clean check run debug debug-tests install
 
 default: dged
 
 SOURCES = src/binding.c src/buffer.c src/command.c src/display.c \
 	src/keyboard.c src/minibuffer.c src/reactor.c src/text.c \
-	src/utf8.c
+	src/utf8.c src/buffers.c src/window.c
 
 DGED_SOURCES = $(SOURCES) src/main.c
 TEST_SOURCES = test/assert.c test/buffer.c test/text.c test/utf8.c test/main.c
+
+prefix != if [ -n "$$prefix" ]; then echo "$$prefix"; else echo "/usr"; fi
 
 .SUFFIXES:
 .SUFFIXES: .c .o .d
@@ -62,3 +64,7 @@ debug-tests: run-tests
 
 clean:
 	rm -f $(FILES)
+
+install: dged
+	install -d $(prefix)/bin
+	install -m 755 dged $(prefix)/bin/dged

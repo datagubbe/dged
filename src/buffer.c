@@ -6,6 +6,7 @@
 #include "utf8.h"
 
 #include <fcntl.h>
+#include <libgen.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,10 +27,10 @@ struct update_hook_result buffer_modeline_hook(struct buffer *buffer,
                                                uint64_t frame_time,
                                                void *userdata);
 
-struct buffer buffer_create(const char *name, bool modeline) {
+struct buffer buffer_create(char *name, bool modeline) {
   struct buffer b =
       (struct buffer){.filename = NULL,
-                      .name = name,
+                      .name = strdup(name),
                       .text = text_create(10),
                       .dot_col = 0,
                       .dot_line = 0,
@@ -43,14 +44,14 @@ struct buffer buffer_create(const char *name, bool modeline) {
   b.keymaps[0] = keymap_create("buffer-default", 128);
   struct binding bindings[] = {
       BINDING(Ctrl, 'B', "backward-char"),
-      BINDING(Spec, 'D', "backward-char"),
+      BINDING(LEFT, "backward-char"),
       BINDING(Ctrl, 'F', "forward-char"),
-      BINDING(Spec, 'C', "forward-char"),
+      BINDING(RIGHT, "forward-char"),
 
       BINDING(Ctrl, 'P', "backward-line"),
-      BINDING(Spec, 'A', "backward-line"),
+      BINDING(UP, "backward-line"),
       BINDING(Ctrl, 'N', "forward-line"),
-      BINDING(Spec, 'B', "forward-line"),
+      BINDING(DOWN, "forward-line"),
 
       BINDING(Ctrl, 'A', "beginning-of-line"),
       BINDING(Ctrl, 'E', "end-of-line"),
@@ -59,8 +60,9 @@ struct buffer buffer_create(const char *name, bool modeline) {
       BINDING(Ctrl, 'I', "indent"),
 
       BINDING(Ctrl, 'K', "kill-line"),
-      BINDING(Spec, '3', "delete-char"),
-      BINDING(Ctrl, '?', "backward-delete-char"),
+      BINDING(DELETE, "delete-char"),
+      BINDING(Ctrl, 'D', "delete-char"),
+      BINDING(BACKSPACE, "backward-delete-char"),
   };
   keymap_bind_keys(&b.keymaps[0], bindings,
                    sizeof(bindings) / sizeof(bindings[0]));
@@ -81,6 +83,8 @@ struct buffer buffer_create(const char *name, bool modeline) {
 void buffer_destroy(struct buffer *buffer) {
   text_destroy(buffer->text);
   free(buffer->text);
+  free(buffer->name);
+  free(buffer->filename);
 }
 
 void buffer_clear(struct buffer *buffer) {
@@ -100,8 +104,9 @@ uint32_t buffer_keymaps(struct buffer *buffer, struct keymap **keymaps_out) {
 
 void buffer_add_keymap(struct buffer *buffer, struct keymap *keymap) {
   if (buffer->nkeymaps == buffer->nkeymaps_max) {
-    // TODO: better
-    return;
+    buffer->nkeymaps_max *= 2;
+    buffer->keymaps =
+        realloc(buffer->keymaps, sizeof(struct keymap) * buffer->nkeymaps_max);
   }
   buffer->keymaps[buffer->nkeymaps] = *keymap;
   ++buffer->nkeymaps;
@@ -174,9 +179,9 @@ void buffer_end_of_line(struct buffer *buffer) {
 
 void buffer_beginning_of_line(struct buffer *buffer) { buffer->dot_col = 0; }
 
-struct buffer buffer_from_file(const char *filename, struct reactor *reactor) {
-  struct buffer b = buffer_create(filename, true);
-  b.filename = filename;
+struct buffer buffer_from_file(char *filename) {
+  struct buffer b = buffer_create(basename((char *)filename), true);
+  b.filename = strdup(filename);
   if (access(b.filename, F_OK) == 0) {
     FILE *file = fopen(filename, "r");
 
@@ -297,7 +302,7 @@ void render_line(struct text_chunk *line, void *userdata) {
 
   if (cmdbuf->width > line->nchars) {
     command_list_draw_repeated(cmdbuf->cmds, col, visual_line, ' ',
-                               cmdbuf->width - line->nchars);
+                               cmdbuf->width - col + cmdbuf->col_offset);
   }
 }
 
@@ -519,4 +524,8 @@ void buffer_update(struct buffer *buffer, uint32_t width, uint32_t height,
 
   *relline = rel_line < 0 ? 0 : (uint32_t)rel_line + total_margins.top;
   *relcol = rel_col < 0 ? 0 : (uint32_t)rel_col + total_margins.left;
+}
+
+struct text_chunk buffer_get_line(struct buffer *buffer, uint32_t line) {
+  return text_get_line(buffer->text, line);
 }

@@ -3,10 +3,19 @@
 #include <stdint.h>
 
 enum modifiers {
+  None = 0,
   Ctrl = 1 << 0,
   Meta = 1 << 1,
   Spec = 1 << 2,
 };
+
+#define BACKSPACE Ctrl, '?'
+#define DELETE Spec, '3'
+
+#define UP Spec, 'A'
+#define DOWN Spec, 'B'
+#define RIGHT Spec, 'C'
+#define LEFT Spec, 'D'
 
 struct key {
   uint8_t key;
@@ -24,7 +33,7 @@ struct keyboard_update {
   struct key keys[32];
   uint32_t nkeys;
 
-  uint8_t raw[32];
+  uint8_t raw[64];
   uint32_t nbytes;
 };
 

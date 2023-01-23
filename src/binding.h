@@ -7,19 +7,33 @@ struct keymap {
   uint32_t capacity;
 };
 
-enum binding_type { BindingType_Command, BindingType_Keymap };
+enum binding_type {
+  BindingType_Command,
+  BindingType_Keymap,
+  BindingType_DirectCommand
+};
 
-#define BINDING(mod_, c_, command_)                                            \
+#define BINDING_INNER(mod_, c_, command_)                                      \
   (struct binding) {                                                           \
     .key = {.mod = mod_, .key = c_}, .type = BindingType_Command,              \
     .command = hash_command_name(command_)                                     \
   }
 
-#define PREFIX(mod_, c_, keymap_)                                              \
+#define ANONYMOUS_BINDING_INNER(mod_, c_, command_)                            \
+  (struct binding) {                                                           \
+    .key = {.mod = mod_, .key = c_}, .type = BindingType_DirectCommand,        \
+    .direct_command = command_                                                 \
+  }
+
+#define PREFIX_INNER(mod_, c_, keymap_)                                        \
   (struct binding) {                                                           \
     .key = {.mod = mod_, .key = c_}, .type = BindingType_Keymap,               \
     .keymap = keymap_                                                          \
   }
+
+#define BINDING(...) BINDING_INNER(__VA_ARGS__)
+#define PREFIX(...) PREFIX_INNER(__VA_ARGS__)
+#define ANONYMOUS_BINDING(...) ANONYMOUS_BINDING_INNER(__VA_ARGS__)
 
 struct binding {
   struct key key;
@@ -28,6 +42,7 @@ struct binding {
 
   union {
     uint32_t command;
+    struct command *direct_command;
     struct keymap *keymap;
   };
 };

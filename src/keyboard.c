@@ -72,6 +72,18 @@ void parse_keys(uint8_t *bytes, uint32_t nbytes, struct key *out_keys,
             (kp->mod & Spec && !(has_more && bytes[bytei + 1] == '~'))) {
           ++nkps;
         }
+      } else if (utf8_byte_is_unicode_start(b)) {
+        kp->mod = None;
+        kp->key = 0;
+        kp->start = bytei;
+        kp->end = bytei + utf8_nbytes(bytes + bytei, nbytes - bytei, 1);
+        ++nkps;
+      } else {
+        kp->mod = None;
+        kp->key = b;
+        kp->start = bytei;
+        kp->end = bytei + 1;
+        ++nkps;
       }
     }
   }
@@ -97,13 +109,13 @@ struct keyboard_update keyboard_update(struct keyboard *kbd,
     }
   }
 
-  int nbytes = read(STDIN_FILENO, upd.raw, 32);
+  int nbytes = read(STDIN_FILENO, upd.raw, 64);
 
   if (nbytes > 0) {
     upd.nbytes = nbytes;
     parse_keys(upd.raw, upd.nbytes, upd.keys, &upd.nkeys);
 
-    if (nbytes < 32) {
+    if (nbytes < 64) {
       kbd->has_data = false;
     }
   } else if (nbytes == EAGAIN) {
@@ -118,7 +130,7 @@ bool key_equal_char(struct key *key, uint8_t mod, uint8_t c) {
 }
 
 bool key_equal(struct key *key1, struct key *key2) {
-  return key1->key == key2->key && key1->mod == key2->mod;
+  return key_equal_char(key1, key2->mod, key2->key);
 }
 
 void key_name(struct key *key, char *buf, size_t capacity) {

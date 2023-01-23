@@ -68,3 +68,5 @@ dkms.conf
 
 .direnv/
 .cache/
+
+perf.data*

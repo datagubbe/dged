@@ -19,6 +19,14 @@ stdenv.mkDerivation {
     bear
   ];
 
+  buildPhase = ''
+    bmake dged
+  '';
+
+  installPhase = ''
+    bmake install
+  '';
+
   buildInputs = [
     tree-sitter
   ];

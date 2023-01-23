@@ -8,6 +8,7 @@
 
 #include "binding.h"
 #include "buffer.h"
+#include "buffers.h"
 #include "display.h"
 #include "minibuffer.h"
 #include "reactor.h"
@@ -56,6 +57,7 @@ void resized() {
 }
 
 int32_t _abort(struct command_ctx ctx, int argc, const char *argv[]) {
+  minibuffer_abort_prompt();
   minibuffer_echo_timeout(4, "💣 aborted");
   return 0;
 }
@@ -72,16 +74,9 @@ int32_t exit_editor(struct command_ctx ctx, int argc, const char *argv[]) {
 }
 
 static struct command GLOBAL_COMMANDS[] = {
-    {
-        .name = "find-file",
-        .fn = unimplemented_command,
-        .userdata = (void *)"find-file",
-    },
-    {
-        .name = "run-command-interactive",
-        .fn = unimplemented_command,
-        .userdata = (void *)"run-command-interactive",
-    },
+    {.name = "find-file", .fn = find_file},
+    {.name = "run-command-interactive", .fn = run_interactive},
+    {.name = "switch-buffer", .fn = switch_buffer},
     {.name = "abort", .fn = _abort},
     {.name = "exit", .fn = exit_editor}};
 
@@ -99,44 +94,8 @@ uint64_t calc_frame_time_ns(struct timespec *timers, uint32_t num_timer_pairs) {
   return total;
 }
 
-struct buffers {
-  // TODO: more buffers
-  struct buffer buffers[32];
-  uint32_t nbuffers;
-};
-
-struct window {
-  uint32_t x;
-  uint32_t y;
-  uint32_t width;
-  uint32_t height;
-  struct buffer *buffer;
-};
-
-void window_update_buffer(struct window *window, struct command_list *commands,
-                          uint64_t frame_time, uint32_t *relline,
-                          uint32_t *relcol) {
-  buffer_update(window->buffer, window->width, window->height, commands,
-                frame_time, relline, relcol);
-}
-
-void buffers_init(struct buffers *buffers) { buffers->nbuffers = 0; }
-
-void buffers_add(struct buffers *buffers, struct buffer buffer) {
-  buffers->buffers[buffers->nbuffers] = buffer;
-  ++buffers->nbuffers;
-}
-
-void buffers_destroy(struct buffers *buffers) {
-  for (uint32_t bufi = 0; bufi < buffers->nbuffers; ++bufi) {
-    buffer_destroy(&buffers->buffers[bufi]);
-  }
-
-  buffers->nbuffers = 0;
-}
-
 int main(int argc, char *argv[]) {
-  const char *filename = NULL;
+  char *filename = NULL;
   if (argc >= 1) {
     filename = argv[1];
   }
@@ -178,6 +137,7 @@ int main(int argc, char *argv[]) {
       BINDING(Ctrl, 'C', "exit"),
       BINDING(Ctrl, 'S', "buffer-write-to-file"),
       BINDING(Ctrl, 'F', "find-file"),
+      BINDING(None, 'b', "switch-buffer"),
   };
   keymap_bind_keys(&global_keymap, global_binds,
                    sizeof(global_binds) / sizeof(global_binds[0]));
@@ -185,21 +145,19 @@ int main(int argc, char *argv[]) {
                    sizeof(ctrlx_bindings) / sizeof(ctrlx_bindings[0]));
 
   struct buffers buflist = {0};
-  buffers_init(&buflist);
+  buffers_init(&buflist, 32);
   struct buffer initial_buffer = buffer_create("welcome", true);
   if (filename != NULL) {
-    initial_buffer = buffer_from_file(filename, &reactor);
+    initial_buffer = buffer_from_file(filename);
   } else {
     const char *welcome_txt = "Welcome to the editor for datagubbar 👴\n";
     buffer_add_text(&initial_buffer, (uint8_t *)welcome_txt,
                     strlen(welcome_txt));
   }
 
-  buffers_add(&buflist, initial_buffer);
-
   // one main window
   struct window main_window = (struct window){
-      .buffer = &initial_buffer,
+      .buffer = buffers_add(&buflist, initial_buffer),
       .height = display.height - 1,
       .width = display.width,
       .x = 0,
@@ -207,12 +165,12 @@ int main(int argc, char *argv[]) {
   };
 
   // and one for the minibuffer
-  struct buffer minibuffer = buffer_create("minibuffer", false);
-  buffers_add(&buflist, minibuffer);
+  struct buffer *minibuffer =
+      buffers_add(&buflist, buffer_create("minibuffer", false));
 
-  minibuffer_init(&minibuffer);
+  minibuffer_init(minibuffer);
   struct window minibuffer_window = (struct window){
-      .buffer = &minibuffer,
+      .buffer = minibuffer,
       .x = 0,
       .y = display.height - 1,
       .height = 1,
@@ -289,19 +247,13 @@ int main(int argc, char *argv[]) {
 
     clock_gettime(CLOCK_MONOTONIC, &keyboard_begin);
     struct keymap *local_keymaps = NULL;
-    uint32_t nbuffer_keymaps = buffer_keymaps(&initial_buffer, &local_keymaps);
+    uint32_t nbuffer_keymaps =
+        buffer_keymaps(active_window->buffer, &local_keymaps);
     struct keyboard_update kbd_upd = keyboard_update(&kbd, &reactor);
 
     uint32_t input_data_idx = 0;
     for (uint32_t ki = 0; ki < kbd_upd.nkeys; ++ki) {
       struct key *k = &kbd_upd.keys[ki];
-
-      // insert any data from last key
-      if (k->start > input_data_idx) {
-        buffer_add_text(active_window->buffer, &kbd_upd.raw[input_data_idx],
-                        k->start - input_data_idx);
-      }
-      input_data_idx = k->end;
 
       struct lookup_result res = {.found = false};
       if (current_keymap != NULL) {
@@ -321,9 +273,9 @@ int main(int argc, char *argv[]) {
             minibuffer_echo_timeout(
                 4, "binding found for key %s but not command", k);
           } else {
-            int32_t ec =
-                execute_command(res.command, active_window->buffer, 0, NULL);
-            if (ec != 0) {
+            int32_t ec = execute_command(res.command, &commands, active_window,
+                                         &buflist, 0, NULL);
+            if (ec != 0 && !minibuffer_displaying()) {
               minibuffer_echo_timeout(4, "command %s failed with exit code %d",
                                       res.command->name, ec);
             }
@@ -334,21 +286,25 @@ int main(int argc, char *argv[]) {
         case BindingType_Keymap: {
           char keyname[16];
           key_name(k, keyname, 16);
-          minibuffer_echo("%s", keyname);
           current_keymap = res.keymap;
+          minibuffer_echo("%s", current_keymap->name);
           break;
         }
         }
+      } else if (k->mod == 0) {
+        buffer_add_text(active_window->buffer, &kbd_upd.raw[k->start],
+                        k->end - k->start);
       } else {
         char keyname[16];
         key_name(k, keyname, 16);
-        minibuffer_echo_timeout(4, "key \"%s\" is not bound!", keyname);
+        if (current_keymap == NULL) {
+          minibuffer_echo_timeout(4, "key \"%s\" is not bound!", keyname);
+        } else {
+          minibuffer_echo_timeout(4, "key \"%s %s\" is not bound!",
+                                  current_keymap->name, keyname);
+        }
         current_keymap = NULL;
       }
-    }
-    if (input_data_idx < kbd_upd.nbytes) {
-      buffer_add_text(active_window->buffer, &kbd_upd.raw[input_data_idx],
-                      kbd_upd.nbytes - input_data_idx);
     }
     clock_gettime(CLOCK_MONOTONIC, &keyboard_end);
 
@@ -356,6 +312,13 @@ int main(int argc, char *argv[]) {
     struct timespec timers[] = {buffer_begin, buffer_end,     display_begin,
                                 display_end,  keyboard_begin, keyboard_end};
     frame_time = calc_frame_time_ns(timers, 3);
+
+    if (minibuffer_focused()) {
+      active_window = &minibuffer_window;
+    } else {
+      // TODO: no
+      active_window = &main_window;
+    }
 
     frame_allocator_clear(&frame_allocator);
   }

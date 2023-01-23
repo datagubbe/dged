@@ -4,6 +4,7 @@
 
 #include "command.h"
 #include "text.h"
+#include "window.h"
 
 struct keymap;
 struct reactor;
@@ -48,8 +49,8 @@ struct modeline {
 };
 
 struct buffer {
-  const char *name;
-  const char *filename;
+  char *name;
+  char *filename;
 
   struct text *text;
 
@@ -67,7 +68,7 @@ struct buffer {
   struct update_hooks update_hooks;
 };
 
-struct buffer buffer_create(const char *name, bool modeline);
+struct buffer buffer_create(char *name, bool modeline);
 void buffer_destroy(struct buffer *buffer);
 
 uint32_t buffer_keymaps(struct buffer *buffer, struct keymap **keymaps_out);
@@ -89,10 +90,12 @@ void buffer_beginning_of_line(struct buffer *buffer);
 void buffer_newline(struct buffer *buffer);
 void buffer_indent(struct buffer *buffer);
 
+struct text_chunk buffer_get_line(struct buffer *buffer, uint32_t line);
+
 uint32_t buffer_add_update_hook(struct buffer *buffer, update_hook_cb hook,
                                 void *userdata);
 
-struct buffer buffer_from_file(const char *filename, struct reactor *reactor);
+struct buffer buffer_from_file(char *filename);
 void buffer_to_file(struct buffer *buffer);
 
 void buffer_update(struct buffer *buffer, uint32_t width, uint32_t height,
@@ -103,7 +106,7 @@ void buffer_update(struct buffer *buffer, uint32_t width, uint32_t height,
 #define BUFFER_WRAPCMD(fn)                                                     \
   static int32_t fn##_cmd(struct command_ctx ctx, int argc,                    \
                           const char *argv[]) {                                \
-    fn(ctx.current_buffer);                                                    \
+    fn(ctx.active_window->buffer);                                             \
     return 0;                                                                  \
   }
 

@@ -36,24 +36,35 @@ void keymap_destroy(struct keymap *keymap) {
 
 struct lookup_result lookup_key(struct keymap *keymaps, uint32_t nkeymaps,
                                 struct key *key, struct commands *commands) {
-  // lookup in order in the keymaps
-  for (uint32_t kmi = 0; kmi < nkeymaps; ++kmi) {
+  // lookup in reverse order in the keymaps
+  uint32_t kmi = nkeymaps;
+  while (kmi > 0) {
+    --kmi;
     struct keymap *keymap = &keymaps[kmi];
 
     for (uint32_t bi = 0; bi < keymap->nbindings; ++bi) {
       struct binding *binding = &keymap->bindings[bi];
       if (key_equal(key, &binding->key)) {
-        if (binding->type == BindingType_Command) {
+        switch (binding->type) {
+        case BindingType_Command: {
           return (struct lookup_result){
               .found = true,
               .type = BindingType_Command,
               .command = lookup_command_by_hash(commands, binding->command),
           };
-        } else if (binding->type == BindingType_Keymap) {
+        }
+        case BindingType_Keymap: {
           return (struct lookup_result){
               .found = true,
               .type = BindingType_Keymap,
               .keymap = binding->keymap,
+          };
+        }
+        case BindingType_DirectCommand:
+          return (struct lookup_result){
+              .found = true,
+              .type = BindingType_Command,
+              .command = binding->direct_command,
           };
         }
       }

@@ -1,4 +1,6 @@
-#include "command.h"
+#include "buffer.h"
+#include "buffers.h"
+#include "minibuffer.h"
 
 #include <stdlib.h>
 
@@ -65,10 +67,66 @@ struct command *lookup_command_by_hash(struct commands *commands,
   return NULL;
 }
 
-int32_t execute_command(struct command *command, struct buffer *current_buffer,
+int32_t execute_command(struct command *command, struct commands *commands,
+                        struct window *active_window, struct buffers *buffers,
                         int argc, const char *argv[]) {
 
-  return command->fn((struct command_ctx){.current_buffer = current_buffer,
-                                          .userdata = command->userdata},
-                     argc, argv);
+  return command->fn(
+      (struct command_ctx){
+          .buffers = buffers,
+          .active_window = active_window,
+          .userdata = command->userdata,
+          .commands = commands,
+          .self = command,
+      },
+      argc, argv);
+}
+
+int32_t find_file(struct command_ctx ctx, int argc, const char *argv[]) {
+  const char *pth = NULL;
+  if (argc == 1) {
+    pth = argv[0];
+    ctx.active_window->buffer =
+        buffers_add(ctx.buffers, buffer_from_file((char *)pth));
+    minibuffer_echo_timeout(4, "buffer %s loaded",
+                            ctx.active_window->buffer->name);
+  } else {
+    minibuffer_prompt(ctx, "find file: ");
+  }
+
+  return 0;
+}
+
+int32_t run_interactive(struct command_ctx ctx, int argc, const char *argv[]) {
+  if (argc == 0) {
+    minibuffer_prompt(ctx, "execute: ");
+    return 0;
+  }
+
+  struct command *cmd = lookup_command(ctx.commands, argv[0]);
+  if (cmd != NULL) {
+    return execute_command(cmd, ctx.commands, ctx.active_window, ctx.buffers,
+                           argc - 1, argv + 1);
+  } else {
+    minibuffer_echo_timeout(4, "command %s not found", argv[0]);
+    return 11;
+  }
+}
+
+int32_t switch_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
+  if (argc == 0) {
+    minibuffer_prompt(ctx, "buffer: ");
+    return 0;
+  }
+
+  const char *bufname = argv[0];
+  struct buffer *buf = buffers_find(ctx.buffers, bufname);
+
+  if (buf == NULL) {
+    minibuffer_echo_timeout(4, "buffer %s not found", bufname);
+    return 1;
+  } else {
+    ctx.active_window->buffer = buf;
+    return 0;
+  }
 }
