@@ -56,8 +56,8 @@ struct buffer buffer_create(char *name, bool modeline) {
       BINDING(Ctrl, 'A', "beginning-of-line"),
       BINDING(Ctrl, 'E', "end-of-line"),
 
-      BINDING(Ctrl, 'M', "newline"),
-      BINDING(Ctrl, 'I', "indent"),
+      BINDING(ENTER, "newline"),
+      BINDING(TAB, "indent"),
 
       BINDING(Ctrl, 'K', "kill-line"),
       BINDING(DELETE, "delete-char"),

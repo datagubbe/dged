@@ -4,24 +4,33 @@
 #include <stdlib.h>
 #include <sys/epoll.h>
 
+struct reactor {
+  int epoll_fd;
+  void *events;
+};
+
 struct events {
   struct epoll_event events[10];
   uint32_t nevents;
 };
 
-struct reactor reactor_create() {
+struct reactor *reactor_create() {
   int epollfd = epoll_create1(0);
   if (epollfd == -1) {
     perror("epoll_create1");
   }
 
-  return (struct reactor){
-      .epoll_fd = epollfd,
-      .events = calloc(1, sizeof(struct events)),
-  };
+  struct reactor *r = (struct reactor *)calloc(1, sizeof(struct reactor));
+  r->epoll_fd = epollfd;
+  r->events = calloc(1, sizeof(struct events));
+
+  return r;
 }
 
-void reactor_destroy(struct reactor *reactor) { free(reactor->events); }
+void reactor_destroy(struct reactor *reactor) {
+  free(reactor->events);
+  free(reactor);
+}
 
 uint32_t reactor_register_interest(struct reactor *reactor, int fd,
                                    enum interest interest) {

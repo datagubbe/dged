@@ -106,7 +106,11 @@ void display_destroy(struct display *display) {
   tcsetattr(0, TCSADRAIN, &display->orig_term);
 }
 
-void putbyte(uint8_t c) { putc(c, stdout); }
+void putbyte(uint8_t c) {
+  if (c != '\r') {
+    putc(c, stdout);
+  }
+}
 
 void putbyte_ws(uint8_t c, bool show_whitespace) {
   if (show_whitespace && c == '\t') {
@@ -114,7 +118,7 @@ void putbyte_ws(uint8_t c, bool show_whitespace) {
   } else if (show_whitespace && c == ' ') {
     fputs("\x1b[90m·\x1b[0m", stdout);
   } else {
-    fputc(c, stdout);
+    putbyte(c);
   }
 }
 

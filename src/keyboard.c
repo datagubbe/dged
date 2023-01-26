@@ -6,6 +6,7 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <stdlib.h>
 #include <string.h>
 #include <termios.h>
 #include <unistd.h>
@@ -18,46 +19,46 @@ struct keyboard keyboard_create(struct reactor *reactor) {
   term.c_cc[VMIN] = 0;
   term.c_cc[VTIME] = 0;
   tcsetattr(0, TCSADRAIN, &term);
+  return keyboard_create_fd(reactor, STDIN_FILENO);
+}
 
+struct keyboard keyboard_create_fd(struct reactor *reactor, int fd) {
   return (struct keyboard){
-      .reactor_event_id =
-          reactor_register_interest(reactor, STDIN_FILENO, ReadInterest),
-      .has_data = false,
+      .fd = fd,
+      .reactor_event_id = reactor_register_interest(reactor, fd, ReadInterest),
   };
 }
 
 void parse_keys(uint8_t *bytes, uint32_t nbytes, struct key *out_keys,
                 uint32_t *out_nkeys) {
+  // TODO: can be optimized if "bytes" contains no special chars
   uint32_t nkps = 0;
   for (uint32_t bytei = 0; bytei < nbytes; ++bytei) {
     uint8_t b = bytes[bytei];
+    bool has_more = bytei + 1 < nbytes;
+    uint8_t next = has_more ? bytes[bytei + 1] : 0;
 
+    struct key *kp = &out_keys[nkps];
     if (b == 0x1b) { // meta
-      struct key *kp = &out_keys[nkps];
       kp->start = bytei;
       kp->mod = Meta;
-    } else if (b == '[' ||
-               b == '0') { // special char (function keys, pgdn, etc)
-      struct key *kp = &out_keys[nkps];
-      if (kp->mod & Meta) {
-        kp->mod = Spec;
-      }
-    } else if (b >= 0x00 && b <= 0x1f) { // ctrl char
-      struct key *kp = &out_keys[nkps];
-      kp->mod |= Ctrl;
-      kp->key = b | 0x40;
-      kp->start = bytei;
-      kp->end = bytei + 1;
-      ++nkps;
+    } else if (has_more && isalnum(next) && kp->mod & Meta &&
+               (b == '[' ||
+                b == '0')) { // special char (function keys, pgdn, etc)
+      kp->mod = Spec;
     } else if (b == 0x7f) { // ?
-      struct key *kp = &out_keys[nkps];
       kp->mod |= Ctrl;
       kp->key = '?';
       kp->start = bytei;
       kp->end = bytei + 1;
       ++nkps;
+    } else if (iscntrl(b)) { // ctrl char
+      kp->mod |= Ctrl;
+      kp->key = b | 0x40;
+      kp->start = bytei;
+      kp->end = bytei + 1;
+      ++nkps;
     } else {
-      struct key *kp = &out_keys[nkps];
       if (kp->mod & Spec && b == '~') {
         // skip tilde in special chars
         kp->end = bytei + 1;
@@ -66,19 +67,18 @@ void parse_keys(uint8_t *bytes, uint32_t nbytes, struct key *out_keys,
         kp->key = b;
         kp->end = bytei + 1;
 
-        bool has_more = bytei + 1 < nbytes;
-
-        if (kp->mod & Meta ||
-            (kp->mod & Spec && !(has_more && bytes[bytei + 1] == '~'))) {
+        if (kp->mod & Meta || (kp->mod & Spec && next != '~')) {
           ++nkps;
         }
-      } else if (utf8_byte_is_unicode_start(b)) {
+      } else if (utf8_byte_is_unicode_continuation(b)) {
+        // do nothing for these
+      } else if (utf8_byte_is_unicode_start(b)) { // unicode char
         kp->mod = None;
         kp->key = 0;
         kp->start = bytei;
         kp->end = bytei + utf8_nbytes(bytes + bytei, nbytes - bytei, 1);
         ++nkps;
-      } else {
+      } else { // normal ASCII char
         kp->mod = None;
         kp->key = b;
         kp->start = bytei;
@@ -92,36 +92,44 @@ void parse_keys(uint8_t *bytes, uint32_t nbytes, struct key *out_keys,
 }
 
 struct keyboard_update keyboard_update(struct keyboard *kbd,
-                                       struct reactor *reactor) {
+                                       struct reactor *reactor,
+                                       alloc_fn frame_alloc) {
 
   struct keyboard_update upd = (struct keyboard_update){
-      .keys = {0},
+      .keys = NULL,
       .nkeys = 0,
       .nbytes = 0,
-      .raw = {0},
+      .raw = NULL,
   };
 
-  if (!kbd->has_data) {
-    if (reactor_poll_event(reactor, kbd->reactor_event_id)) {
-      kbd->has_data = true;
-    } else {
-      return upd;
-    }
+  // check if there is anything to do
+  if (!reactor_poll_event(reactor, kbd->reactor_event_id)) {
+    return upd;
   }
 
-  int nbytes = read(STDIN_FILENO, upd.raw, 64);
+  // read all input in chunks of `bufsize` bytes
+  const uint32_t bufsize = 128;
+  uint8_t *buf = malloc(bufsize), *writepos = buf;
+  int nbytes = 0, nread = 0;
+  while ((nread = read(kbd->fd, writepos, bufsize)) == bufsize) {
+    nbytes += bufsize;
+    buf = realloc(buf, nbytes + bufsize);
+    writepos = buf + nbytes;
+  }
+
+  nbytes += nread;
 
   if (nbytes > 0) {
     upd.nbytes = nbytes;
-    parse_keys(upd.raw, upd.nbytes, upd.keys, &upd.nkeys);
+    upd.raw = frame_alloc(nbytes);
+    memcpy(upd.raw, buf, nbytes);
+    upd.keys = frame_alloc(sizeof(struct key) * nbytes);
+    memset(upd.keys, 0, sizeof(struct key) * nbytes);
 
-    if (nbytes < 64) {
-      kbd->has_data = false;
-    }
-  } else if (nbytes == EAGAIN) {
-    kbd->has_data = false;
+    parse_keys(upd.raw, upd.nbytes, upd.keys, &upd.nkeys);
   }
 
+  free(buf);
   return upd;
 }
 

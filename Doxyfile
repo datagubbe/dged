@@ -827,7 +827,7 @@ EXCLUDE_SYMLINKS       = NO
 #
 # Note that the wildcards are matched against the file with absolute path, so to
 # exclude all test directories for example use the pattern */test/*
-
+  
 EXCLUDE_PATTERNS       =
 
 # The EXCLUDE_SYMBOLS tag can be used to specify one or more symbol names
@@ -920,13 +920,6 @@ FILTER_SOURCE_FILES    = NO
 # This tag requires that the tag FILTER_SOURCE_FILES is set to YES.
 
 FILTER_SOURCE_PATTERNS =
-
-# If the USE_MDFILE_AS_MAINPAGE tag refers to the name of a markdown file that
-# is part of the input, its contents will be placed on the main page
-# (index.html). This can be useful if you have a project on for instance GitHub
-# and want to reuse the introduction page also for the doxygen output.
-
-USE_MDFILE_AS_MAINPAGE =
 
 # The Fortran standard specifies that for fixed formatted Fortran code all
 # characters from position 72 are to be considered as comment. A common
@@ -1680,3 +1673,6 @@ EXTERNAL_SEARCH_ID     =
 EXTRA_SEARCH_MAPPINGS  =
 
 GENERATE_LATEX = NO
+
+INPUT += README.md
+USE_MDFILE_AS_MAINPAGE = README.md

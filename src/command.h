@@ -1,4 +1,4 @@
-/**
+/** @file command.h
  * Commands and command registries
  */
 #include <stdint.h>
@@ -7,28 +7,70 @@ struct buffer;
 struct buffers;
 struct window;
 
+/**
+ * Execution context for a command
+ */
 struct command_ctx {
+  /**
+   * The current list of buffers.
+   *
+   * Can be used to insert new buffers or
+   * inspect existing.
+   */
   struct buffers *buffers;
+
+  /**
+   * The currently active window.
+   */
   struct window *active_window;
+
+  /**
+   * A registry of available commands.
+   *
+   * Can be used to execute other commands as part of a command implementation.
+   */
   struct commands *commands;
+
+  /**
+   * The command that is currently being executed
+   */
   struct command *self;
+
+  /**
+   * User data set up by the command currently being executed.
+   */
   void *userdata;
 };
 
+/** A command function callback which holds the implementation of a command */
 typedef int32_t (*command_fn)(struct command_ctx ctx, int argc,
                               const char *argv[]);
 
+/**
+ * A command that can be bound to a key or executed directly
+ */
 struct command {
+  /**
+   * Name of the command
+   *
+   * Used to look the command up for execution and keybinds.
+   */
   const char *name;
+
+  /**
+   * Implementation of command behavior
+   */
   command_fn fn;
+
+  /**
+   * Userdata passed to each invocation of the command.
+   */
   void *userdata;
 };
 
-struct hashed_command {
-  uint32_t hash;
-  struct command command;
-};
-
+/**
+ * A command registry
+ */
 struct commands {
   struct hashed_command *commands;
   uint32_t ncommands;

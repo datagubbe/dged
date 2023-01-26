@@ -72,8 +72,30 @@ void test_lookup_command() {
                 "Expected the found function to have the correct name");
 }
 
+int32_t failing_command(struct command_ctx ctx, int argc, const char *argv[]) {
+  return 100;
+}
+
+void test_execute_command() {
+  struct commands cmds = single_fake_command("fake");
+  struct command *cmd = lookup_command(&cmds, "fake");
+
+  int32_t res = execute_command(cmd, &cmds, NULL, NULL, 0, NULL);
+  ASSERT(res == 0, "Expected to be able to execute command successfully");
+
+  register_command(&cmds, (struct command){
+                              .fn = failing_command,
+                              .name = "fejl",
+                              .userdata = NULL,
+                          });
+  struct command *fail_cmd = lookup_command(&cmds, "fejl");
+  int32_t res2 = execute_command(fail_cmd, &cmds, NULL, NULL, 0, NULL);
+  ASSERT(res2 != 0, "Expected failing command to fail");
+}
+
 void run_command_tests() {
   run_test(test_command_registry_create);
   run_test(test_register_command);
   run_test(test_lookup_command);
+  run_test(test_execute_command);
 }

@@ -4,6 +4,11 @@
 
 #include <stdlib.h>
 
+struct hashed_command {
+  uint32_t hash;
+  struct command command;
+};
+
 struct commands command_registry_create(uint32_t capacity) {
   return (struct commands){
       .commands = calloc(capacity, sizeof(struct hashed_command)),

@@ -4,6 +4,8 @@
 
 .sinclude "$(UNAME_S).mk"
 
+.include "targets.mk"
+
 # in this case we need a separate depend target
 depend: $(DEPS)
 	@:

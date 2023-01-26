@@ -13,6 +13,8 @@ struct display {
 
 struct render_command;
 struct command_list;
+/** Typedef for any allocation function */
+typedef void *(*alloc_fn)(size_t);
 
 struct display display_create();
 void display_resize(struct display *display);
@@ -25,7 +27,6 @@ void display_begin_render(struct display *display);
 void display_render(struct display *display, struct command_list *command_list);
 void display_end_render(struct display *display);
 
-typedef void *(*alloc_fn)(size_t);
 struct command_list *command_list_create(uint32_t capacity, alloc_fn allocator,
                                          uint32_t xoffset, uint32_t yoffset,
                                          const char *name);

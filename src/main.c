@@ -6,36 +6,13 @@
 #include <string.h>
 #include <time.h>
 
+#include "allocator.h"
 #include "binding.h"
 #include "buffer.h"
 #include "buffers.h"
 #include "display.h"
 #include "minibuffer.h"
 #include "reactor.h"
-
-struct frame_allocator {
-  uint8_t *buf;
-  size_t offset;
-  size_t capacity;
-};
-
-struct frame_allocator frame_allocator_create(size_t capacity) {
-  return (struct frame_allocator){
-      .capacity = capacity, .offset = 0, .buf = (uint8_t *)malloc(capacity)};
-}
-
-void *frame_allocator_alloc(struct frame_allocator *alloc, size_t sz) {
-  if (alloc->offset + sz > alloc->capacity) {
-    return NULL;
-  }
-
-  void *mem = alloc->buf + alloc->offset;
-  alloc->offset += sz;
-
-  return mem;
-}
-
-void frame_allocator_clear(struct frame_allocator *alloc) { alloc->offset = 0; }
 
 struct frame_allocator frame_allocator;
 
@@ -107,7 +84,7 @@ int main(int argc, char *argv[]) {
   frame_allocator = frame_allocator_create(16 * 1024 * 1024);
 
   // create reactor
-  struct reactor reactor = reactor_create();
+  struct reactor *reactor = reactor_create();
 
   // initialize display
   display = display_create();
@@ -115,7 +92,7 @@ int main(int argc, char *argv[]) {
   signal(SIGWINCH, resized);
 
   // init keyboard
-  struct keyboard kbd = keyboard_create(&reactor);
+  struct keyboard kbd = keyboard_create(reactor);
 
   // commands
   struct commands commands = command_registry_create(32);
@@ -243,13 +220,14 @@ int main(int argc, char *argv[]) {
     clock_gettime(CLOCK_MONOTONIC, &display_end);
 
     // this blocks for events, so if nothing has happened we block here.
-    reactor_update(&reactor);
+    reactor_update(reactor);
 
     clock_gettime(CLOCK_MONOTONIC, &keyboard_begin);
     struct keymap *local_keymaps = NULL;
     uint32_t nbuffer_keymaps =
         buffer_keymaps(active_window->buffer, &local_keymaps);
-    struct keyboard_update kbd_upd = keyboard_update(&kbd, &reactor);
+    struct keyboard_update kbd_upd =
+        keyboard_update(&kbd, reactor, frame_alloc);
 
     uint32_t input_data_idx = 0;
     for (uint32_t ki = 0; ki < kbd_upd.nkeys; ++ki) {
