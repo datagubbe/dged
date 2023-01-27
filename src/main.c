@@ -306,6 +306,7 @@ int main(int argc, char *argv[]) {
   display_destroy(&display);
   keymap_destroy(&global_keymap);
   command_registry_destroy(&commands);
+  frame_allocator_destroy(&frame_allocator);
 
   return 0;
 }

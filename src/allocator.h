@@ -18,10 +18,14 @@ struct frame_allocator {
  * @param capacity The capacity in bytes of the frame allocator
  * @returns The frame allocator
  */
-struct frame_allocator frame_allocator_create(size_t capacity) {
-  return (struct frame_allocator){
-      .capacity = capacity, .offset = 0, .buf = (uint8_t *)malloc(capacity)};
-}
+struct frame_allocator frame_allocator_create(size_t capacity);
+
+/**
+ * Destroy a frame allocator.
+ *
+ * @param alloc The @ref frame_allocator "frame allocator" to destroy.
+ */
+void frame_allocator_destroy(struct frame_allocator *alloc);
 
 /**
  * Allocate memory in this @ref frame_allocator "frame allocator"
@@ -31,16 +35,7 @@ struct frame_allocator frame_allocator_create(size_t capacity) {
  * @returns void* representing the start of the allocated region on success,
  * NULL on failure.
  */
-void *frame_allocator_alloc(struct frame_allocator *alloc, size_t sz) {
-  if (alloc->offset + sz > alloc->capacity) {
-    return NULL;
-  }
-
-  void *mem = alloc->buf + alloc->offset;
-  alloc->offset += sz;
-
-  return mem;
-}
+void *frame_allocator_alloc(struct frame_allocator *alloc, size_t sz);
 
 /**
  * Clear this @ref frame_allocator "frame allocator".
@@ -48,4 +43,4 @@ void *frame_allocator_alloc(struct frame_allocator *alloc, size_t sz) {
  * This does not free any memory, but simply resets the offset to 0.
  * @param alloc The frame allocator to clear
  */
-void frame_allocator_clear(struct frame_allocator *alloc) { alloc->offset = 0; }
+void frame_allocator_clear(struct frame_allocator *alloc);
