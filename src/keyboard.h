@@ -77,8 +77,6 @@ struct keyboard_update {
 };
 
 struct reactor;
-/** Typedef for any allocation function */
-typedef void *(*alloc_fn)(size_t);
 
 /**
  * Create a new keyboard
@@ -112,7 +110,7 @@ struct keyboard keyboard_create_fd(struct reactor *reactor, int fd);
  */
 struct keyboard_update keyboard_update(struct keyboard *kbd,
                                        struct reactor *reactor,
-                                       alloc_fn frame_alloc);
+                                       void *(*frame_alloc)(size_t));
 
 /**
  * Does key represent the same key press as mod and c.

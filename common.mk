@@ -9,7 +9,8 @@ SOURCES = src/binding.c src/buffer.c src/command.c src/display.c \
 
 DGED_SOURCES = $(SOURCES) src/main.c
 TEST_SOURCES = test/assert.c test/buffer.c test/text.c test/utf8.c test/main.c \
-	test/command.c test/keyboard.c test/fake-reactor.c
+	test/command.c test/keyboard.c test/fake-reactor.c test/allocator.c \
+	test/minibuffer.c
 
 prefix != if [ -n "$$prefix" ]; then echo "$$prefix"; else echo "/usr"; fi
 

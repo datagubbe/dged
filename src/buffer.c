@@ -1,6 +1,7 @@
 #include "buffer.h"
 #include "binding.h"
 #include "display.h"
+#include "errno.h"
 #include "minibuffer.h"
 #include "reactor.h"
 #include "utf8.h"
@@ -14,6 +15,10 @@
 #include <time.h>
 #include <unistd.h>
 #include <wchar.h>
+
+struct modeline {
+  uint8_t *buffer;
+};
 
 struct update_hook_result buffer_linenum_hook(struct buffer *buffer,
                                               struct command_list *commands,
@@ -52,6 +57,9 @@ struct buffer buffer_create(char *name, bool modeline) {
       BINDING(UP, "backward-line"),
       BINDING(Ctrl, 'N', "forward-line"),
       BINDING(DOWN, "forward-line"),
+
+      BINDING(Meta, 'f', "forward-word"),
+      BINDING(Meta, 'b', "backward-word"),
 
       BINDING(Ctrl, 'A', "beginning-of-line"),
       BINDING(Ctrl, 'E', "end-of-line"),
@@ -93,7 +101,7 @@ void buffer_clear(struct buffer *buffer) {
 }
 
 bool buffer_is_empty(struct buffer *buffer) {
-  return text_num_lines(buffer->text) == 0 &&
+  return text_num_lines(buffer->text) == 1 &&
          text_line_size(buffer->text, 0) == 0;
 }
 
@@ -170,6 +178,40 @@ void buffer_backward_delete_char(struct buffer *buffer) {
 void buffer_backward_char(struct buffer *buffer) { moveh(buffer, -1); }
 void buffer_forward_char(struct buffer *buffer) { moveh(buffer, 1); }
 
+void buffer_forward_word(struct buffer *buffer) {
+  moveh(buffer, 1);
+  struct text_chunk line = text_get_line(buffer->text, buffer->dot_line);
+  uint32_t bytei =
+      text_col_to_byteindex(buffer->text, buffer->dot_line, buffer->dot_col);
+  for (; bytei < line.nbytes; ++bytei) {
+    uint8_t b = line.text[bytei];
+    if (b == ' ' || b == '.') {
+      break;
+    }
+  }
+
+  uint32_t target_col =
+      text_byteindex_to_col(buffer->text, buffer->dot_line, bytei);
+  moveh(buffer, target_col - buffer->dot_col);
+}
+
+void buffer_backward_word(struct buffer *buffer) {
+  moveh(buffer, -1);
+  struct text_chunk line = text_get_line(buffer->text, buffer->dot_line);
+  uint32_t bytei =
+      text_col_to_byteindex(buffer->text, buffer->dot_line, buffer->dot_col);
+  for (; bytei > 0; --bytei) {
+    uint8_t b = line.text[bytei];
+    if (b == ' ' || b == '.') {
+      break;
+    }
+  }
+
+  uint32_t target_col =
+      text_byteindex_to_col(buffer->text, buffer->dot_line, bytei);
+  moveh(buffer, (int32_t)target_col - buffer->dot_col);
+}
+
 void buffer_backward_line(struct buffer *buffer) { movev(buffer, -1); }
 void buffer_forward_line(struct buffer *buffer) { movev(buffer, 1); }
 
@@ -185,6 +227,11 @@ struct buffer buffer_from_file(char *filename) {
   if (access(b.filename, F_OK) == 0) {
     FILE *file = fopen(filename, "r");
 
+    if (file == NULL) {
+      minibuffer_echo("Error opening %s: %s", filename, strerror(errno));
+      return b;
+    }
+
     while (true) {
       uint8_t buff[4096];
       int bytes = fread(buff, 1, 4096, file);
@@ -194,7 +241,9 @@ struct buffer buffer_from_file(char *filename) {
       } else if (bytes == 0) {
         break; // EOF
       } else {
-        // TODO: handle error
+        minibuffer_echo("error reading from %s: %s", filename, strerror(errno));
+        fclose(file);
+        return b;
       }
     }
 
@@ -207,17 +256,25 @@ struct buffer buffer_from_file(char *filename) {
 void write_line(struct text_chunk *chunk, void *userdata) {
   FILE *file = (FILE *)userdata;
   fwrite(chunk->text, 1, chunk->nbytes, file);
+
+  // final newline is not optional!
   fputc('\n', file);
 }
 
 void buffer_to_file(struct buffer *buffer) {
   if (!buffer->filename) {
-    minibuffer_echo("TODO: buffer \"%s\" is not associated with a file",
+    minibuffer_echo("buffer \"%s\" is not associated with a file",
                     buffer->name);
     return;
   }
   // TODO: handle errors
   FILE *file = fopen(buffer->filename, "w");
+
+  if (file == NULL) {
+    minibuffer_echo("failed to open file %s for writing: %s", buffer->filename,
+                    strerror(errno));
+    return;
+  }
 
   uint32_t nlines = text_num_lines(buffer->text);
   struct text_chunk lastline = text_get_line(buffer->text, nlines - 1);

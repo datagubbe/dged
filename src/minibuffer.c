@@ -35,7 +35,7 @@ int32_t execute(struct command_ctx ctx, int argc, const char *argv[]) {
 
     // split on ' '
     const char *argv[128] = {l};
-    argc = 1;
+    argc = line.nbytes > 0 ? 1 : 0;
     for (uint32_t bytei = 0; bytei < line.nbytes; ++bytei) {
       uint8_t byte = line.text[bytei];
       if (byte == ' ') {
@@ -94,6 +94,10 @@ struct update_hook_result update(struct buffer *buffer,
 }
 
 void minibuffer_init(struct buffer *buffer) {
+  if (g_minibuffer.buffer != NULL) {
+    return;
+  }
+
   g_minibuffer.buffer = buffer;
   struct binding bindings[] = {
       ANONYMOUS_BINDING(Ctrl, 'M', &execute_minibuffer_command),
@@ -106,7 +110,7 @@ void minibuffer_init(struct buffer *buffer) {
 }
 
 void echo(uint32_t timeout, const char *fmt, va_list args) {
-  if (g_minibuffer.prompt_active) {
+  if (g_minibuffer.prompt_active || g_minibuffer.buffer == NULL) {
     return;
   }
 
@@ -138,9 +142,14 @@ void minibuffer_echo_timeout(uint32_t timeout, const char *fmt, ...) {
 }
 
 void minibuffer_prompt(struct command_ctx command_ctx, const char *fmt, ...) {
+  if (g_minibuffer.buffer == NULL) {
+    return;
+  }
+
   minibuffer_clear();
   g_minibuffer.prompt_active = true;
   g_minibuffer.prompt_command_ctx = command_ctx;
+
   va_list args;
   va_start(args, fmt);
   vsnprintf(g_minibuffer.prompt, sizeof(g_minibuffer.prompt), fmt, args);
@@ -152,6 +161,14 @@ void minibuffer_abort_prompt() {
   g_minibuffer.prompt_active = false;
 }
 
-bool minibuffer_displaying() { return !buffer_is_empty(g_minibuffer.buffer); }
-void minibuffer_clear() { buffer_clear(g_minibuffer.buffer); }
+bool minibuffer_displaying() {
+  return g_minibuffer.buffer != NULL && !buffer_is_empty(g_minibuffer.buffer);
+}
+
+void minibuffer_clear() {
+  if (g_minibuffer.buffer != NULL) {
+    buffer_clear(g_minibuffer.buffer);
+  }
+}
+
 bool minibuffer_focused() { return g_minibuffer.prompt_active; }

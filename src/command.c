@@ -2,7 +2,10 @@
 #include "buffers.h"
 #include "minibuffer.h"
 
+#include <errno.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
 
 struct hashed_command {
   uint32_t hash;
@@ -91,8 +94,19 @@ int32_t find_file(struct command_ctx ctx, int argc, const char *argv[]) {
   const char *pth = NULL;
   if (argc == 1) {
     pth = argv[0];
-    ctx.active_window->buffer =
-        buffers_add(ctx.buffers, buffer_from_file((char *)pth));
+    struct stat sb;
+    if (stat(pth, &sb) < 0) {
+      minibuffer_echo("stat on %s failed: %s", pth, strerror(errno));
+      return 1;
+    }
+
+    if (S_ISDIR(sb.st_mode)) {
+      minibuffer_echo("TODO: implement dired!");
+      return 1;
+    }
+
+    window_set_buffer(ctx.active_window,
+                      buffers_add(ctx.buffers, buffer_from_file((char *)pth)));
     minibuffer_echo_timeout(4, "buffer \"%s\" loaded",
                             ctx.active_window->buffer->name);
   } else {
@@ -118,20 +132,43 @@ int32_t run_interactive(struct command_ctx ctx, int argc, const char *argv[]) {
   }
 }
 
-int32_t switch_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
+int32_t do_switch_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
+  const char *bufname = argv[0];
   if (argc == 0) {
-    minibuffer_prompt(ctx, "buffer: ");
-    return 0;
+    // switch back to prev buffer
+    if (ctx.active_window->prev_buffer != NULL) {
+      bufname = ctx.active_window->prev_buffer->name;
+    } else {
+      return 0;
+    }
   }
 
-  const char *bufname = argv[0];
   struct buffer *buf = buffers_find(ctx.buffers, bufname);
 
   if (buf == NULL) {
     minibuffer_echo_timeout(4, "buffer %s not found", bufname);
     return 1;
   } else {
-    ctx.active_window->buffer = buf;
+    window_set_buffer(ctx.active_window, buf);
     return 0;
   }
+}
+
+static struct command do_switch_buffer_cmd = {.fn = do_switch_buffer,
+                                              .name = "do-switch-buffer"};
+
+int32_t switch_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
+  if (argc == 0) {
+    ctx.self = &do_switch_buffer_cmd;
+    if (ctx.active_window->prev_buffer != NULL) {
+      minibuffer_prompt(
+          ctx, "buffer (default %s): ", ctx.active_window->prev_buffer->name);
+    } else {
+      minibuffer_prompt(ctx, "buffer: ");
+    }
+    return 0;
+  }
+
+  return execute_command(&do_switch_buffer_cmd, ctx.commands, ctx.active_window,
+                         ctx.buffers, argc, argv);
 }

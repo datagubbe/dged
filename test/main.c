@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include <time.h>
 
-#include "bits/time.h"
 #include "test.h"
 
 void handle_abort() { exit(1); }
@@ -30,6 +29,12 @@ int main() {
 
   printf("\n📠 \x1b[1;36mRunning keyboard tests...\x1b[0m\n");
   run_keyboard_tests();
+
+  printf("\n💾 \x1b[1;36mRunning allocator tests...\x1b[0m\n");
+  run_allocator_tests();
+
+  printf("\n🐜 \x1b[1;36mRunning minibuffer tests...\x1b[0m\n");
+  run_minibuffer_tests();
 
   struct timespec elapsed;
   clock_gettime(CLOCK_MONOTONIC, &elapsed);

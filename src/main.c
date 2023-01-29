@@ -24,10 +24,12 @@ bool running = true;
 
 void terminate() { running = false; }
 
-static struct display display;
+static struct display *display = NULL;
 static bool display_resized = false;
 void resized() {
-  display_resize(&display);
+  if (display != NULL) {
+    display_resize(display);
+  }
   display_resized = true;
 
   signal(SIGWINCH, resized);
@@ -88,7 +90,7 @@ int main(int argc, char *argv[]) {
 
   // initialize display
   display = display_create();
-  display_clear(&display);
+  display_clear(display);
   signal(SIGWINCH, resized);
 
   // init keyboard
@@ -135,8 +137,9 @@ int main(int argc, char *argv[]) {
   // one main window
   struct window main_window = (struct window){
       .buffer = buffers_add(&buflist, initial_buffer),
-      .height = display.height - 1,
-      .width = display.width,
+      .prev_buffer = NULL,
+      .height = display_height(display) - 1,
+      .width = display_width(display),
       .x = 0,
       .y = 0,
   };
@@ -148,10 +151,11 @@ int main(int argc, char *argv[]) {
   minibuffer_init(minibuffer);
   struct window minibuffer_window = (struct window){
       .buffer = minibuffer,
+      .prev_buffer = NULL,
       .x = 0,
-      .y = display.height - 1,
+      .y = display_height(display) - 1,
       .height = 1,
-      .width = display.width,
+      .width = display_width(display),
   };
 
   struct timespec buffer_begin, buffer_end, display_begin, display_end,
@@ -174,11 +178,11 @@ int main(int argc, char *argv[]) {
     clock_gettime(CLOCK_MONOTONIC, &buffer_begin);
 
     if (display_resized) {
-      minibuffer_window.width = display.width;
-      minibuffer_window.y = display.height - 1;
+      minibuffer_window.width = display_width(display);
+      minibuffer_window.y = display_height(display) - 1;
 
-      main_window.height = display.height - 1;
-      main_window.width = display.width;
+      main_window.height = display_height(display) - 1;
+      main_window.width = display_width(display);
 
       display_resized = false;
     }
@@ -209,14 +213,14 @@ int main(int argc, char *argv[]) {
     clock_gettime(CLOCK_MONOTONIC, &display_begin);
     uint32_t relline, relcol;
 
-    display_begin_render(&display);
+    display_begin_render(display);
     for (uint32_t windowi = 0; windowi < sizeof(windows) / sizeof(windows[0]);
          ++windowi) {
-      display_render(&display, command_lists[windowi]);
+      display_render(display, command_lists[windowi]);
     }
-    display_move_cursor(&display, dot_line + active_window->y,
+    display_move_cursor(display, dot_line + active_window->y,
                         dot_col + active_window->x);
-    display_end_render(&display);
+    display_end_render(display);
     clock_gettime(CLOCK_MONOTONIC, &display_end);
 
     // this blocks for events, so if nothing has happened we block here.
@@ -294,7 +298,7 @@ int main(int argc, char *argv[]) {
     if (minibuffer_focused()) {
       active_window = &minibuffer_window;
     } else {
-      // TODO: no
+      // TODO: not this
       active_window = &main_window;
     }
 
@@ -302,8 +306,8 @@ int main(int argc, char *argv[]) {
   }
 
   buffers_destroy(&buflist);
-  display_clear(&display);
-  display_destroy(&display);
+  display_clear(display);
+  display_destroy(display);
   keymap_destroy(&global_keymap);
   command_registry_destroy(&commands);
   frame_allocator_destroy(&frame_allocator);

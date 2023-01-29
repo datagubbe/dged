@@ -93,7 +93,7 @@ void parse_keys(uint8_t *bytes, uint32_t nbytes, struct key *out_keys,
 
 struct keyboard_update keyboard_update(struct keyboard *kbd,
                                        struct reactor *reactor,
-                                       alloc_fn frame_alloc) {
+                                       void *(*frame_alloc)(size_t)) {
 
   struct keyboard_update upd = (struct keyboard_update){
       .keys = NULL,

@@ -80,6 +80,11 @@ uint32_t byteidx_to_charidx(struct line *line, uint32_t byte_idx) {
   return utf8_nchars(line->data, byte_idx);
 }
 
+uint32_t text_byteindex_to_col(struct text *text, uint32_t line,
+                               uint32_t byteindex) {
+  return byteidx_to_charidx(&text->lines[line], byteindex);
+}
+
 void insert_at_col(struct line *line, uint32_t col, uint8_t *text, uint32_t len,
                    uint32_t nchars) {
 

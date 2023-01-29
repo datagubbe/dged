@@ -7,9 +7,11 @@
 #include "window.h"
 
 struct keymap;
-struct reactor;
 struct command_list;
 
+/**
+ * Margins where buffer text should not be
+ */
 struct margin {
   uint32_t left;
   uint32_t right;
@@ -17,37 +19,67 @@ struct margin {
   uint32_t bottom;
 };
 
+/** Callback for line rendering hooks */
 typedef void (*line_render_cb)(struct text_chunk *line_data, uint32_t line,
                                struct command_list *commands, void *userdata);
 
+/**
+ * A line render hook
+ *
+ * A callback paired with userdata
+ */
 struct line_render_hook {
   line_render_cb callback;
   void *userdata;
 };
 
+/**
+ * Result of updating a buffer hook
+ */
 struct update_hook_result {
+  /** Desired margins for this hook */
   struct margin margins;
+
+  /** Hook to be added to rendering of buffer lines */
   struct line_render_hook line_render_hook;
 };
 
+/** Buffer update hook callback function */
 typedef struct update_hook_result (*update_hook_cb)(
     struct buffer *buffer, struct command_list *commands, uint32_t width,
     uint32_t height, uint64_t frame_time, void *userdata);
 
+/**
+ * A buffer update hook.
+ *
+ * Can be used to implement custom behavior on top of a buffer. Used for
+ * minibuffer, line numbers, modeline etc.
+ */
 struct update_hook {
+  /** Callback function */
   update_hook_cb callback;
+
+  /** Optional userdata to pass to the callback function unmodified */
   void *userdata;
 };
 
+/**
+ * A set of update hooks
+ */
 struct update_hooks {
+  /** The update hooks */
   struct update_hook hooks[32];
+
+  /** The number of update hooks */
   uint32_t nhooks;
 };
 
-struct modeline {
-  uint8_t *buffer;
-};
-
+/**
+ * A buffer of text that can be modified, read from and written to disk.
+ *
+ * This is the central data structure of dged and most other behavior is
+ * implemented on top of it.
+ */
 struct buffer {
   char *name;
   char *filename;
@@ -82,7 +114,9 @@ void buffer_kill_line(struct buffer *buffer);
 void buffer_forward_delete_char(struct buffer *buffer);
 void buffer_backward_delete_char(struct buffer *buffer);
 void buffer_backward_char(struct buffer *buffer);
+void buffer_backward_word(struct buffer *buffer);
 void buffer_forward_char(struct buffer *buffer);
+void buffer_forward_word(struct buffer *buffer);
 void buffer_backward_line(struct buffer *buffer);
 void buffer_forward_line(struct buffer *buffer);
 void buffer_end_of_line(struct buffer *buffer);
@@ -114,7 +148,9 @@ BUFFER_WRAPCMD(buffer_kill_line);
 BUFFER_WRAPCMD(buffer_forward_delete_char);
 BUFFER_WRAPCMD(buffer_backward_delete_char);
 BUFFER_WRAPCMD(buffer_backward_char);
+BUFFER_WRAPCMD(buffer_backward_word);
 BUFFER_WRAPCMD(buffer_forward_char);
+BUFFER_WRAPCMD(buffer_forward_word);
 BUFFER_WRAPCMD(buffer_backward_line);
 BUFFER_WRAPCMD(buffer_forward_line);
 BUFFER_WRAPCMD(buffer_end_of_line);
@@ -128,7 +164,9 @@ static struct command BUFFER_COMMANDS[] = {
     {.name = "delete-char", .fn = buffer_forward_delete_char_cmd},
     {.name = "backward-delete-char", .fn = buffer_backward_delete_char_cmd},
     {.name = "backward-char", .fn = buffer_backward_char_cmd},
+    {.name = "backward-word", .fn = buffer_backward_word_cmd},
     {.name = "forward-char", .fn = buffer_forward_char_cmd},
+    {.name = "forward-word", .fn = buffer_forward_word_cmd},
     {.name = "backward-line", .fn = buffer_backward_line_cmd},
     {.name = "forward-line", .fn = buffer_forward_line_cmd},
     {.name = "end-of-line", .fn = buffer_end_of_line_cmd},

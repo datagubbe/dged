@@ -7,3 +7,8 @@ void window_update_buffer(struct window *window, struct command_list *commands,
   buffer_update(window->buffer, window->width, window->height, commands,
                 frame_time, relline, relcol);
 }
+
+void window_set_buffer(struct window *window, struct buffer *buffer) {
+  window->prev_buffer = window->buffer;
+  window->buffer = buffer;
+}

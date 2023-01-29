@@ -8,9 +8,17 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <termios.h>
 #include <unistd.h>
 
 #define ESC 0x1b
+
+struct display {
+  struct termios term;
+  struct termios orig_term;
+  uint32_t width;
+  uint32_t height;
+};
 
 enum render_cmd_type {
   RenderCommand_DrawText = 0,
@@ -62,7 +70,7 @@ struct command_list {
   uint32_t xoffset;
   uint32_t yoffset;
 
-  alloc_fn allocator;
+  void *(*allocator)(size_t);
 
   char name[16];
 };
@@ -73,7 +81,7 @@ struct winsize getsize() {
   return ws;
 }
 
-struct display display_create() {
+struct display *display_create() {
 
   struct winsize ws = getsize();
 
@@ -87,12 +95,12 @@ struct display display_create() {
 
   tcsetattr(0, TCSADRAIN, &term);
 
-  return (struct display){
-      .orig_term = orig_term,
-      .term = term,
-      .height = ws.ws_row,
-      .width = ws.ws_col,
-  };
+  struct display *d = calloc(1, sizeof(struct display));
+  d->orig_term = orig_term;
+  d->term = term;
+  d->height = ws.ws_row;
+  d->width = ws.ws_col;
+  return d;
 }
 
 void display_resize(struct display *display) {
@@ -104,7 +112,12 @@ void display_resize(struct display *display) {
 void display_destroy(struct display *display) {
   // reset old terminal mode
   tcsetattr(0, TCSADRAIN, &display->orig_term);
+
+  free(display);
 }
+
+uint32_t display_width(struct display *display) { return display->width; }
+uint32_t display_height(struct display *display) { return display->height; }
 
 void putbyte(uint8_t c) {
   if (c != '\r') {
@@ -156,7 +169,8 @@ void display_clear(struct display *display) {
   putbytes(bytes, 3, false);
 }
 
-struct command_list *command_list_create(uint32_t capacity, alloc_fn allocator,
+struct command_list *command_list_create(uint32_t capacity,
+                                         void *(*allocator)(size_t),
                                          uint32_t xoffset, uint32_t yoffset,
                                          const char *name) {
   struct command_list *command_list = allocator(sizeof(struct command_list));
@@ -176,7 +190,10 @@ struct command_list *command_list_create(uint32_t capacity, alloc_fn allocator,
 struct render_command *add_command(struct command_list *list,
                                    enum render_cmd_type tp) {
   if (list->ncmds == list->capacity) {
-    // TODO: better
+    /* TODO: better. Currently a bit tricky to provide dynamic scaling of this
+     *  since it is initially allocated with the frame allocator that does not
+     * support realloc.
+     */
     return NULL;
   }
 

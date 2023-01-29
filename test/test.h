@@ -1,3 +1,6 @@
+#ifndef _TEST_H_
+#define _TEST_H_
+
 #include <stdio.h>
 
 #define run_test(fn)                                                           \
@@ -11,3 +14,7 @@ void run_utf8_tests();
 void run_text_tests();
 void run_command_tests();
 void run_keyboard_tests();
+void run_allocator_tests();
+void run_minibuffer_tests();
+
+#endif
