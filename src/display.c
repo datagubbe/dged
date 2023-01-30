@@ -127,9 +127,9 @@ void putbyte(uint8_t c) {
 
 void putbyte_ws(uint8_t c, bool show_whitespace) {
   if (show_whitespace && c == '\t') {
-    fputs("\x1b[90m →  \x1b[0m", stdout);
+    fputs("\x1b[90m →  \x1b[39m", stdout);
   } else if (show_whitespace && c == ' ') {
-    fputs("\x1b[90m·\x1b[0m", stdout);
+    fputs("\x1b[90m·\x1b[39m", stdout);
   } else {
     putbyte(c);
   }

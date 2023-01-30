@@ -99,6 +99,8 @@ void minibuffer_init(struct buffer *buffer) {
   }
 
   g_minibuffer.buffer = buffer;
+  g_minibuffer.keymap = keymap_create("minibuffer", 10);
+
   struct binding bindings[] = {
       ANONYMOUS_BINDING(Ctrl, 'M', &execute_minibuffer_command),
       ANONYMOUS_BINDING(Ctrl, 'I', &complete_minibuffer_command),
@@ -106,6 +108,7 @@ void minibuffer_init(struct buffer *buffer) {
   keymap_bind_keys(&g_minibuffer.keymap, bindings,
                    sizeof(bindings) / sizeof(bindings[0]));
   buffer_add_keymap(g_minibuffer.buffer, &g_minibuffer.keymap);
+
   buffer_add_update_hook(g_minibuffer.buffer, update, &g_minibuffer);
 }
 

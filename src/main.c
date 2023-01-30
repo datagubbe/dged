@@ -309,7 +309,9 @@ int main(int argc, char *argv[]) {
   display_clear(display);
   display_destroy(display);
   keymap_destroy(&global_keymap);
+  keymap_destroy(&ctrlx_map);
   command_registry_destroy(&commands);
+  reactor_destroy(reactor);
   frame_allocator_destroy(&frame_allocator);
 
   return 0;

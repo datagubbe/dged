@@ -74,6 +74,11 @@ struct update_hooks {
   uint32_t nhooks;
 };
 
+struct buffer_location {
+  uint32_t line;
+  uint32_t col;
+};
+
 /**
  * A buffer of text that can be modified, read from and written to disk.
  *
@@ -81,13 +86,18 @@ struct update_hooks {
  * implemented on top of it.
  */
 struct buffer {
+
+  /** Buffer name */
   char *name;
+  /** Associated filename, this is where the buffer will be saved to */
   char *filename;
 
+  /** Text data structure */
   struct text *text;
 
-  uint32_t dot_line;
-  uint32_t dot_col;
+  struct buffer_location dot;
+  struct buffer_location mark;
+  bool mark_set;
 
   // local keymaps
   struct keymap *keymaps;
@@ -124,6 +134,15 @@ void buffer_beginning_of_line(struct buffer *buffer);
 void buffer_newline(struct buffer *buffer);
 void buffer_indent(struct buffer *buffer);
 
+void buffer_set_mark(struct buffer *buffer);
+void buffer_clear_mark(struct buffer *buffer);
+void buffer_set_mark_at(struct buffer *buffer, uint32_t line, uint32_t col);
+
+void buffer_copy(struct buffer *buffer);
+void buffer_paste(struct buffer *buffer);
+void buffer_paste_older(struct buffer *buffer);
+void buffer_cut(struct buffer *buffer);
+
 struct text_chunk buffer_get_line(struct buffer *buffer, uint32_t line);
 
 uint32_t buffer_add_update_hook(struct buffer *buffer, update_hook_cb hook,
@@ -158,6 +177,11 @@ BUFFER_WRAPCMD(buffer_beginning_of_line);
 BUFFER_WRAPCMD(buffer_newline);
 BUFFER_WRAPCMD(buffer_indent);
 BUFFER_WRAPCMD(buffer_to_file);
+BUFFER_WRAPCMD(buffer_set_mark);
+BUFFER_WRAPCMD(buffer_clear_mark);
+BUFFER_WRAPCMD(buffer_copy);
+BUFFER_WRAPCMD(buffer_cut);
+BUFFER_WRAPCMD(buffer_paste);
 
 static struct command BUFFER_COMMANDS[] = {
     {.name = "kill-line", .fn = buffer_kill_line_cmd},
@@ -174,4 +198,9 @@ static struct command BUFFER_COMMANDS[] = {
     {.name = "newline", .fn = buffer_newline_cmd},
     {.name = "indent", .fn = buffer_indent_cmd},
     {.name = "buffer-write-to-file", .fn = buffer_to_file_cmd},
+    {.name = "set-mark", .fn = buffer_set_mark_cmd},
+    {.name = "clear-mark", .fn = buffer_clear_mark_cmd},
+    {.name = "copy", .fn = buffer_copy_cmd},
+    {.name = "cut", .fn = buffer_cut_cmd},
+    {.name = "paste", .fn = buffer_paste_cmd},
 };

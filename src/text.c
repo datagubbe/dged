@@ -255,56 +255,44 @@ void text_insert_at(struct text *text, uint32_t line, uint32_t col,
   *lines_added = line - start_line;
 }
 
-void text_delete(struct text *text, uint32_t line, uint32_t col,
-                 uint32_t nchars) {
+void text_delete(struct text *text, uint32_t start_line, uint32_t start_col,
+                 uint32_t end_line, uint32_t end_col) {
 
-  struct line *lp = &text->lines[line];
-  if (col > lp->nchars) {
+  struct line *firstline = &text->lines[start_line];
+  struct line *lastline = &text->lines[end_line];
+  if (start_col > firstline->nchars) {
     return;
   }
 
-  // delete chars from current line
-  uint32_t chars_initial_line =
-      col + nchars > lp->nchars ? (lp->nchars - col) : nchars;
-  uint32_t bytei = charidx_to_byteidx(lp, col);
-  uint32_t nbytes =
-      utf8_nbytes(lp->data + bytei, lp->nbytes - bytei, chars_initial_line);
-
-  memcpy(lp->data + bytei, lp->data + bytei + nbytes,
-         lp->nbytes - (bytei + nbytes));
-
-  lp->nbytes -= nbytes;
-  lp->nchars -= chars_initial_line;
-  lp->flags |= LineChanged;
-
-  uint32_t initial_line = line;
-  uint32_t left_to_delete = nchars - chars_initial_line;
-
-  // grab remaining chars from last line to delete from (if any)
-  uint32_t src_col = 0;
-  while (left_to_delete > 0 && line < text->nlines) {
-    ++line;
-    --left_to_delete; // newline char
-
-    struct line *lp = &text->lines[line];
-    uint32_t deleted_in_line =
-        left_to_delete > lp->nchars ? lp->nchars : left_to_delete;
-    src_col = deleted_in_line;
-    left_to_delete -= deleted_in_line;
+  // handle deletion of newlines
+  if (end_col > lastline->nchars) {
+    ++end_line;
+    end_col = 0;
+    lastline = &text->lines[end_line];
   }
 
-  if (line != initial_line) {
-    struct line *lp = &text->lines[line];
-    uint32_t bytei = charidx_to_byteidx(lp, src_col);
-    if (src_col < lp->nchars) {
-      insert_at_col(&text->lines[initial_line], col, lp->data + bytei,
-                    lp->nbytes - bytei, lp->nchars - src_col);
-    }
+  uint32_t bytei = utf8_nbytes(lastline->data, lastline->nbytes, end_col);
+  if (lastline == firstline) {
+    // in this case we can "overwrite"
+    uint32_t dstbytei =
+        utf8_nbytes(firstline->data, firstline->nbytes, start_col);
+    memcpy(firstline->data + dstbytei, lastline->data + bytei,
+           lastline->nbytes - bytei);
+  } else {
+    // otherwise we actually have to copy from the last line
+    insert_at_col(firstline, start_col, lastline->data + bytei,
+                  lastline->nbytes - bytei, lastline->nchars - end_col);
   }
 
-  // delete all lines from current line + 1 to (and including) last line
-  for (uint32_t li = initial_line + 1; li <= line && li < text->nlines; ++li) {
-    delete_line(text, li);
+  firstline->nchars = start_col + (lastline->nchars - end_col);
+  firstline->nbytes =
+      utf8_nbytes(firstline->data, firstline->nbytes, start_col) +
+      (lastline->nbytes - bytei);
+
+  // delete full lines
+  for (uint32_t linei = start_line + 1;
+       linei <= end_line && linei < text->nlines; ++linei) {
+    delete_line(text, linei);
   }
 }
 
@@ -337,6 +325,71 @@ struct text_chunk text_get_line(struct text *text, uint32_t line) {
       .nchars = src_line->nchars,
       .line = line,
   };
+}
+
+struct copy_cmd {
+  uint32_t line;
+  uint32_t byteindex;
+  uint32_t nbytes;
+};
+
+struct text_chunk text_get_region(struct text *text, uint32_t start_line,
+                                  uint32_t start_col, uint32_t end_line,
+                                  uint32_t end_col) {
+  struct copy_cmd *copy_cmds = malloc(end_line - start_line + 1);
+
+  uint32_t total_chars = 0, total_bytes = 0;
+  for (uint32_t line = start_line; line <= end_line; ++line) {
+    struct line *l = &text->lines[line];
+    total_chars += l->nchars;
+    total_bytes += l->nbytes;
+
+    struct copy_cmd *cmd = &copy_cmds[line - start_line];
+    cmd->line = line;
+    cmd->byteindex = 0;
+    cmd->nbytes = l->nbytes;
+
+    ++line;
+  }
+
+  // correct first line
+  struct copy_cmd *cmd_first = &copy_cmds[start_line];
+  struct line *first_line = &text->lines[start_line];
+  uint32_t byteoff =
+      utf8_nbytes(first_line->data, first_line->nbytes, start_col);
+  cmd_first->byteindex += byteoff;
+  cmd_first->nbytes -= byteoff;
+  total_bytes -= byteoff;
+  total_chars -= start_col;
+
+  // correct last line
+  struct copy_cmd *cmd_last = &copy_cmds[end_line];
+  struct line *last_line = &text->lines[end_line];
+  uint32_t byteindex = utf8_nbytes(last_line->data, last_line->nbytes, end_col);
+  cmd_last->nbytes -= (last_line->nchars - end_col);
+  total_bytes -= (last_line->nbytes - byteindex);
+  total_chars -= (last_line->nchars - end_col);
+
+  struct text_chunk txt = {
+      .text = (uint8_t *)malloc(total_bytes + end_line - start_line),
+      .line = 0,
+      .nbytes = total_bytes,
+      .nchars = total_chars,
+  };
+
+  // copy data
+  for (uint32_t cmdi = 0, curr = 0; cmdi <= end_line - start_line; ++cmdi) {
+    struct copy_cmd *c = &copy_cmds[cmdi];
+    struct line *l = &text->lines[c->line];
+    memcpy(txt.text + curr, l->data + c->byteindex, c->nbytes);
+    curr += c->nbytes;
+
+    if (cmdi != end_line - start_line) {
+      txt.text[++curr] = '\n';
+    }
+  }
+
+  return txt;
 }
 
 bool text_line_contains_unicode(struct text *text, uint32_t line) {

@@ -16,9 +16,13 @@
 #include <unistd.h>
 #include <wchar.h>
 
-struct modeline {
-  uint8_t *buffer;
-};
+static struct modeline { uint8_t *buffer; } g_modeline = {0};
+
+#define KILL_RING_SZ 64
+static struct kill_ring {
+  struct text_chunk buffer[KILL_RING_SZ];
+  uint32_t curr_idx;
+} g_kill_ring = {.curr_idx = 0};
 
 struct update_hook_result buffer_linenum_hook(struct buffer *buffer,
                                               struct command_list *commands,
@@ -33,18 +37,20 @@ struct update_hook_result buffer_modeline_hook(struct buffer *buffer,
                                                void *userdata);
 
 struct buffer buffer_create(char *name, bool modeline) {
-  struct buffer b =
-      (struct buffer){.filename = NULL,
-                      .name = strdup(name),
-                      .text = text_create(10),
-                      .dot_col = 0,
-                      .dot_line = 0,
-                      .keymaps = calloc(10, sizeof(struct keymap)),
-                      .nkeymaps = 1,
-                      .scroll_col = 0,
-                      .scroll_line = 0,
-                      .update_hooks = {0},
-                      .nkeymaps_max = 10};
+  struct buffer b = (struct buffer){
+      .filename = NULL,
+      .name = strdup(name),
+      .text = text_create(10),
+      .dot = {0},
+      .mark = {0},
+      .mark_set = false,
+      .keymaps = calloc(10, sizeof(struct keymap)),
+      .nkeymaps = 1,
+      .scroll_col = 0,
+      .scroll_line = 0,
+      .update_hooks = {0},
+      .nkeymaps_max = 10,
+  };
 
   b.keymaps[0] = keymap_create("buffer-default", 128);
   struct binding bindings[] = {
@@ -71,14 +77,19 @@ struct buffer buffer_create(char *name, bool modeline) {
       BINDING(DELETE, "delete-char"),
       BINDING(Ctrl, 'D', "delete-char"),
       BINDING(BACKSPACE, "backward-delete-char"),
+
+      BINDING(Ctrl, '@', "set-mark"),
+
+      BINDING(Ctrl, 'W', "cut"),
+      BINDING(Ctrl, 'Y', "paste"),
+      BINDING(Meta, 'w', "copy"),
   };
   keymap_bind_keys(&b.keymaps[0], bindings,
                    sizeof(bindings) / sizeof(bindings[0]));
 
   if (modeline) {
-    struct modeline *modeline = calloc(1, sizeof(struct modeline));
-    modeline->buffer = malloc(1024);
-    buffer_add_update_hook(&b, buffer_modeline_hook, modeline);
+    g_modeline.buffer = malloc(1024);
+    buffer_add_update_hook(&b, buffer_modeline_hook, &g_modeline);
   }
 
   if (modeline) {
@@ -93,11 +104,19 @@ void buffer_destroy(struct buffer *buffer) {
   free(buffer->text);
   free(buffer->name);
   free(buffer->filename);
+  for (uint32_t keymapi = 0; keymapi < buffer->nkeymaps; ++keymapi) {
+    keymap_destroy(&buffer->keymaps[keymapi]);
+  }
+  free(buffer->keymaps);
+
+  if (g_modeline.buffer != NULL) {
+    free(g_modeline.buffer);
+  }
 }
 
 void buffer_clear(struct buffer *buffer) {
   text_clear(buffer->text);
-  buffer->dot_col = buffer->dot_line = 0;
+  buffer->dot.col = buffer->dot.line = 0;
 }
 
 bool buffer_is_empty(struct buffer *buffer) {
@@ -121,53 +140,125 @@ void buffer_add_keymap(struct buffer *buffer, struct keymap *keymap) {
 }
 
 bool movev(struct buffer *buffer, int rowdelta) {
-  int64_t new_line = (int64_t)buffer->dot_line + rowdelta;
+  int64_t new_line = (int64_t)buffer->dot.line + rowdelta;
 
   if (new_line < 0) {
-    buffer->dot_line = 0;
+    buffer->dot.line = 0;
     return false;
   } else if (new_line > text_num_lines(buffer->text) - 1) {
-    buffer->dot_line = text_num_lines(buffer->text) - 1;
+    buffer->dot.line = text_num_lines(buffer->text) - 1;
     return false;
   } else {
-    buffer->dot_line = (uint32_t)new_line;
+    buffer->dot.line = (uint32_t)new_line;
 
     // make sure column stays on the line
-    uint32_t linelen = text_line_length(buffer->text, buffer->dot_line);
-    buffer->dot_col = buffer->dot_col > linelen ? linelen : buffer->dot_col;
+    uint32_t linelen = text_line_length(buffer->text, buffer->dot.line);
+    buffer->dot.col = buffer->dot.col > linelen ? linelen : buffer->dot.col;
     return true;
   }
 }
 
 // move dot `coldelta` chars
 void moveh(struct buffer *buffer, int coldelta) {
-  int64_t new_col = (int64_t)buffer->dot_col + coldelta;
+  int64_t new_col = (int64_t)buffer->dot.col + coldelta;
 
-  if (new_col > (int64_t)text_line_length(buffer->text, buffer->dot_line)) {
+  if (new_col > (int64_t)text_line_length(buffer->text, buffer->dot.line)) {
     if (movev(buffer, 1)) {
-      buffer->dot_col = 0;
+      buffer->dot.col = 0;
     }
   } else if (new_col < 0) {
     if (movev(buffer, -1)) {
-      buffer->dot_col = text_line_length(buffer->text, buffer->dot_line);
+      buffer->dot.col = text_line_length(buffer->text, buffer->dot.line);
     }
   } else {
-    buffer->dot_col = new_col;
+    buffer->dot.col = new_col;
+  }
+}
+
+struct region {
+  struct buffer_location begin;
+  struct buffer_location end;
+};
+
+struct region to_region(struct buffer_location dot,
+                        struct buffer_location mark) {
+  struct region reg = {.begin = mark, .end = dot};
+
+  if (dot.line < mark.line || (dot.line == mark.line && dot.col < mark.col)) {
+    reg.begin = dot;
+    reg.end = mark;
+  }
+
+  return reg;
+}
+
+bool region_has_size(struct buffer *buffer) {
+  return buffer->mark_set &&
+         (labs((int64_t)buffer->mark.line - (int64_t)buffer->dot.line + 1) *
+          labs((int64_t)buffer->mark.col - (int64_t)buffer->dot.col)) > 0;
+}
+
+struct text_chunk *copy_region(struct buffer *buffer, struct region region) {
+  g_kill_ring.curr_idx = g_kill_ring.curr_idx + 1 % KILL_RING_SZ;
+  struct text_chunk *curr = &g_kill_ring.buffer[g_kill_ring.curr_idx];
+  if (curr != NULL) {
+    free(curr->text);
+  }
+
+  struct text_chunk txt =
+      text_get_region(buffer->text, region.begin.line, region.begin.col,
+                      region.end.line, region.end.col);
+  *curr = txt;
+  return curr;
+}
+
+void buffer_copy(struct buffer *buffer) {
+  if (region_has_size(buffer)) {
+    struct region reg = to_region(buffer->dot, buffer->mark);
+    struct text_chunk *curr = copy_region(buffer, reg);
+    buffer_clear_mark(buffer);
+  }
+}
+
+void buffer_paste(struct buffer *buffer) {
+  struct text_chunk *curr = &g_kill_ring.buffer[g_kill_ring.curr_idx];
+  if (curr != NULL) {
+    buffer_add_text(buffer, curr->text, curr->nbytes);
+  }
+}
+
+void buffer_cut(struct buffer *buffer) {
+  if (region_has_size(buffer)) {
+    struct region reg = to_region(buffer->dot, buffer->mark);
+    copy_region(buffer, reg);
+    text_delete(buffer->text, reg.begin.line, reg.begin.col, reg.end.line,
+                reg.end.col);
+    buffer_clear_mark(buffer);
   }
 }
 
 void buffer_kill_line(struct buffer *buffer) {
-  uint32_t nchars =
-      text_line_length(buffer->text, buffer->dot_line) - buffer->dot_col;
+  uint32_t nchars = text_line_length(buffer->text, buffer->dot.line);
   if (nchars == 0) {
     nchars = 1;
   }
 
-  text_delete(buffer->text, buffer->dot_line, buffer->dot_col, nchars);
+  struct region reg = {
+      .begin = buffer->dot,
+      .end =
+          {
+              .line = buffer->dot.line,
+              .col = buffer->dot.col + nchars,
+          },
+  };
+  copy_region(buffer, reg);
+  text_delete(buffer->text, buffer->dot.line, buffer->dot.col, buffer->dot.line,
+              buffer->dot.col + nchars);
 }
 
 void buffer_forward_delete_char(struct buffer *buffer) {
-  text_delete(buffer->text, buffer->dot_line, buffer->dot_col, 1);
+  text_delete(buffer->text, buffer->dot.line, buffer->dot.col, buffer->dot.line,
+              buffer->dot.col + 1);
 }
 
 void buffer_backward_delete_char(struct buffer *buffer) {
@@ -180,9 +271,9 @@ void buffer_forward_char(struct buffer *buffer) { moveh(buffer, 1); }
 
 void buffer_forward_word(struct buffer *buffer) {
   moveh(buffer, 1);
-  struct text_chunk line = text_get_line(buffer->text, buffer->dot_line);
+  struct text_chunk line = text_get_line(buffer->text, buffer->dot.line);
   uint32_t bytei =
-      text_col_to_byteindex(buffer->text, buffer->dot_line, buffer->dot_col);
+      text_col_to_byteindex(buffer->text, buffer->dot.line, buffer->dot.col);
   for (; bytei < line.nbytes; ++bytei) {
     uint8_t b = line.text[bytei];
     if (b == ' ' || b == '.') {
@@ -191,15 +282,15 @@ void buffer_forward_word(struct buffer *buffer) {
   }
 
   uint32_t target_col =
-      text_byteindex_to_col(buffer->text, buffer->dot_line, bytei);
-  moveh(buffer, target_col - buffer->dot_col);
+      text_byteindex_to_col(buffer->text, buffer->dot.line, bytei);
+  moveh(buffer, target_col - buffer->dot.col);
 }
 
 void buffer_backward_word(struct buffer *buffer) {
   moveh(buffer, -1);
-  struct text_chunk line = text_get_line(buffer->text, buffer->dot_line);
+  struct text_chunk line = text_get_line(buffer->text, buffer->dot.line);
   uint32_t bytei =
-      text_col_to_byteindex(buffer->text, buffer->dot_line, buffer->dot_col);
+      text_col_to_byteindex(buffer->text, buffer->dot.line, buffer->dot.col);
   for (; bytei > 0; --bytei) {
     uint8_t b = line.text[bytei];
     if (b == ' ' || b == '.') {
@@ -208,18 +299,18 @@ void buffer_backward_word(struct buffer *buffer) {
   }
 
   uint32_t target_col =
-      text_byteindex_to_col(buffer->text, buffer->dot_line, bytei);
-  moveh(buffer, (int32_t)target_col - buffer->dot_col);
+      text_byteindex_to_col(buffer->text, buffer->dot.line, bytei);
+  moveh(buffer, (int32_t)target_col - buffer->dot.col);
 }
 
 void buffer_backward_line(struct buffer *buffer) { movev(buffer, -1); }
 void buffer_forward_line(struct buffer *buffer) { movev(buffer, 1); }
 
 void buffer_end_of_line(struct buffer *buffer) {
-  buffer->dot_col = text_line_length(buffer->text, buffer->dot_line);
+  buffer->dot.col = text_line_length(buffer->text, buffer->dot.line);
 }
 
-void buffer_beginning_of_line(struct buffer *buffer) { buffer->dot_col = 0; }
+void buffer_beginning_of_line(struct buffer *buffer) { buffer->dot.col = 0; }
 
 struct buffer buffer_from_file(char *filename) {
   struct buffer b = buffer_create(basename((char *)filename), true);
@@ -288,13 +379,13 @@ void buffer_to_file(struct buffer *buffer) {
 
 int buffer_add_text(struct buffer *buffer, uint8_t *text, uint32_t nbytes) {
   uint32_t lines_added, cols_added;
-  text_insert_at(buffer->text, buffer->dot_line, buffer->dot_col, text, nbytes,
+  text_insert_at(buffer->text, buffer->dot.line, buffer->dot.col, text, nbytes,
                  &lines_added, &cols_added);
   movev(buffer, lines_added);
 
   if (lines_added > 0) {
     // does not make sense to use position from another line
-    buffer->dot_col = 0;
+    buffer->dot.col = 0;
   }
   moveh(buffer, cols_added);
 
@@ -306,6 +397,7 @@ void buffer_newline(struct buffer *buffer) {
 }
 
 void buffer_indent(struct buffer *buffer) {
+  // TODO: config
   buffer_add_text(buffer, (uint8_t *)"    ", 4);
 }
 
@@ -322,12 +414,34 @@ uint32_t buffer_add_update_hook(struct buffer *buffer, update_hook_cb hook,
   return buffer->update_hooks.nhooks - 1;
 }
 
+void buffer_set_mark(struct buffer *buffer) {
+  buffer->mark_set
+      ? buffer_clear_mark(buffer)
+      : buffer_set_mark_at(buffer, buffer->dot.line, buffer->dot.col);
+}
+
+void buffer_clear_mark(struct buffer *buffer) {
+  buffer->mark_set = false;
+  minibuffer_echo_timeout(2, "mark cleared");
+}
+
+void buffer_set_mark_at(struct buffer *buffer, uint32_t line, uint32_t col) {
+  buffer->mark_set = true;
+  buffer->mark.line = line;
+  buffer->mark.col = col;
+  minibuffer_echo_timeout(2, "mark set");
+}
+
 struct cmdbuf {
   struct command_list *cmds;
   uint32_t scroll_line;
   uint32_t line_offset;
   uint32_t col_offset;
   uint32_t width;
+
+  struct region region;
+  bool mark_set;
+
   struct line_render_hook *line_render_hooks;
   uint32_t nlinerender_hooks;
 };
@@ -341,8 +455,59 @@ void render_line(struct text_chunk *line, void *userdata) {
   }
 
   command_list_set_show_whitespace(cmdbuf->cmds, true);
-  command_list_draw_text(cmdbuf->cmds, cmdbuf->col_offset, visual_line,
-                         line->text, line->nbytes);
+  struct buffer_location *begin = &cmdbuf->region.begin,
+                         *end = &cmdbuf->region.end;
+  if (cmdbuf->mark_set && line->line >= begin->line &&
+      line->line <= end->line) {
+    uint32_t byte_offset = 0;
+    uint32_t col_offset = 0;
+
+    // draw any text on the line that should not be part of region
+    if (begin->line == line->line) {
+      if (begin->col > 0) {
+        uint32_t nbytes = utf8_nbytes(line->text, line->nbytes, begin->col);
+        command_list_draw_text(cmdbuf->cmds, cmdbuf->col_offset, visual_line,
+                               line->text, nbytes);
+
+        byte_offset += nbytes;
+      }
+
+      col_offset = begin->col;
+    }
+
+    // activate region color
+    command_list_set_index_color_bg(cmdbuf->cmds, 5);
+
+    // draw any text on line that should be part of region
+    if (end->line == line->line) {
+      if (end->col > 0) {
+        uint32_t nbytes =
+            utf8_nbytes(line->text + byte_offset, line->nbytes - byte_offset,
+                        end->col - col_offset);
+        command_list_draw_text(cmdbuf->cmds, cmdbuf->col_offset + col_offset,
+                               visual_line, line->text + byte_offset, nbytes);
+        byte_offset += nbytes;
+      }
+
+      col_offset = end->col;
+      command_list_reset_color(cmdbuf->cmds);
+    }
+
+    // draw rest of line
+    if (line->nbytes - byte_offset > 0) {
+      command_list_draw_text(cmdbuf->cmds, cmdbuf->col_offset + col_offset,
+                             visual_line, line->text + byte_offset,
+                             line->nbytes - byte_offset);
+    }
+
+    // done rendering region
+    command_list_reset_color(cmdbuf->cmds);
+
+  } else {
+    command_list_draw_text(cmdbuf->cmds, cmdbuf->col_offset, visual_line,
+                           line->text, line->nbytes);
+  }
+
   command_list_set_show_whitespace(cmdbuf->cmds, false);
 
   uint32_t col = line->nchars + cmdbuf->col_offset;
@@ -372,7 +537,7 @@ void scroll(struct buffer *buffer, int line_delta, int col_delta) {
 
   int64_t new_col = (int64_t)buffer->scroll_col + col_delta;
   if (new_col >= 0 &&
-      new_col < text_line_length(buffer->text, buffer->dot_line)) {
+      new_col < text_line_length(buffer->text, buffer->dot.line)) {
     buffer->scroll_col = (uint32_t)new_col;
   }
 }
@@ -385,10 +550,10 @@ void to_relative(struct buffer *buffer, uint32_t line, uint32_t col,
 
 uint32_t visual_dot_col(struct buffer *buffer, uint32_t dot_col) {
   uint32_t visual_dot_col = dot_col;
-  struct text_chunk line = text_get_line(buffer->text, buffer->dot_line);
+  struct text_chunk line = text_get_line(buffer->text, buffer->dot.line);
   for (uint32_t bytei = 0;
        bytei <
-       text_col_to_byteindex(buffer->text, buffer->dot_line, buffer->dot_col);
+       text_col_to_byteindex(buffer->text, buffer->dot.line, buffer->dot.col);
        ++bytei) {
     if (line.text[bytei] == '\t') {
       visual_dot_col += 3;
@@ -424,8 +589,8 @@ struct update_hook_result buffer_modeline_hook(struct buffer *buffer,
   struct tm *lt = localtime(&now);
   char left[128], right[128];
 
-  snprintf(left, 128, "  %-16s (%d, %d)", buffer->name, buffer->dot_line + 1,
-           visual_dot_col(buffer, buffer->dot_col));
+  snprintf(left, 128, "  %-16s (%d, %d)", buffer->name, buffer->dot.line + 1,
+           visual_dot_col(buffer, buffer->dot.col));
   snprintf(right, 128, "(%.2f ms) %02d:%02d", frame_time / 1e6, lt->tm_hour,
            lt->tm_min);
 
@@ -497,7 +662,7 @@ struct update_hook_result buffer_linenum_hook(struct buffer *buffer,
   }
 
   linenum_data.longest_nchars = longest_nchars;
-  linenum_data.dot_line = buffer->dot_line;
+  linenum_data.dot_line = buffer->dot.line;
   struct update_hook_result res = {0};
   res.margins.left = longest_nchars + 2;
   res.line_render_hook.callback = linenum_render_hook;
@@ -539,7 +704,7 @@ void buffer_update(struct buffer *buffer, uint32_t width, uint32_t height,
   }
 
   int64_t rel_line, rel_col;
-  to_relative(buffer, buffer->dot_line, buffer->dot_col, &rel_line, &rel_col);
+  to_relative(buffer, buffer->dot.line, buffer->dot.col, &rel_line, &rel_col);
   int line_delta = 0, col_delta = 0;
   if (rel_line < 0) {
     line_delta = -(int)height / 2;
@@ -563,6 +728,8 @@ void buffer_update(struct buffer *buffer, uint32_t width, uint32_t height,
       .line_offset = total_margins.top,
       .line_render_hooks = line_hooks,
       .nlinerender_hooks = nlinehooks,
+      .mark_set = buffer->mark_set,
+      .region = to_region(buffer->dot, buffer->mark),
   };
   text_for_each_line(buffer->text, buffer->scroll_line, height, render_line,
                      &cmdbuf);
@@ -575,9 +742,9 @@ void buffer_update(struct buffer *buffer, uint32_t width, uint32_t height,
   }
 
   // update the visual cursor position
-  to_relative(buffer, buffer->dot_line, buffer->dot_col, &rel_line, &rel_col);
-  uint32_t visual_col = visual_dot_col(buffer, buffer->dot_col);
-  to_relative(buffer, buffer->dot_line, visual_col, &rel_line, &rel_col);
+  to_relative(buffer, buffer->dot.line, buffer->dot.col, &rel_line, &rel_col);
+  uint32_t visual_col = visual_dot_col(buffer, buffer->dot.col);
+  to_relative(buffer, buffer->dot.line, visual_col, &rel_line, &rel_col);
 
   *relline = rel_line < 0 ? 0 : (uint32_t)rel_line + total_margins.top;
   *relcol = rel_col < 0 ? 0 : (uint32_t)rel_col + total_margins.left;

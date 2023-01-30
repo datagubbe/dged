@@ -7,18 +7,18 @@
 
 void test_move() {
   struct buffer b = buffer_create("test-buffer", false);
-  ASSERT(b.dot_col == 0 && b.dot_line == 0,
+  ASSERT(b.dot.col == 0 && b.dot.line == 0,
          "Expected dot to be at buffer start");
 
   // make sure we cannot move now
   buffer_backward_char(&b);
   buffer_backward_line(&b);
-  ASSERT(b.dot_col == 0 && b.dot_line == 0,
+  ASSERT(b.dot.col == 0 && b.dot.line == 0,
          "Expected to not be able to move backward in empty buffer");
 
   buffer_forward_char(&b);
   buffer_forward_line(&b);
-  ASSERT(b.dot_col == 0 && b.dot_line == 0,
+  ASSERT(b.dot.col == 0 && b.dot.line == 0,
          "Expected to not be able to move forward in empty buffer");
 
   // add some text and try again
@@ -28,7 +28,7 @@ void test_move() {
 
   buffer_beginning_of_line(&b);
   buffer_forward_char(&b);
-  ASSERT(b.dot_col == 1 && b.dot_line == 0,
+  ASSERT(b.dot.col == 1 && b.dot.line == 0,
          "Expected to be able to move forward by one char");
 
   // now we have two lines
@@ -39,7 +39,7 @@ void test_move() {
   buffer_beginning_of_line(&b);
   buffer_backward_char(&b);
   ASSERT(
-      b.dot_col == 0 && b.dot_line == 0,
+      b.dot.col == 0 && b.dot.line == 0,
       "Expected to not be able to move backwards when at beginning of buffer");
 }
 

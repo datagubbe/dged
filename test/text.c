@@ -53,14 +53,14 @@ void test_delete_text() {
   text_insert_at(t, 0, 0, (uint8_t *)txt, strlen(txt), &lines_added,
                  &cols_added);
 
-  text_delete(t, 0, 12, 2);
+  text_delete(t, 0, 12, 0, 14);
   ASSERT(text_line_length(t, 0) == 12,
          "Expected line to be 12 chars after deleting two");
   ASSERT(strncmp((const char *)text_get_line(t, 0).text, "This is line",
                  text_line_size(t, 0)) == 0,
          "Expected two chars to be deleted");
 
-  text_delete(t, 0, 0, 25);
+  text_delete(t, 0, 0, 10, 10);
   ASSERT(text_get_line(t, 0).nbytes == 0,
          "Expected line to be empty after many chars removed");
 
@@ -70,14 +70,14 @@ void test_delete_text() {
   ASSERT(text_num_lines(t) == 3,
          "Expected to have three lines after inserting as many");
 
-  text_delete(t, 1, 11, 3);
+  text_delete(t, 1, 11, 1, 14);
   ASSERT(text_line_length(t, 1) == 11,
          "Expected line to contain 11 chars after deletion");
   struct text_chunk line = text_get_line(t, 1);
   ASSERT(strncmp((const char *)line.text, "This is lin", line.nbytes) == 0,
          "Expected deleted characters to be gone in the second line");
 
-  text_delete(t, 1, 0, text_line_length(t, 1) + 1);
+  text_delete(t, 1, 0, 1, text_line_length(t, 1) + 1);
   ASSERT(text_num_lines(t) == 2,
          "Expected to have two lines after deleting one");
   struct text_chunk line2 = text_get_line(t, 1);
@@ -88,7 +88,7 @@ void test_delete_text() {
   const char *delete_me = "This is line🎙\nQ";
   text_insert_at(t3, 0, 0, (uint8_t *)delete_me, strlen(delete_me),
                  &lines_added, &cols_added);
-  text_delete(t3, 0, 13, 1);
+  text_delete(t3, 0, 13, 0, 14);
   struct text_chunk top_line = text_get_line(t3, 0);
   ASSERT(strncmp((const char *)top_line.text, "This is line🎙Q",
                  top_line.nbytes) == 0,
@@ -101,7 +101,7 @@ void test_delete_text() {
   const char *deletable_text = "Only one line kinda";
   text_append(t4, (uint8_t *)deletable_text, strlen(deletable_text),
               &lines_added, &cols_added);
-  text_delete(t4, 0, 19, 1);
+  text_delete(t4, 0, 19, 0, 20);
   ASSERT(text_num_lines(t4) == 1, "Expected the line to still be there");
   ASSERT(text_line_length(t4, 0) == 19,
          "Expected nothing to have happened to the line");
@@ -118,7 +118,7 @@ void test_delete_text() {
          "Line length should be 12 (even though there "
          "are more bytes in the line).");
 
-  text_delete(t2, 0, 10, 2);
+  text_delete(t2, 0, 10, 0, 12);
   ASSERT(text_line_length(t2, 0) == 10,
          "Line length should be 10 after deleting the cow emoji and a space");
   struct text_chunk line3 = text_get_line(t2, 0);

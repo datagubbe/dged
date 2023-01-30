@@ -39,4 +39,5 @@ void buffers_destroy(struct buffers *buffers) {
   }
 
   buffers->nbuffers = 0;
+  free(buffers->buffers);
 }
