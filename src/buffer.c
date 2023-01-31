@@ -16,7 +16,9 @@
 #include <unistd.h>
 #include <wchar.h>
 
-static struct modeline { uint8_t *buffer; } g_modeline = {0};
+struct modeline {
+  uint8_t *buffer;
+};
 
 #define KILL_RING_SZ 64
 static struct kill_ring {
@@ -88,8 +90,9 @@ struct buffer buffer_create(char *name, bool modeline) {
                    sizeof(bindings) / sizeof(bindings[0]));
 
   if (modeline) {
-    g_modeline.buffer = malloc(1024);
-    buffer_add_update_hook(&b, buffer_modeline_hook, &g_modeline);
+    struct modeline *modeline = calloc(1, sizeof(struct modeline));
+    modeline->buffer = malloc(1024);
+    buffer_add_update_hook(&b, buffer_modeline_hook, modeline);
   }
 
   if (modeline) {
@@ -108,10 +111,6 @@ void buffer_destroy(struct buffer *buffer) {
     keymap_destroy(&buffer->keymaps[keymapi]);
   }
   free(buffer->keymaps);
-
-  if (g_modeline.buffer != NULL) {
-    free(g_modeline.buffer);
-  }
 }
 
 void buffer_clear(struct buffer *buffer) {
@@ -194,7 +193,7 @@ struct region to_region(struct buffer_location dot,
 
 bool region_has_size(struct buffer *buffer) {
   return buffer->mark_set &&
-         (labs((int64_t)buffer->mark.line - (int64_t)buffer->dot.line + 1) *
+         (labs((int64_t)buffer->mark.line - (int64_t)buffer->dot.line) +
           labs((int64_t)buffer->mark.col - (int64_t)buffer->dot.col)) > 0;
 }
 
@@ -234,6 +233,7 @@ void buffer_cut(struct buffer *buffer) {
     text_delete(buffer->text, reg.begin.line, reg.begin.col, reg.end.line,
                 reg.end.col);
     buffer_clear_mark(buffer);
+    buffer->dot = reg.begin;
   }
 }
 

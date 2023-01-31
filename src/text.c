@@ -336,7 +336,8 @@ struct copy_cmd {
 struct text_chunk text_get_region(struct text *text, uint32_t start_line,
                                   uint32_t start_col, uint32_t end_line,
                                   uint32_t end_col) {
-  struct copy_cmd *copy_cmds = malloc(end_line - start_line + 1);
+  uint32_t nlines = end_line - start_line + 1;
+  struct copy_cmd *copy_cmds = calloc(nlines, sizeof(struct copy_cmd));
 
   uint32_t total_chars = 0, total_bytes = 0;
   for (uint32_t line = start_line; line <= end_line; ++line) {
@@ -348,12 +349,10 @@ struct text_chunk text_get_region(struct text *text, uint32_t start_line,
     cmd->line = line;
     cmd->byteindex = 0;
     cmd->nbytes = l->nbytes;
-
-    ++line;
   }
 
   // correct first line
-  struct copy_cmd *cmd_first = &copy_cmds[start_line];
+  struct copy_cmd *cmd_first = &copy_cmds[0];
   struct line *first_line = &text->lines[start_line];
   uint32_t byteoff =
       utf8_nbytes(first_line->data, first_line->nbytes, start_col);
@@ -363,33 +362,38 @@ struct text_chunk text_get_region(struct text *text, uint32_t start_line,
   total_chars -= start_col;
 
   // correct last line
-  struct copy_cmd *cmd_last = &copy_cmds[end_line];
+  struct copy_cmd *cmd_last = &copy_cmds[nlines - 1];
   struct line *last_line = &text->lines[end_line];
   uint32_t byteindex = utf8_nbytes(last_line->data, last_line->nbytes, end_col);
   cmd_last->nbytes -= (last_line->nchars - end_col);
   total_bytes -= (last_line->nbytes - byteindex);
   total_chars -= (last_line->nchars - end_col);
 
-  struct text_chunk txt = {
-      .text = (uint8_t *)malloc(total_bytes + end_line - start_line),
+  uint8_t *data = (uint8_t *)malloc(total_bytes + end_line - start_line);
+
+  // copy data
+  for (uint32_t cmdi = 0, curr = 0; cmdi < nlines; ++cmdi) {
+    struct copy_cmd *c = &copy_cmds[cmdi];
+    struct line *l = &text->lines[c->line];
+    memcpy(data + curr, l->data + c->byteindex, c->nbytes);
+    curr += c->nbytes;
+
+    if (cmdi != (nlines - 1)) {
+      data[curr] = '\n';
+      ++curr;
+      ++total_bytes;
+      ++total_chars;
+    }
+  }
+
+  free(copy_cmds);
+  return (struct text_chunk){
+      .text = data,
       .line = 0,
       .nbytes = total_bytes,
       .nchars = total_chars,
   };
-
-  // copy data
-  for (uint32_t cmdi = 0, curr = 0; cmdi <= end_line - start_line; ++cmdi) {
-    struct copy_cmd *c = &copy_cmds[cmdi];
-    struct line *l = &text->lines[c->line];
-    memcpy(txt.text + curr, l->data + c->byteindex, c->nbytes);
-    curr += c->nbytes;
-
-    if (cmdi != end_line - start_line) {
-      txt.text[++curr] = '\n';
-    }
-  }
-
-  return txt;
+  ;
 }
 
 bool text_line_contains_unicode(struct text *text, uint32_t line) {
