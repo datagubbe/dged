@@ -95,18 +95,28 @@ struct buffer {
   /** Text data structure */
   struct text *text;
 
+  /** Location of dot (cursor) */
   struct buffer_location dot;
+
+  /** Location of mark (where a selection starts) */
   struct buffer_location mark;
+
+  /** True if the start of a selection has been set */
   bool mark_set;
 
-  // local keymaps
+  /** Buffer-local keymaps in reverse priority order */
   struct keymap *keymaps;
+
+  /** Number of buffer-local keymaps */
   uint32_t nkeymaps;
+
+  /** Maximum number of keymaps */
   uint32_t nkeymaps_max;
 
-  uint32_t scroll_line;
-  uint32_t scroll_col;
+  /** Current buffer scroll position */
+  struct buffer_location scroll;
 
+  /** Buffer update hooks */
   struct update_hooks update_hooks;
 };
 
@@ -134,6 +144,9 @@ void buffer_beginning_of_line(struct buffer *buffer);
 void buffer_newline(struct buffer *buffer);
 void buffer_indent(struct buffer *buffer);
 
+void buffer_goto_beginning(struct buffer *buffer);
+void buffer_goto_end(struct buffer *buffer);
+
 void buffer_set_mark(struct buffer *buffer);
 void buffer_clear_mark(struct buffer *buffer);
 void buffer_set_mark_at(struct buffer *buffer, uint32_t line, uint32_t col);
@@ -150,6 +163,7 @@ uint32_t buffer_add_update_hook(struct buffer *buffer, update_hook_cb hook,
 
 struct buffer buffer_from_file(char *filename);
 void buffer_to_file(struct buffer *buffer);
+void buffer_write_to(struct buffer *buffer, const char *filename);
 
 void buffer_update(struct buffer *buffer, uint32_t width, uint32_t height,
                    struct command_list *commands, uint64_t frame_time,
@@ -182,6 +196,9 @@ BUFFER_WRAPCMD(buffer_clear_mark);
 BUFFER_WRAPCMD(buffer_copy);
 BUFFER_WRAPCMD(buffer_cut);
 BUFFER_WRAPCMD(buffer_paste);
+BUFFER_WRAPCMD(buffer_paste_older);
+BUFFER_WRAPCMD(buffer_goto_beginning);
+BUFFER_WRAPCMD(buffer_goto_end);
 
 static struct command BUFFER_COMMANDS[] = {
     {.name = "kill-line", .fn = buffer_kill_line_cmd},
@@ -203,4 +220,7 @@ static struct command BUFFER_COMMANDS[] = {
     {.name = "copy", .fn = buffer_copy_cmd},
     {.name = "cut", .fn = buffer_cut_cmd},
     {.name = "paste", .fn = buffer_paste_cmd},
+    {.name = "paste-older", .fn = buffer_paste_older_cmd},
+    {.name = "goto-beginning", .fn = buffer_goto_beginning_cmd},
+    {.name = "goto-end", .fn = buffer_goto_end_cmd},
 };

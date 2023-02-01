@@ -176,6 +176,11 @@ struct command *lookup_command_by_hash(struct commands *commands,
 int32_t find_file(struct command_ctx ctx, int argc, const char *argv[]);
 
 /**
+ * Write the active buffer to a file
+ */
+int32_t write_file(struct command_ctx ctx, int argc, const char *argv[]);
+
+/**
  * Run a command interactively from the minibuffer.
  */
 int32_t run_interactive(struct command_ctx ctx, int argc, const char *argv[]);

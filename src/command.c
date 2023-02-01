@@ -95,7 +95,7 @@ int32_t find_file(struct command_ctx ctx, int argc, const char *argv[]) {
   if (argc == 1) {
     pth = argv[0];
     struct stat sb;
-    if (stat(pth, &sb) < 0) {
+    if (stat(pth, &sb) < 0 && errno != ENOENT) {
       minibuffer_echo("stat on %s failed: %s", pth, strerror(errno));
       return 1;
     }
@@ -111,6 +111,18 @@ int32_t find_file(struct command_ctx ctx, int argc, const char *argv[]) {
                             ctx.active_window->buffer->name);
   } else {
     minibuffer_prompt(ctx, "find file: ");
+  }
+
+  return 0;
+}
+
+int32_t write_file(struct command_ctx ctx, int argc, const char *argv[]) {
+  const char *pth = NULL;
+  if (argc == 1) {
+    pth = argv[0];
+    buffer_write_to(ctx.active_window->buffer, pth);
+  } else {
+    minibuffer_prompt(ctx, "write to file: ");
   }
 
   return 0;

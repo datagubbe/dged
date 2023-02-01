@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "bits/stdint-uintn.h"
 #include "display.h"
 #include "utf8.h"
 
@@ -167,20 +166,26 @@ void shift_lines(struct text *text, uint32_t start, int32_t direction) {
   memmove(dest, src, nlines * sizeof(struct line));
 }
 
+void append_empty_lines(struct text *text, uint32_t numlines) {
+
+  for (uint32_t i = 0; i < numlines; ++i) {
+    struct line *nline = &text->lines[text->nlines];
+    nline->data = NULL;
+    nline->nbytes = 0;
+    nline->nchars = 0;
+    nline->flags = 0;
+
+    ++text->nlines;
+  }
+}
+
 void new_line_at(struct text *text, uint32_t line, uint32_t col) {
   if (text->nlines == text->capacity) {
     text->capacity *= 2;
     text->lines = realloc(text->lines, sizeof(struct line) * text->capacity);
   }
 
-  struct line *nline = &text->lines[text->nlines];
-  nline->data = NULL;
-  nline->nbytes = 0;
-  nline->nchars = 0;
-  nline->flags = 0;
-
-  ++text->nlines;
-
+  append_empty_lines(text, 1);
   mark_lines_changed(text, line, text->nlines - line);
 
   // move following lines out of the way
@@ -224,6 +229,9 @@ void text_insert_at(struct text *text, uint32_t line, uint32_t col,
                     uint8_t *bytes, uint32_t nbytes, uint32_t *lines_added,
                     uint32_t *cols_added) {
   uint32_t linelen = 0, start_line = line;
+  if (start_line >= text->nlines) {
+    append_empty_lines(text, start_line - text->nlines + 1);
+  }
   *cols_added = 0;
 
   for (uint32_t bytei = 0; bytei < nbytes; ++bytei) {
@@ -289,9 +297,9 @@ void text_delete(struct text *text, uint32_t start_line, uint32_t start_col,
       utf8_nbytes(firstline->data, firstline->nbytes, start_col) +
       (lastline->nbytes - bytei);
 
-  // delete full lines
-  for (uint32_t linei = start_line + 1;
-       linei <= end_line && linei < text->nlines; ++linei) {
+  // delete full lines, backwards to not shift old, crappy data upwards
+  for (uint32_t linei = end_line >= text->nlines ? end_line - 1 : end_line;
+       linei > start_line; --linei) {
     delete_line(text, linei);
   }
 }

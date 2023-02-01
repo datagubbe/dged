@@ -23,8 +23,14 @@ struct modeline {
 #define KILL_RING_SZ 64
 static struct kill_ring {
   struct text_chunk buffer[KILL_RING_SZ];
+  struct buffer_location last_paste;
+  bool paste_up_to_date;
   uint32_t curr_idx;
-} g_kill_ring = {.curr_idx = 0};
+  uint32_t paste_idx;
+} g_kill_ring = {.curr_idx = 0,
+                 .last_paste = {0},
+                 .paste_idx = 0,
+                 .paste_up_to_date = false};
 
 struct update_hook_result buffer_linenum_hook(struct buffer *buffer,
                                               struct command_list *commands,
@@ -48,8 +54,7 @@ struct buffer buffer_create(char *name, bool modeline) {
       .mark_set = false,
       .keymaps = calloc(10, sizeof(struct keymap)),
       .nkeymaps = 1,
-      .scroll_col = 0,
-      .scroll_line = 0,
+      .scroll = {0},
       .update_hooks = {0},
       .nkeymaps_max = 10,
   };
@@ -72,6 +77,9 @@ struct buffer buffer_create(char *name, bool modeline) {
       BINDING(Ctrl, 'A', "beginning-of-line"),
       BINDING(Ctrl, 'E', "end-of-line"),
 
+      BINDING(Meta, '<', "goto-beginning"),
+      BINDING(Meta, '>', "goto-end"),
+
       BINDING(ENTER, "newline"),
       BINDING(TAB, "indent"),
 
@@ -84,6 +92,7 @@ struct buffer buffer_create(char *name, bool modeline) {
 
       BINDING(Ctrl, 'W', "cut"),
       BINDING(Ctrl, 'Y', "paste"),
+      BINDING(Meta, 'y', "paste-older"),
       BINDING(Meta, 'w', "copy"),
   };
   keymap_bind_keys(&b.keymaps[0], bindings,
@@ -138,14 +147,24 @@ void buffer_add_keymap(struct buffer *buffer, struct keymap *keymap) {
   ++buffer->nkeymaps;
 }
 
+void buffer_goto_beginning(struct buffer *buffer) {
+  buffer->dot.col = 0;
+  buffer->dot.line = 0;
+}
+
+void buffer_goto_end(struct buffer *buffer) {
+  buffer->dot.line = text_num_lines(buffer->text);
+  buffer->dot.col = 0;
+}
+
 bool movev(struct buffer *buffer, int rowdelta) {
   int64_t new_line = (int64_t)buffer->dot.line + rowdelta;
 
   if (new_line < 0) {
     buffer->dot.line = 0;
     return false;
-  } else if (new_line > text_num_lines(buffer->text) - 1) {
-    buffer->dot.line = text_num_lines(buffer->text) - 1;
+  } else if (new_line > text_num_lines(buffer->text)) {
+    buffer->dot.line = text_num_lines(buffer->text);
     return false;
   } else {
     buffer->dot.line = (uint32_t)new_line;
@@ -191,15 +210,20 @@ struct region to_region(struct buffer_location dot,
   return reg;
 }
 
-bool region_has_size(struct buffer *buffer) {
+struct region buffer_get_region(struct buffer *buffer) {
+  return to_region(buffer->dot, buffer->mark);
+}
+
+bool buffer_region_has_size(struct buffer *buffer) {
   return buffer->mark_set &&
          (labs((int64_t)buffer->mark.line - (int64_t)buffer->dot.line) +
           labs((int64_t)buffer->mark.col - (int64_t)buffer->dot.col)) > 0;
 }
 
 struct text_chunk *copy_region(struct buffer *buffer, struct region region) {
-  g_kill_ring.curr_idx = g_kill_ring.curr_idx + 1 % KILL_RING_SZ;
   struct text_chunk *curr = &g_kill_ring.buffer[g_kill_ring.curr_idx];
+  g_kill_ring.curr_idx = g_kill_ring.curr_idx + 1 % KILL_RING_SZ;
+
   if (curr != NULL) {
     free(curr->text);
   }
@@ -212,29 +236,77 @@ struct text_chunk *copy_region(struct buffer *buffer, struct region region) {
 }
 
 void buffer_copy(struct buffer *buffer) {
-  if (region_has_size(buffer)) {
-    struct region reg = to_region(buffer->dot, buffer->mark);
+  if (buffer_region_has_size(buffer)) {
+    struct region reg = buffer_get_region(buffer);
     struct text_chunk *curr = copy_region(buffer, reg);
     buffer_clear_mark(buffer);
   }
 }
 
+void paste(struct buffer *buffer, uint32_t ring_idx) {
+  if (ring_idx > 0) {
+    struct text_chunk *curr = &g_kill_ring.buffer[ring_idx - 1];
+    if (curr != NULL) {
+      g_kill_ring.last_paste = buffer->mark_set ? buffer->mark : buffer->dot;
+      buffer_add_text(buffer, curr->text, curr->nbytes);
+      g_kill_ring.paste_up_to_date = true;
+    }
+  }
+}
+
 void buffer_paste(struct buffer *buffer) {
-  struct text_chunk *curr = &g_kill_ring.buffer[g_kill_ring.curr_idx];
-  if (curr != NULL) {
-    buffer_add_text(buffer, curr->text, curr->nbytes);
+  g_kill_ring.paste_idx = g_kill_ring.curr_idx;
+  paste(buffer, g_kill_ring.curr_idx);
+}
+
+void buffer_paste_older(struct buffer *buffer) {
+  if (g_kill_ring.paste_up_to_date) {
+
+    // remove previous paste
+    struct text_chunk *curr = &g_kill_ring.buffer[g_kill_ring.curr_idx];
+    text_delete(buffer->text, g_kill_ring.last_paste.line,
+                g_kill_ring.last_paste.col, buffer->dot.line, buffer->dot.col);
+
+    // place ourselves right
+    buffer->dot = g_kill_ring.last_paste;
+
+    // paste older
+    if (g_kill_ring.paste_idx - 1 > 0) {
+      --g_kill_ring.paste_idx;
+    } else {
+      g_kill_ring.paste_idx = g_kill_ring.curr_idx;
+    }
+
+    paste(buffer, g_kill_ring.paste_idx);
+
+  } else {
+    buffer_paste(buffer);
   }
 }
 
 void buffer_cut(struct buffer *buffer) {
-  if (region_has_size(buffer)) {
-    struct region reg = to_region(buffer->dot, buffer->mark);
+  if (buffer_region_has_size(buffer)) {
+    struct region reg = buffer_get_region(buffer);
     copy_region(buffer, reg);
     text_delete(buffer->text, reg.begin.line, reg.begin.col, reg.end.line,
                 reg.end.col);
     buffer_clear_mark(buffer);
     buffer->dot = reg.begin;
   }
+}
+
+bool maybe_delete_region(struct buffer *buffer) {
+  if (buffer_region_has_size(buffer)) {
+    struct region reg = buffer_get_region(buffer);
+    text_delete(buffer->text, reg.begin.line, reg.begin.col, reg.end.line,
+                reg.end.col);
+
+    buffer_clear_mark(buffer);
+    buffer->dot = reg.begin;
+    return true;
+  }
+
+  return false;
 }
 
 void buffer_kill_line(struct buffer *buffer) {
@@ -257,11 +329,19 @@ void buffer_kill_line(struct buffer *buffer) {
 }
 
 void buffer_forward_delete_char(struct buffer *buffer) {
+  if (maybe_delete_region(buffer)) {
+    return;
+  }
+
   text_delete(buffer->text, buffer->dot.line, buffer->dot.col, buffer->dot.line,
               buffer->dot.col + 1);
 }
 
 void buffer_backward_delete_char(struct buffer *buffer) {
+  if (maybe_delete_region(buffer)) {
+    return;
+  }
+
   moveh(buffer, -1);
   buffer_forward_delete_char(buffer);
 }
@@ -358,9 +438,8 @@ void buffer_to_file(struct buffer *buffer) {
                     buffer->name);
     return;
   }
-  // TODO: handle errors
-  FILE *file = fopen(buffer->filename, "w");
 
+  FILE *file = fopen(buffer->filename, "w");
   if (file == NULL) {
     minibuffer_echo("failed to open file %s for writing: %s", buffer->filename,
                     strerror(errno));
@@ -377,7 +456,19 @@ void buffer_to_file(struct buffer *buffer) {
   fclose(file);
 }
 
+void buffer_write_to(struct buffer *buffer, const char *filename) {
+  buffer->filename = strdup(filename);
+  buffer_to_file(buffer);
+}
+
 int buffer_add_text(struct buffer *buffer, uint8_t *text, uint32_t nbytes) {
+  // invalidate last paste
+  g_kill_ring.paste_up_to_date = false;
+
+  /* If we currently have a selection active,
+   * replace it with the text to insert. */
+  maybe_delete_region(buffer);
+
   uint32_t lines_added, cols_added;
   text_insert_at(buffer->text, buffer->dot.line, buffer->dot.col, text, nbytes,
                  &lines_added, &cols_added);
@@ -434,9 +525,9 @@ void buffer_set_mark_at(struct buffer *buffer, uint32_t line, uint32_t col) {
 
 struct cmdbuf {
   struct command_list *cmds;
-  uint32_t scroll_line;
+  struct buffer_location scroll;
   uint32_t line_offset;
-  uint32_t col_offset;
+  uint32_t left_margin;
   uint32_t width;
 
   struct region region;
@@ -447,16 +538,28 @@ struct cmdbuf {
 };
 
 void render_line(struct text_chunk *line, void *userdata) {
+
   struct cmdbuf *cmdbuf = (struct cmdbuf *)userdata;
-  uint32_t visual_line = line->line - cmdbuf->scroll_line + cmdbuf->line_offset;
+  uint32_t visual_line = line->line - cmdbuf->scroll.line + cmdbuf->line_offset;
+
   for (uint32_t hooki = 0; hooki < cmdbuf->nlinerender_hooks; ++hooki) {
     struct line_render_hook *hook = &cmdbuf->line_render_hooks[hooki];
     hook->callback(line, visual_line, cmdbuf->cmds, hook->userdata);
   }
 
+  uint32_t scroll_bytes =
+      utf8_nbytes(line->text, line->nbytes, cmdbuf->scroll.col);
+  uint8_t *text = line->text + scroll_bytes;
+  uint32_t text_nbytes =
+      scroll_bytes > line->nbytes ? 0 : line->nbytes - scroll_bytes;
+  uint32_t text_nchars =
+      scroll_bytes > line->nchars ? 0 : line->nchars - cmdbuf->scroll.col;
+
   command_list_set_show_whitespace(cmdbuf->cmds, true);
   struct buffer_location *begin = &cmdbuf->region.begin,
                          *end = &cmdbuf->region.end;
+
+  // should we draw region
   if (cmdbuf->mark_set && line->line >= begin->line &&
       line->line <= end->line) {
     uint32_t byte_offset = 0;
@@ -464,15 +567,16 @@ void render_line(struct text_chunk *line, void *userdata) {
 
     // draw any text on the line that should not be part of region
     if (begin->line == line->line) {
-      if (begin->col > 0) {
-        uint32_t nbytes = utf8_nbytes(line->text, line->nbytes, begin->col);
-        command_list_draw_text(cmdbuf->cmds, cmdbuf->col_offset, visual_line,
-                               line->text, nbytes);
+      if (begin->col > cmdbuf->scroll.col) {
+        uint32_t nbytes =
+            utf8_nbytes(text, text_nbytes, begin->col - cmdbuf->scroll.col);
+        command_list_draw_text(cmdbuf->cmds, cmdbuf->left_margin, visual_line,
+                               text, nbytes);
 
         byte_offset += nbytes;
       }
 
-      col_offset = begin->col;
+      col_offset = begin->col - cmdbuf->scroll.col;
     }
 
     // activate region color
@@ -480,38 +584,38 @@ void render_line(struct text_chunk *line, void *userdata) {
 
     // draw any text on line that should be part of region
     if (end->line == line->line) {
-      if (end->col > 0) {
+      if (end->col > cmdbuf->scroll.col) {
         uint32_t nbytes =
-            utf8_nbytes(line->text + byte_offset, line->nbytes - byte_offset,
-                        end->col - col_offset);
-        command_list_draw_text(cmdbuf->cmds, cmdbuf->col_offset + col_offset,
-                               visual_line, line->text + byte_offset, nbytes);
+            utf8_nbytes(text + byte_offset, text_nbytes - byte_offset,
+                        end->col - col_offset - cmdbuf->scroll.col);
+        command_list_draw_text(cmdbuf->cmds, cmdbuf->left_margin + col_offset,
+                               visual_line, text + byte_offset, nbytes);
         byte_offset += nbytes;
       }
 
-      col_offset = end->col;
+      col_offset = end->col - cmdbuf->scroll.col;
       command_list_reset_color(cmdbuf->cmds);
     }
 
     // draw rest of line
-    if (line->nbytes - byte_offset > 0) {
-      command_list_draw_text(cmdbuf->cmds, cmdbuf->col_offset + col_offset,
-                             visual_line, line->text + byte_offset,
-                             line->nbytes - byte_offset);
+    if (text_nbytes - byte_offset > 0) {
+      command_list_draw_text(cmdbuf->cmds, cmdbuf->left_margin + col_offset,
+                             visual_line, text + byte_offset,
+                             text_nbytes - byte_offset);
     }
 
     // done rendering region
     command_list_reset_color(cmdbuf->cmds);
 
   } else {
-    command_list_draw_text(cmdbuf->cmds, cmdbuf->col_offset, visual_line,
-                           line->text, line->nbytes);
+    command_list_draw_text(cmdbuf->cmds, cmdbuf->left_margin, visual_line, text,
+                           text_nbytes);
   }
 
   command_list_set_show_whitespace(cmdbuf->cmds, false);
 
-  uint32_t col = line->nchars + cmdbuf->col_offset;
-  for (uint32_t bytei = 0; bytei < line->nbytes; ++bytei) {
+  uint32_t col = text_nchars + cmdbuf->left_margin;
+  for (uint32_t bytei = scroll_bytes; bytei < line->nbytes; ++bytei) {
     if (line->text[bytei] == '\t') {
       col += 3;
     } else if (utf8_byte_is_unicode_start(line->text[bytei])) {
@@ -522,30 +626,34 @@ void render_line(struct text_chunk *line, void *userdata) {
     }
   }
 
-  if (cmdbuf->width > line->nchars) {
+  if (col < cmdbuf->width) {
     command_list_draw_repeated(cmdbuf->cmds, col, visual_line, ' ',
-                               cmdbuf->width - col + cmdbuf->col_offset);
+                               cmdbuf->width - col);
   }
 }
 
 void scroll(struct buffer *buffer, int line_delta, int col_delta) {
   uint32_t nlines = text_num_lines(buffer->text);
-  int64_t new_line = (int64_t)buffer->scroll_line + line_delta;
+  int64_t new_line = (int64_t)buffer->scroll.line + line_delta;
   if (new_line >= 0 && new_line < nlines) {
-    buffer->scroll_line = (uint32_t)new_line;
+    buffer->scroll.line = (uint32_t)new_line;
+  } else if (new_line < 0) {
+    buffer->scroll.line = 0;
   }
 
-  int64_t new_col = (int64_t)buffer->scroll_col + col_delta;
+  int64_t new_col = (int64_t)buffer->scroll.col + col_delta;
   if (new_col >= 0 &&
       new_col < text_line_length(buffer->text, buffer->dot.line)) {
-    buffer->scroll_col = (uint32_t)new_col;
+    buffer->scroll.col = (uint32_t)new_col;
+  } else if (new_col < 0) {
+    buffer->scroll.col = 0;
   }
 }
 
 void to_relative(struct buffer *buffer, uint32_t line, uint32_t col,
                  int64_t *rel_line, int64_t *rel_col) {
-  *rel_col = (int64_t)col - (int64_t)buffer->scroll_col;
-  *rel_line = (int64_t)line - (int64_t)buffer->scroll_line;
+  *rel_col = (int64_t)col - (int64_t)buffer->scroll.col;
+  *rel_line = (int64_t)line - (int64_t)buffer->scroll.line;
 }
 
 uint32_t visual_dot_col(struct buffer *buffer, uint32_t dot_col) {
@@ -707,36 +815,36 @@ void buffer_update(struct buffer *buffer, uint32_t width, uint32_t height,
   to_relative(buffer, buffer->dot.line, buffer->dot.col, &rel_line, &rel_col);
   int line_delta = 0, col_delta = 0;
   if (rel_line < 0) {
-    line_delta = -(int)height / 2;
+    line_delta = rel_line - ((int)height / 2);
   } else if (rel_line >= height) {
-    line_delta = height / 2;
+    line_delta = (rel_line - height) + height / 2;
   }
 
   if (rel_col < 0) {
-    col_delta = rel_col;
+    col_delta = rel_col - ((int)width / 2);
   } else if (rel_col > width) {
-    col_delta = rel_col - width;
+    col_delta = (rel_col - width) + width / 2;
   }
 
   scroll(buffer, line_delta, col_delta);
 
   struct cmdbuf cmdbuf = (struct cmdbuf){
       .cmds = commands,
-      .scroll_line = buffer->scroll_line,
-      .col_offset = total_margins.left,
-      .width = width,
+      .scroll = buffer->scroll,
+      .left_margin = total_margins.left,
+      .width = total_width,
       .line_offset = total_margins.top,
       .line_render_hooks = line_hooks,
       .nlinerender_hooks = nlinehooks,
       .mark_set = buffer->mark_set,
       .region = to_region(buffer->dot, buffer->mark),
   };
-  text_for_each_line(buffer->text, buffer->scroll_line, height, render_line,
+  text_for_each_line(buffer->text, buffer->scroll.line, height, render_line,
                      &cmdbuf);
 
   // draw empty lines
   uint32_t nlines = text_num_lines(buffer->text);
-  for (uint32_t linei = nlines - buffer->scroll_line + total_margins.top;
+  for (uint32_t linei = nlines - buffer->scroll.line + total_margins.top;
        linei < height; ++linei) {
     command_list_draw_repeated(commands, 0, linei, ' ', total_width);
   }

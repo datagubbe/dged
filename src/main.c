@@ -54,6 +54,7 @@ int32_t exit_editor(struct command_ctx ctx, int argc, const char *argv[]) {
 
 static struct command GLOBAL_COMMANDS[] = {
     {.name = "find-file", .fn = find_file},
+    {.name = "write-file", .fn = write_file},
     {.name = "run-command-interactive", .fn = run_interactive},
     {.name = "switch-buffer", .fn = switch_buffer},
     {.name = "abort", .fn = _abort},
@@ -116,6 +117,7 @@ int main(int argc, char *argv[]) {
       BINDING(Ctrl, 'C', "exit"),
       BINDING(Ctrl, 'S', "buffer-write-to-file"),
       BINDING(Ctrl, 'F', "find-file"),
+      BINDING(Ctrl, 'W', "write-file"),
       BINDING(None, 'b', "switch-buffer"),
   };
   keymap_bind_keys(&global_keymap, global_binds,

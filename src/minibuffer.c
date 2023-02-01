@@ -40,7 +40,7 @@ int32_t execute(struct command_ctx ctx, int argc, const char *argv[]) {
       uint8_t byte = line.text[bytei];
       if (byte == ' ') {
         l[bytei] = '\0';
-        argv[argc] = l + bytei;
+        argv[argc] = l + bytei + 1;
         ++argc;
       }
     }
