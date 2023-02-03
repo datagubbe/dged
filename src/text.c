@@ -29,9 +29,7 @@ struct text *text_create(uint32_t initial_capacity) {
   struct text *txt = calloc(1, sizeof(struct text));
   txt->lines = calloc(initial_capacity, sizeof(struct line));
   txt->capacity = initial_capacity;
-
-  // we always have one line, since add line adds a second one
-  txt->nlines = 1;
+  txt->nlines = 0;
 
   return txt;
 }
@@ -55,7 +53,7 @@ void text_clear(struct text *text) {
     text->lines[li].nchars = 0;
   }
 
-  text->nlines = 1;
+  text->nlines = 0;
 }
 
 // given `char_idx` as a character index, return the byte index
@@ -198,8 +196,7 @@ void new_line_at(struct text *text, uint32_t line, uint32_t col) {
 }
 
 void delete_line(struct text *text, uint32_t line) {
-  // always keep a single line
-  if (text->nlines == 1) {
+  if (text->nlines == 0) {
     return;
   }
 
@@ -207,19 +204,19 @@ void delete_line(struct text *text, uint32_t line) {
   free(text->lines[line].data);
   text->lines[line].data = NULL;
 
-  shift_lines(text, line + 1, -1);
-
-  if (text->nlines > 0) {
-    --text->nlines;
-    text->lines[text->nlines].data = NULL;
-    text->lines[text->nlines].nbytes = 0;
-    text->lines[text->nlines].nchars = 0;
+  if (text->nlines > 1) {
+    shift_lines(text, line + 1, -1);
   }
+
+  --text->nlines;
+  text->lines[text->nlines].data = NULL;
+  text->lines[text->nlines].nbytes = 0;
+  text->lines[text->nlines].nchars = 0;
 }
 
 void text_append(struct text *text, uint8_t *bytes, uint32_t nbytes,
                  uint32_t *lines_added, uint32_t *cols_added) {
-  uint32_t line = text->nlines - 1;
+  uint32_t line = text->nlines > 0 ? text->nlines - 1 : 0;
   uint32_t col = text_line_length(text, line);
 
   text_insert_at(text, line, col, bytes, nbytes, lines_added, cols_added);
@@ -344,6 +341,24 @@ struct copy_cmd {
 struct text_chunk text_get_region(struct text *text, uint32_t start_line,
                                   uint32_t start_col, uint32_t end_line,
                                   uint32_t end_col) {
+  if (start_line == end_line && start_col == end_col) {
+    return (struct text_chunk){0};
+  }
+
+  struct line *first_line = &text->lines[start_line];
+  struct line *last_line = &text->lines[end_line];
+
+  if (start_col > first_line->nchars) {
+    return (struct text_chunk){0};
+  }
+
+  // handle deletion of newlines
+  if (end_col > last_line->nchars) {
+    ++end_line;
+    end_col = 0;
+    last_line = &text->lines[end_line];
+  }
+
   uint32_t nlines = end_line - start_line + 1;
   struct copy_cmd *copy_cmds = calloc(nlines, sizeof(struct copy_cmd));
 
@@ -361,7 +376,6 @@ struct text_chunk text_get_region(struct text *text, uint32_t start_line,
 
   // correct first line
   struct copy_cmd *cmd_first = &copy_cmds[0];
-  struct line *first_line = &text->lines[start_line];
   uint32_t byteoff =
       utf8_nbytes(first_line->data, first_line->nbytes, start_col);
   cmd_first->byteindex += byteoff;
@@ -371,7 +385,6 @@ struct text_chunk text_get_region(struct text *text, uint32_t start_line,
 
   // correct last line
   struct copy_cmd *cmd_last = &copy_cmds[nlines - 1];
-  struct line *last_line = &text->lines[end_line];
   uint32_t byteindex = utf8_nbytes(last_line->data, last_line->nbytes, end_col);
   cmd_last->nbytes -= (last_line->nchars - end_col);
   total_bytes -= (last_line->nbytes - byteindex);
@@ -401,7 +414,6 @@ struct text_chunk text_get_region(struct text *text, uint32_t start_line,
       .nbytes = total_bytes,
       .nchars = total_chars,
   };
-  ;
 }
 
 bool text_line_contains_unicode(struct text *text, uint32_t line) {

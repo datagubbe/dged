@@ -128,8 +128,7 @@ void buffer_clear(struct buffer *buffer) {
 }
 
 bool buffer_is_empty(struct buffer *buffer) {
-  return text_num_lines(buffer->text) == 1 &&
-         text_line_size(buffer->text, 0) == 0;
+  return text_num_lines(buffer->text) == 0;
 }
 
 uint32_t buffer_keymaps(struct buffer *buffer, struct keymap **keymaps_out) {
@@ -349,12 +348,17 @@ void buffer_backward_delete_char(struct buffer *buffer) {
 void buffer_backward_char(struct buffer *buffer) { moveh(buffer, -1); }
 void buffer_forward_char(struct buffer *buffer) { moveh(buffer, 1); }
 
-void buffer_forward_word(struct buffer *buffer) {
-  moveh(buffer, 1);
+struct buffer_location find_next(struct buffer *buffer, uint8_t chars[],
+                                 uint32_t nchars, int direction) {
   struct text_chunk line = text_get_line(buffer->text, buffer->dot.line);
-  uint32_t bytei =
+  int64_t bytei =
       text_col_to_byteindex(buffer->text, buffer->dot.line, buffer->dot.col);
-  for (; bytei < line.nbytes; ++bytei) {
+  while (bytei < line.nbytes && bytei > 0 &&
+         (line.text[bytei] == ' ' || line.text[bytei] == '.')) {
+    bytei += direction;
+  }
+
+  for (; bytei < line.nbytes && bytei > 0; bytei += direction) {
     uint8_t b = line.text[bytei];
     if (b == ' ' || b == '.') {
       break;
@@ -363,24 +367,19 @@ void buffer_forward_word(struct buffer *buffer) {
 
   uint32_t target_col =
       text_byteindex_to_col(buffer->text, buffer->dot.line, bytei);
-  moveh(buffer, target_col - buffer->dot.col);
+  return (struct buffer_location){.line = buffer->dot.line, .col = target_col};
+}
+
+void buffer_forward_word(struct buffer *buffer) {
+  moveh(buffer, 1);
+  uint8_t chars[] = {' ', '.'};
+  buffer->dot = find_next(buffer, chars, 2, 1);
 }
 
 void buffer_backward_word(struct buffer *buffer) {
   moveh(buffer, -1);
-  struct text_chunk line = text_get_line(buffer->text, buffer->dot.line);
-  uint32_t bytei =
-      text_col_to_byteindex(buffer->text, buffer->dot.line, buffer->dot.col);
-  for (; bytei > 0; --bytei) {
-    uint8_t b = line.text[bytei];
-    if (b == ' ' || b == '.') {
-      break;
-    }
-  }
-
-  uint32_t target_col =
-      text_byteindex_to_col(buffer->text, buffer->dot.line, bytei);
-  moveh(buffer, (int32_t)target_col - buffer->dot.col);
+  uint8_t chars[] = {' ', '.'};
+  buffer->dot = find_next(buffer, chars, 2, -1);
 }
 
 void buffer_backward_line(struct buffer *buffer) { movev(buffer, -1); }

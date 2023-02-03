@@ -150,6 +150,8 @@ void minibuffer_prompt(struct command_ctx command_ctx, const char *fmt, ...) {
   }
 
   minibuffer_clear();
+  // make sure we have a line
+  buffer_add_text(g_minibuffer.buffer, (uint8_t *)"", 0);
   g_minibuffer.prompt_active = true;
   g_minibuffer.prompt_command_ctx = command_ctx;
 
