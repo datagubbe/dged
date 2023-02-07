@@ -17,12 +17,10 @@ static struct minibuffer {
   struct keymap keymap;
 } g_minibuffer = {0};
 
-void draw_prompt(struct text_chunk *line_data, uint32_t line,
-                 struct command_list *commands, void *userdata) {
+void draw_prompt(struct command_list *commands, void *userdata) {
   uint32_t len = strlen(g_minibuffer.prompt);
   command_list_set_index_color_fg(commands, 4);
-  command_list_draw_text(commands, 0, line, (uint8_t *)g_minibuffer.prompt,
-                         len);
+  command_list_draw_text(commands, 0, 0, (uint8_t *)g_minibuffer.prompt, len);
   command_list_reset_color(commands);
 }
 
@@ -85,9 +83,9 @@ struct update_hook_result update(struct buffer *buffer,
   }
 
   struct update_hook_result res = {0};
-  if (g_minibuffer.prompt_active) {
-    res.margins.left = strlen(g_minibuffer.prompt);
-    res.line_render_hook.callback = draw_prompt;
+  if (mb->prompt_active) {
+    res.margins.left = strlen(mb->prompt);
+    draw_prompt(commands, NULL);
   }
 
   return res;
@@ -150,8 +148,7 @@ void minibuffer_prompt(struct command_ctx command_ctx, const char *fmt, ...) {
   }
 
   minibuffer_clear();
-  // make sure we have a line
-  buffer_add_text(g_minibuffer.buffer, (uint8_t *)"", 0);
+
   g_minibuffer.prompt_active = true;
   g_minibuffer.prompt_command_ctx = command_ctx;
 

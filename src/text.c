@@ -1,10 +1,12 @@
 #include "text.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "display.h"
+#include "signal.h"
 #include "utf8.h"
 
 enum flags {
@@ -82,28 +84,66 @@ uint32_t text_byteindex_to_col(struct text *text, uint32_t line,
   return byteidx_to_charidx(&text->lines[line], byteindex);
 }
 
-void insert_at_col(struct line *line, uint32_t col, uint8_t *text, uint32_t len,
-                   uint32_t nchars) {
+void append_empty_lines(struct text *text, uint32_t numlines) {
+
+  if (text->nlines + numlines >= text->capacity) {
+    text->capacity += text->capacity + numlines > text->capacity * 2
+                          ? numlines + 1
+                          : text->capacity;
+    text->lines = realloc(text->lines, sizeof(struct line) * text->capacity);
+  }
+
+  for (uint32_t i = 0; i < numlines; ++i) {
+    struct line *nline = &text->lines[text->nlines];
+    nline->data = NULL;
+    nline->nbytes = 0;
+    nline->nchars = 0;
+    nline->flags = 0;
+
+    ++text->nlines;
+  }
+
+  if (text->nlines > text->capacity) {
+    printf("text->nlines: %d, text->capacity: %d\n", text->nlines,
+           text->capacity);
+    raise(SIGTRAP);
+  }
+}
+
+void ensure_line(struct text *text, uint32_t line) {
+  if (line >= text->nlines) {
+    append_empty_lines(text, line - text->nlines + 1);
+  }
+}
+
+// It is assumed that `data` does not contain any \n, that is handled by
+// higher-level functions
+void insert_at(struct text *text, uint32_t line, uint32_t col, uint8_t *data,
+               uint32_t len, uint32_t nchars) {
 
   if (len == 0) {
     return;
   }
 
-  line->nbytes += len;
-  line->nchars += nchars;
-  line->flags = LineChanged;
-  line->data = realloc(line->data, line->nbytes);
+  ensure_line(text, line);
 
-  uint32_t bytei = charidx_to_byteidx(line, col);
+  struct line *l = &text->lines[line];
+
+  l->nbytes += len;
+  l->nchars += nchars;
+  l->flags = LineChanged;
+  l->data = realloc(l->data, l->nbytes);
+
+  uint32_t bytei = charidx_to_byteidx(l, col);
 
   // move following bytes out of the way
-  if (bytei + len < line->nbytes) {
+  if (bytei + len < l->nbytes) {
     uint32_t start = bytei + len;
-    memmove(line->data + start, line->data + bytei, line->nbytes - start);
+    memmove(l->data + start, l->data + bytei, l->nbytes - start);
   }
 
   // insert new chars
-  memcpy(line->data + bytei, text, len);
+  memcpy(l->data + bytei, data, len);
 }
 
 uint32_t text_line_length(struct text *text, uint32_t lineidx) {
@@ -164,35 +204,22 @@ void shift_lines(struct text *text, uint32_t start, int32_t direction) {
   memmove(dest, src, nlines * sizeof(struct line));
 }
 
-void append_empty_lines(struct text *text, uint32_t numlines) {
-
-  for (uint32_t i = 0; i < numlines; ++i) {
-    struct line *nline = &text->lines[text->nlines];
-    nline->data = NULL;
-    nline->nbytes = 0;
-    nline->nchars = 0;
-    nline->flags = 0;
-
-    ++text->nlines;
-  }
-}
-
 void new_line_at(struct text *text, uint32_t line, uint32_t col) {
-  if (text->nlines == text->capacity) {
-    text->capacity *= 2;
-    text->lines = realloc(text->lines, sizeof(struct line) * text->capacity);
-  }
+  ensure_line(text, line);
 
-  append_empty_lines(text, 1);
+  uint32_t newline = line + 1;
+  bool has_newline = col < text->lines[line].nchars || newline < text->nlines;
+  append_empty_lines(text, has_newline ? 1 : 0);
+
   mark_lines_changed(text, line, text->nlines - line);
 
-  // move following lines out of the way
-  shift_lines(text, line + 1, 1);
+  // move following lines out of the way, if there are any
+  if (newline + 1 < text->nlines) {
+    shift_lines(text, newline, 1);
+  }
 
   // split line if needed
-  struct line *pl = &text->lines[line];
-  struct line *cl = &text->lines[line + 1];
-  split_line(col, pl, cl);
+  split_line(col, &text->lines[line], &text->lines[newline]);
 }
 
 void delete_line(struct text *text, uint32_t line) {
@@ -201,10 +228,11 @@ void delete_line(struct text *text, uint32_t line) {
   }
 
   mark_lines_changed(text, line, text->nlines - line);
+
   free(text->lines[line].data);
   text->lines[line].data = NULL;
 
-  if (text->nlines > 1) {
+  if (line + 1 < text->nlines) {
     shift_lines(text, line + 1, -1);
   }
 
@@ -226,24 +254,23 @@ void text_insert_at(struct text *text, uint32_t line, uint32_t col,
                     uint8_t *bytes, uint32_t nbytes, uint32_t *lines_added,
                     uint32_t *cols_added) {
   uint32_t linelen = 0, start_line = line;
-  if (start_line >= text->nlines) {
-    append_empty_lines(text, start_line - text->nlines + 1);
-  }
-  *cols_added = 0;
 
+  *cols_added = 0;
   for (uint32_t bytei = 0; bytei < nbytes; ++bytei) {
     uint8_t byte = bytes[bytei];
     if (byte == '\n') {
       uint8_t *line_data = bytes + (bytei - linelen);
       uint32_t nchars = utf8_nchars(line_data, linelen);
-      insert_at_col(&text->lines[line], col, line_data, linelen, nchars);
 
-      col += nchars;
-      new_line_at(text, line, col);
+      insert_at(text, line, col, line_data, linelen, nchars);
+
+      if (linelen == 0) {
+        new_line_at(text, line, col);
+      }
+
       ++line;
-
-      col = text_line_length(text, line);
       linelen = 0;
+      col = 0;
     } else {
       ++linelen;
     }
@@ -253,7 +280,7 @@ void text_insert_at(struct text *text, uint32_t line, uint32_t col,
   if (linelen > 0) {
     uint8_t *line_data = bytes + (nbytes - linelen);
     uint32_t nchars = utf8_nchars(line_data, linelen);
-    insert_at_col(&text->lines[line], col, line_data, linelen, nchars);
+    insert_at(text, line, col, line_data, linelen, nchars);
     *cols_added = nchars;
   }
 
@@ -285,8 +312,8 @@ void text_delete(struct text *text, uint32_t start_line, uint32_t start_col,
            lastline->nbytes - bytei);
   } else {
     // otherwise we actually have to copy from the last line
-    insert_at_col(firstline, start_col, lastline->data + bytei,
-                  lastline->nbytes - bytei, lastline->nchars - end_col);
+    insert_at(text, start_line, start_col, lastline->data + bytei,
+              lastline->nbytes - bytei, lastline->nchars - end_col);
   }
 
   firstline->nchars = start_col + (lastline->nchars - end_col);
@@ -298,6 +325,11 @@ void text_delete(struct text *text, uint32_t start_line, uint32_t start_col,
   for (uint32_t linei = end_line >= text->nlines ? end_line - 1 : end_line;
        linei > start_line; --linei) {
     delete_line(text, linei);
+  }
+
+  // if this is the last line in the buffer, and it turns out empty, remove it
+  if (firstline->nbytes == 0 && start_line == text->nlines - 1) {
+    delete_line(text, start_line);
   }
 }
 
@@ -334,7 +366,7 @@ struct text_chunk text_get_line(struct text *text, uint32_t line) {
 
 struct copy_cmd {
   uint32_t line;
-  uint32_t byteindex;
+  uint32_t byteoffset;
   uint32_t nbytes;
 };
 
@@ -352,7 +384,7 @@ struct text_chunk text_get_region(struct text *text, uint32_t start_line,
     return (struct text_chunk){0};
   }
 
-  // handle deletion of newlines
+  // handle copying of newlines
   if (end_col > last_line->nchars) {
     ++end_line;
     end_col = 0;
@@ -370,7 +402,7 @@ struct text_chunk text_get_region(struct text *text, uint32_t start_line,
 
     struct copy_cmd *cmd = &copy_cmds[line - start_line];
     cmd->line = line;
-    cmd->byteindex = 0;
+    cmd->byteoffset = 0;
     cmd->nbytes = l->nbytes;
   }
 
@@ -378,7 +410,7 @@ struct text_chunk text_get_region(struct text *text, uint32_t start_line,
   struct copy_cmd *cmd_first = &copy_cmds[0];
   uint32_t byteoff =
       utf8_nbytes(first_line->data, first_line->nbytes, start_col);
-  cmd_first->byteindex += byteoff;
+  cmd_first->byteoffset += byteoff;
   cmd_first->nbytes -= byteoff;
   total_bytes -= byteoff;
   total_chars -= start_col;
@@ -390,13 +422,14 @@ struct text_chunk text_get_region(struct text *text, uint32_t start_line,
   total_bytes -= (last_line->nbytes - byteindex);
   total_chars -= (last_line->nchars - end_col);
 
-  uint8_t *data = (uint8_t *)malloc(total_bytes + end_line - start_line);
+  uint8_t *data = (uint8_t *)malloc(
+      total_bytes + /* nr of newline chars */ (end_line - start_line));
 
   // copy data
   for (uint32_t cmdi = 0, curr = 0; cmdi < nlines; ++cmdi) {
     struct copy_cmd *c = &copy_cmds[cmdi];
     struct line *l = &text->lines[c->line];
-    memcpy(data + curr, l->data + c->byteindex, c->nbytes);
+    memcpy(data + curr, l->data + c->byteoffset, c->nbytes);
     curr += c->nbytes;
 
     if (cmdi != (nlines - 1)) {
@@ -413,6 +446,7 @@ struct text_chunk text_get_region(struct text *text, uint32_t start_line,
       .line = 0,
       .nbytes = total_bytes,
       .nchars = total_chars,
+      .allocated = true,
   };
 }
 

@@ -23,6 +23,10 @@ struct margin {
 typedef void (*line_render_cb)(struct text_chunk *line_data, uint32_t line,
                                struct command_list *commands, void *userdata);
 
+typedef void (*line_render_empty_cb)(uint32_t line,
+                                     struct command_list *commands,
+                                     void *userdata);
+
 /**
  * A line render hook
  *
@@ -30,6 +34,7 @@ typedef void (*line_render_cb)(struct text_chunk *line_data, uint32_t line,
  */
 struct line_render_hook {
   line_render_cb callback;
+  line_render_empty_cb empty_callback;
   void *userdata;
 };
 

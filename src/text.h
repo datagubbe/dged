@@ -37,6 +37,7 @@ struct text_chunk {
   uint32_t nbytes;
   uint32_t nchars;
   uint32_t line;
+  bool allocated;
 };
 
 typedef void (*chunk_cb)(struct text_chunk *chunk, void *userdata);

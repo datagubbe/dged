@@ -12,12 +12,15 @@ void assert_line_equal(struct text_chunk *line) {}
 
 void test_add_text() {
   uint32_t lines_added, cols_added;
-  struct text *t = text_create(10);
+  /* use a silly small initial capacity to test re-alloc */
+  struct text *t = text_create(1);
+
   const char *txt = "This is line 1\n";
   text_insert_at(t, 0, 0, (uint8_t *)txt, strlen(txt), &lines_added,
                  &cols_added);
-  ASSERT(text_num_lines(t) == 2,
-         "Expected text to have two lines after insertion");
+  ASSERT(
+      text_num_lines(t) == 1,
+      "Expected text to have one line after insertion, since line 2 is empty");
 
   ASSERT(text_line_size(t, 0) == 14 && text_line_length(t, 0) == 14,
          "Expected line 1 to have 14 chars and 14 bytes");
@@ -27,8 +30,8 @@ void test_add_text() {
   const char *txt2 = "This is line 2\n";
   text_insert_at(t, 1, 0, (uint8_t *)txt2, strlen(txt2), &lines_added,
                  &cols_added);
-  ASSERT(text_num_lines(t) == 3,
-         "Expected text to have three lines after second insertion");
+  ASSERT(text_num_lines(t) == 2,
+         "Expected text to have two lines after second insertion");
   ASSERT_STR_EQ((const char *)text_get_line(t, 1).text, "This is line 2",
                 "Expected line 2 to be line 2");
 
@@ -36,12 +39,32 @@ void test_add_text() {
   const char *txt3 = "    ";
   text_insert_at(t, 0, 0, (uint8_t *)txt3, strlen(txt3), &lines_added,
                  &cols_added);
-  ASSERT(text_num_lines(t) == 3,
-         "Expected text to have three lines after second insertion");
+  ASSERT(text_num_lines(t) == 2,
+         "Expected text to have two lines after second insertion");
   ASSERT_STR_EQ((const char *)text_get_line(t, 0).text, "    This is line 1",
                 "Expected line 1 to be indented");
   ASSERT_STR_EQ((const char *)text_get_line(t, 1).text, "This is line 2",
                 "Expected line 2 to be line 2 still");
+
+  // insert newline in middle of line
+  text_insert_at(t, 1, 4, (uint8_t *)"\n", 1, &lines_added, &cols_added);
+  ASSERT(text_num_lines(t) == 3,
+         "Expected text to have three lines after inserting a new line");
+  ASSERT_STR_EQ((const char *)text_get_line(t, 1).text, "This",
+                "Expected line 2 to be split");
+  ASSERT_STR_EQ((const char *)text_get_line(t, 2).text, " is line 2",
+                "Expected line 2 to be split");
+
+  // insert newline before line 1
+  text_insert_at(t, 1, 0, (uint8_t *)"\n", 1, &lines_added, &cols_added);
+  ASSERT(
+      text_num_lines(t) == 4,
+      "Expected to have four lines after adding an empty line in the middle");
+  ASSERT(text_line_length(t, 1) == 0, "Expected line 2 to be empty");
+  ASSERT_STR_EQ((const char *)text_get_line(t, 2).text, "This",
+                "Expected line 3 to be previous line 2");
+  ASSERT_STR_EQ((const char *)text_get_line(t, 3).text, " is line 2",
+                "Expected line 4 to be previous line 3");
 
   text_destroy(t);
 }

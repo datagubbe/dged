@@ -176,7 +176,7 @@ bool movev(struct buffer *buffer, int rowdelta) {
 }
 
 // move dot `coldelta` chars
-void moveh(struct buffer *buffer, int coldelta) {
+bool moveh(struct buffer *buffer, int coldelta) {
   int64_t new_col = (int64_t)buffer->dot.col + coldelta;
 
   if (new_col > (int64_t)text_line_length(buffer->text, buffer->dot.line)) {
@@ -186,10 +186,14 @@ void moveh(struct buffer *buffer, int coldelta) {
   } else if (new_col < 0) {
     if (movev(buffer, -1)) {
       buffer->dot.col = text_line_length(buffer->text, buffer->dot.line);
+    } else {
+      return false;
     }
   } else {
     buffer->dot.col = new_col;
   }
+
+  return true;
 }
 
 struct region {
@@ -341,8 +345,9 @@ void buffer_backward_delete_char(struct buffer *buffer) {
     return;
   }
 
-  moveh(buffer, -1);
-  buffer_forward_delete_char(buffer);
+  if (moveh(buffer, -1)) {
+    buffer_forward_delete_char(buffer);
+  }
 }
 
 void buffer_backward_char(struct buffer *buffer) { moveh(buffer, -1); }
@@ -741,6 +746,13 @@ void linenum_render_hook(struct text_chunk *line_data, uint32_t line,
                          (uint8_t *)" ", 1);
 }
 
+void clear_empty_linenum_lines(uint32_t line, struct command_list *commands,
+                               void *userdata) {
+  struct linenumdata *data = (struct linenumdata *)userdata;
+  uint32_t longest_nchars = data->longest_nchars;
+  command_list_draw_repeated(commands, 0, line, ' ', longest_nchars + 2);
+}
+
 struct update_hook_result buffer_linenum_hook(struct buffer *buffer,
                                               struct command_list *commands,
                                               uint32_t width, uint32_t height,
@@ -773,7 +785,9 @@ struct update_hook_result buffer_linenum_hook(struct buffer *buffer,
   struct update_hook_result res = {0};
   res.margins.left = longest_nchars + 2;
   res.line_render_hook.callback = linenum_render_hook;
+  res.line_render_hook.empty_callback = clear_empty_linenum_lines;
   res.line_render_hook.userdata = &linenum_data;
+
   return res;
 }
 
@@ -845,7 +859,14 @@ void buffer_update(struct buffer *buffer, uint32_t width, uint32_t height,
   uint32_t nlines = text_num_lines(buffer->text);
   for (uint32_t linei = nlines - buffer->scroll.line + total_margins.top;
        linei < height; ++linei) {
-    command_list_draw_repeated(commands, 0, linei, ' ', total_width);
+
+    for (uint32_t hooki = 0; hooki < nlinehooks; ++hooki) {
+      struct line_render_hook *hook = &line_hooks[hooki];
+      hook->empty_callback(linei, commands, hook->userdata);
+    }
+
+    command_list_draw_repeated(commands, total_margins.left, linei, ' ',
+                               total_width - total_margins.left);
   }
 
   // update the visual cursor position
