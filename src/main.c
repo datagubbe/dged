@@ -129,6 +129,7 @@ int main(int argc, char *argv[]) {
   buffers_init(&buflist, 32);
   struct buffer initial_buffer = buffer_create("welcome", true);
   if (filename != NULL) {
+    buffer_destroy(&initial_buffer);
     initial_buffer = buffer_from_file(filename);
   } else {
     const char *welcome_txt = "Welcome to the editor for datagubbar 👴\n";
@@ -147,12 +148,11 @@ int main(int argc, char *argv[]) {
   };
 
   // and one for the minibuffer
-  struct buffer *minibuffer =
-      buffers_add(&buflist, buffer_create("minibuffer", false));
+  struct buffer minibuffer = buffer_create("minibuffer", false);
 
-  minibuffer_init(minibuffer);
+  minibuffer_init(&minibuffer);
   struct window minibuffer_window = (struct window){
-      .buffer = minibuffer,
+      .buffer = &minibuffer,
       .prev_buffer = NULL,
       .x = 0,
       .y = display_height(display) - 1,
@@ -307,6 +307,7 @@ int main(int argc, char *argv[]) {
     frame_allocator_clear(&frame_allocator);
   }
 
+  buffer_destroy(&minibuffer);
   buffers_destroy(&buflist);
   display_clear(display);
   display_destroy(display);
@@ -315,6 +316,7 @@ int main(int argc, char *argv[]) {
   command_registry_destroy(&commands);
   reactor_destroy(reactor);
   frame_allocator_destroy(&frame_allocator);
+  buffer_static_teardown();
 
   return 0;
 }

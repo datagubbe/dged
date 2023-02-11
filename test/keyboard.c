@@ -68,6 +68,7 @@ void fake_keyboard_close_write(struct fake_keyboard *kbd) {
 
 void fake_keyboard_destroy(struct fake_keyboard *kbd) {
   fake_keyboard_close_write(kbd);
+  reactor_destroy(kbd->reactor);
 }
 
 void simple_key() {

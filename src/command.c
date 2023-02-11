@@ -100,7 +100,7 @@ int32_t find_file(struct command_ctx ctx, int argc, const char *argv[]) {
       return 1;
     }
 
-    if (S_ISDIR(sb.st_mode)) {
+    if (S_ISDIR(sb.st_mode) && errno != ENOENT) {
       minibuffer_echo("TODO: implement dired!");
       return 1;
     }
@@ -109,6 +109,7 @@ int32_t find_file(struct command_ctx ctx, int argc, const char *argv[]) {
                       buffers_add(ctx.buffers, buffer_from_file((char *)pth)));
     minibuffer_echo_timeout(4, "buffer \"%s\" loaded",
                             ctx.active_window->buffer->name);
+
   } else {
     minibuffer_prompt(ctx, "find file: ");
   }

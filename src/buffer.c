@@ -28,6 +28,7 @@ static struct kill_ring {
   uint32_t curr_idx;
   uint32_t paste_idx;
 } g_kill_ring = {.curr_idx = 0,
+                 .buffer = {0},
                  .last_paste = {0},
                  .paste_idx = 0,
                  .paste_up_to_date = false};
@@ -52,12 +53,17 @@ struct buffer buffer_create(char *name, bool modeline) {
       .dot = {0},
       .mark = {0},
       .mark_set = false,
+      .modified = false,
+      .readonly = false,
+      .modeline = NULL,
       .keymaps = calloc(10, sizeof(struct keymap)),
       .nkeymaps = 1,
       .scroll = {0},
       .update_hooks = {0},
       .nkeymaps_max = 10,
   };
+
+  undo_init(&b.undo, 100);
 
   b.keymaps[0] = keymap_create("buffer-default", 128);
   struct binding bindings[] = {
@@ -94,14 +100,17 @@ struct buffer buffer_create(char *name, bool modeline) {
       BINDING(Ctrl, 'Y', "paste"),
       BINDING(Meta, 'y', "paste-older"),
       BINDING(Meta, 'w', "copy"),
+
+      BINDING(Ctrl, '_', "undo"),
   };
   keymap_bind_keys(&b.keymaps[0], bindings,
                    sizeof(bindings) / sizeof(bindings[0]));
 
   if (modeline) {
-    struct modeline *modeline = calloc(1, sizeof(struct modeline));
-    modeline->buffer = malloc(1024);
-    buffer_add_update_hook(&b, buffer_modeline_hook, modeline);
+    b.modeline = calloc(1, sizeof(struct modeline));
+    b.modeline->buffer = malloc(1024);
+    b.modeline->buffer[0] = '\0';
+    buffer_add_update_hook(&b, buffer_modeline_hook, b.modeline);
   }
 
   if (modeline) {
@@ -113,13 +122,26 @@ struct buffer buffer_create(char *name, bool modeline) {
 
 void buffer_destroy(struct buffer *buffer) {
   text_destroy(buffer->text);
-  free(buffer->text);
+  buffer->text = NULL;
+
   free(buffer->name);
+  buffer->name = NULL;
+
   free(buffer->filename);
+  buffer->filename = NULL;
+
   for (uint32_t keymapi = 0; keymapi < buffer->nkeymaps; ++keymapi) {
     keymap_destroy(&buffer->keymaps[keymapi]);
   }
   free(buffer->keymaps);
+  buffer->keymaps = NULL;
+
+  if (buffer->modeline != NULL) {
+    free(buffer->modeline->buffer);
+    free(buffer->modeline);
+  }
+
+  undo_destroy(&buffer->undo);
 }
 
 void buffer_clear(struct buffer *buffer) {
@@ -127,8 +149,46 @@ void buffer_clear(struct buffer *buffer) {
   buffer->dot.col = buffer->dot.line = 0;
 }
 
+void buffer_static_teardown() {
+  for (uint32_t i = 0; i < KILL_RING_SZ; ++i) {
+    if (g_kill_ring.buffer[i].allocated) {
+      free(g_kill_ring.buffer[i].text);
+    }
+  }
+}
+
 bool buffer_is_empty(struct buffer *buffer) {
   return text_num_lines(buffer->text) == 0;
+}
+
+bool buffer_is_modified(struct buffer *buffer) { return buffer->modified; }
+
+bool buffer_is_readonly(struct buffer *buffer) { return buffer->readonly; }
+void buffer_set_readonly(struct buffer *buffer, bool readonly) {
+  buffer->readonly = readonly;
+}
+
+void delete_with_undo(struct buffer *buffer, struct buffer_location start,
+                      struct buffer_location end) {
+  if (buffer->readonly) {
+    minibuffer_echo_timeout(4, "buffer is read-only");
+    return;
+  }
+
+  struct text_chunk txt =
+      text_get_region(buffer->text, start.line, start.col, end.line, end.col);
+
+  undo_push_delete(
+      &buffer->undo,
+      (struct undo_delete){.data = txt.text,
+                           .nbytes = txt.nbytes,
+                           .pos = {.row = start.line, .col = start.col}});
+
+  undo_push_boundary(&buffer->undo,
+                     (struct undo_boundary){.save_point = false});
+
+  text_delete(buffer->text, start.line, start.col, end.line, end.col);
+  buffer->modified = true;
 }
 
 uint32_t buffer_keymaps(struct buffer *buffer, struct keymap **keymaps_out) {
@@ -196,6 +256,14 @@ bool moveh(struct buffer *buffer, int coldelta) {
   return true;
 }
 
+void buffer_goto(struct buffer *buffer, uint32_t line, uint32_t col) {
+  int64_t linedelta = (int64_t)line - (int64_t)buffer->dot.line;
+  movev(buffer, linedelta);
+
+  int64_t coldelta = (int64_t)col - (int64_t)buffer->dot.col;
+  moveh(buffer, coldelta);
+}
+
 struct region {
   struct buffer_location begin;
   struct buffer_location end;
@@ -227,8 +295,12 @@ struct text_chunk *copy_region(struct buffer *buffer, struct region region) {
   struct text_chunk *curr = &g_kill_ring.buffer[g_kill_ring.curr_idx];
   g_kill_ring.curr_idx = g_kill_ring.curr_idx + 1 % KILL_RING_SZ;
 
-  if (curr != NULL) {
+  if (curr->allocated) {
     free(curr->text);
+    curr->text = NULL;
+    curr->nbytes = curr->nchars = 0;
+    curr->line = 0;
+    curr->allocated = false;
   }
 
   struct text_chunk txt =
@@ -249,7 +321,7 @@ void buffer_copy(struct buffer *buffer) {
 void paste(struct buffer *buffer, uint32_t ring_idx) {
   if (ring_idx > 0) {
     struct text_chunk *curr = &g_kill_ring.buffer[ring_idx - 1];
-    if (curr != NULL) {
+    if (curr->text != NULL) {
       g_kill_ring.last_paste = buffer->mark_set ? buffer->mark : buffer->dot;
       buffer_add_text(buffer, curr->text, curr->nbytes);
       g_kill_ring.paste_up_to_date = true;
@@ -267,8 +339,7 @@ void buffer_paste_older(struct buffer *buffer) {
 
     // remove previous paste
     struct text_chunk *curr = &g_kill_ring.buffer[g_kill_ring.curr_idx];
-    text_delete(buffer->text, g_kill_ring.last_paste.line,
-                g_kill_ring.last_paste.col, buffer->dot.line, buffer->dot.col);
+    delete_with_undo(buffer, g_kill_ring.last_paste, buffer->dot);
 
     // place ourselves right
     buffer->dot = g_kill_ring.last_paste;
@@ -291,8 +362,7 @@ void buffer_cut(struct buffer *buffer) {
   if (buffer_region_has_size(buffer)) {
     struct region reg = buffer_get_region(buffer);
     copy_region(buffer, reg);
-    text_delete(buffer->text, reg.begin.line, reg.begin.col, reg.end.line,
-                reg.end.col);
+    delete_with_undo(buffer, reg.begin, reg.end);
     buffer_clear_mark(buffer);
     buffer->dot = reg.begin;
   }
@@ -301,9 +371,7 @@ void buffer_cut(struct buffer *buffer) {
 bool maybe_delete_region(struct buffer *buffer) {
   if (buffer_region_has_size(buffer)) {
     struct region reg = buffer_get_region(buffer);
-    text_delete(buffer->text, reg.begin.line, reg.begin.col, reg.end.line,
-                reg.end.col);
-
+    delete_with_undo(buffer, reg.begin, reg.end);
     buffer_clear_mark(buffer);
     buffer->dot = reg.begin;
     return true;
@@ -327,8 +395,11 @@ void buffer_kill_line(struct buffer *buffer) {
           },
   };
   copy_region(buffer, reg);
-  text_delete(buffer->text, buffer->dot.line, buffer->dot.col, buffer->dot.line,
-              buffer->dot.col + nchars);
+  delete_with_undo(buffer, buffer->dot,
+                   (struct buffer_location){
+                       .line = buffer->dot.line,
+                       .col = buffer->dot.col + nchars,
+                   });
 }
 
 void buffer_forward_delete_char(struct buffer *buffer) {
@@ -336,8 +407,11 @@ void buffer_forward_delete_char(struct buffer *buffer) {
     return;
   }
 
-  text_delete(buffer->text, buffer->dot.line, buffer->dot.col, buffer->dot.line,
-              buffer->dot.col + 1);
+  delete_with_undo(buffer, buffer->dot,
+                   (struct buffer_location){
+                       .line = buffer->dot.line,
+                       .col = buffer->dot.col + 1,
+                   });
 }
 
 void buffer_backward_delete_char(struct buffer *buffer) {
@@ -425,6 +499,7 @@ struct buffer buffer_from_file(char *filename) {
     fclose(file);
   }
 
+  undo_push_boundary(&b.undo, (struct undo_boundary){.save_point = true});
   return b;
 }
 
@@ -458,6 +533,8 @@ void buffer_to_file(struct buffer *buffer) {
   minibuffer_echo_timeout(4, "wrote %d lines to %s", nlines_to_write,
                           buffer->filename);
   fclose(file);
+
+  undo_push_boundary(&buffer->undo, (struct undo_boundary){.save_point = true});
 }
 
 void buffer_write_to(struct buffer *buffer, const char *filename) {
@@ -466,6 +543,11 @@ void buffer_write_to(struct buffer *buffer, const char *filename) {
 }
 
 int buffer_add_text(struct buffer *buffer, uint8_t *text, uint32_t nbytes) {
+  if (buffer->readonly) {
+    minibuffer_echo_timeout(4, "buffer is read-only");
+    return 0;
+  }
+
   // invalidate last paste
   g_kill_ring.paste_up_to_date = false;
 
@@ -473,17 +555,32 @@ int buffer_add_text(struct buffer *buffer, uint8_t *text, uint32_t nbytes) {
    * replace it with the text to insert. */
   maybe_delete_region(buffer);
 
-  uint32_t lines_added, cols_added;
-  text_insert_at(buffer->text, buffer->dot.line, buffer->dot.col, text, nbytes,
-                 &lines_added, &cols_added);
-  movev(buffer, lines_added);
+  struct buffer_location initial = buffer->dot;
 
+  uint32_t lines_added, cols_added;
+  text_insert_at(buffer->text, initial.line, initial.col, text, nbytes,
+                 &lines_added, &cols_added);
+
+  // move to after inserted text
+  movev(buffer, lines_added);
   if (lines_added > 0) {
     // does not make sense to use position from another line
     buffer->dot.col = 0;
   }
   moveh(buffer, cols_added);
 
+  struct buffer_location final = buffer->dot;
+  undo_push_add(
+      &buffer->undo,
+      (struct undo_add){.begin = {.row = initial.line, .col = initial.col},
+                        .end = {.row = final.line, .col = final.col}});
+
+  if (lines_added > 0) {
+    undo_push_boundary(&buffer->undo,
+                       (struct undo_boundary){.save_point = false});
+  }
+
+  buffer->modified = true;
   return lines_added;
 }
 
@@ -527,6 +624,61 @@ void buffer_set_mark_at(struct buffer *buffer, uint32_t line, uint32_t col) {
   minibuffer_echo_timeout(2, "mark set");
 }
 
+void buffer_undo(struct buffer *buffer) {
+  struct undo_stack *undo = &buffer->undo;
+  undo_begin(undo);
+
+  // fetch and handle records
+  struct undo_record *records = NULL;
+  uint32_t nrecords = 0;
+
+  if (undo_current_position(undo) == INVALID_TOP) {
+    minibuffer_echo_timeout(4,
+                            "no more undo information, starting from top...");
+  }
+
+  undo_next(undo, &records, &nrecords);
+
+  undo_push_boundary(undo, (struct undo_boundary){.save_point = false});
+  for (uint32_t reci = 0; reci < nrecords; ++reci) {
+    struct undo_record *rec = &records[reci];
+    switch (rec->type) {
+    case Undo_Boundary: {
+      struct undo_boundary *b = &rec->boundary;
+      if (b->save_point) {
+        buffer->modified = false;
+      }
+      break;
+    }
+    case Undo_Add: {
+      struct undo_add *add = &rec->add;
+
+      delete_with_undo(buffer,
+                       (struct buffer_location){
+                           .line = add->begin.row,
+                           .col = add->begin.col,
+                       },
+                       (struct buffer_location){
+                           .line = add->end.row,
+                           .col = add->end.col,
+                       });
+
+      buffer_goto(buffer, add->begin.row, add->begin.col);
+      break;
+    }
+    case Undo_Delete: {
+      struct undo_delete *del = &rec->delete;
+      buffer_goto(buffer, del->pos.row, del->pos.col);
+      buffer_add_text(buffer, del->data, del->nbytes);
+      break;
+    }
+    }
+  }
+
+  free(records);
+  undo_end(undo);
+}
+
 struct cmdbuf {
   struct command_list *cmds;
   struct buffer_location scroll;
@@ -542,7 +694,6 @@ struct cmdbuf {
 };
 
 void render_line(struct text_chunk *line, void *userdata) {
-
   struct cmdbuf *cmdbuf = (struct cmdbuf *)userdata;
   uint32_t visual_line = line->line - cmdbuf->scroll.line + cmdbuf->line_offset;
 
@@ -701,7 +852,8 @@ struct update_hook_result buffer_modeline_hook(struct buffer *buffer,
   struct tm *lt = localtime(&now);
   char left[128], right[128];
 
-  snprintf(left, 128, "  %-16s (%d, %d)", buffer->name, buffer->dot.line + 1,
+  snprintf(left, 128, "  %c%c %-16s (%d, %d)", buffer->modified ? '*' : '-',
+           buffer->readonly ? '%' : '-', buffer->name, buffer->dot.line + 1,
            visual_dot_col(buffer, buffer->dot.col));
   snprintf(right, 128, "(%.2f ms) %02d:%02d", frame_time / 1e6, lt->tm_hour,
            lt->tm_min);
@@ -732,7 +884,6 @@ struct linenumdata {
 
 void linenum_render_hook(struct text_chunk *line_data, uint32_t line,
                          struct command_list *commands, void *userdata) {
-
   struct linenumdata *data = (struct linenumdata *)userdata;
   static char buf[16];
   command_list_set_index_color_bg(commands, 236);
@@ -794,7 +945,6 @@ struct update_hook_result buffer_linenum_hook(struct buffer *buffer,
 void buffer_update(struct buffer *buffer, uint32_t width, uint32_t height,
                    struct command_list *commands, uint64_t frame_time,
                    uint32_t *relline, uint32_t *relcol) {
-
   if (width == 0 || height == 0) {
     return;
   }

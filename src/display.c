@@ -90,7 +90,7 @@ struct display *display_create() {
   tcgetattr(0, &orig_term);
 
   // set terminal to raw mode
-  struct termios term;
+  struct termios term = {0};
   cfmakeraw(&term);
 
   tcsetattr(0, TCSADRAIN, &term);

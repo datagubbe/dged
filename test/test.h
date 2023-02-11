@@ -12,6 +12,7 @@
 void run_buffer_tests();
 void run_utf8_tests();
 void run_text_tests();
+void run_undo_tests();
 void run_command_tests();
 void run_keyboard_tests();
 void run_allocator_tests();

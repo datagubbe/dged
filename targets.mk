@@ -17,7 +17,11 @@ run-tests: $(TEST_OBJS) $(OBJS)
 	$(CC) $(LDFLAGS) $(TEST_OBJS) $(OBJS) -o run-tests
 
 check: run-tests
+	clang-format --dry-run --Werror $(DGED_SOURCES) $(TEST_SOURCES)
 	./run-tests
+
+format:
+	clang-format -i $(DGED_SOURCES) $(TEST_SOURCES)
 
 run: dged
 	./dged

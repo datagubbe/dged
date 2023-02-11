@@ -41,6 +41,8 @@ void test_move() {
   ASSERT(
       b.dot.col == 0 && b.dot.line == 0,
       "Expected to not be able to move backwards when at beginning of buffer");
+
+  buffer_destroy(&b);
 }
 
 void run_buffer_tests() { run_test(test_move); }

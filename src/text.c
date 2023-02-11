@@ -46,10 +46,14 @@ void text_destroy(struct text *text) {
   }
 
   free(text->lines);
+
+  free(text);
 }
 
 void text_clear(struct text *text) {
   for (uint32_t li = 0; li < text->nlines; ++li) {
+    free(text->lines[li].data);
+    text->lines[li].data = NULL;
     text->lines[li].flags = 0;
     text->lines[li].nbytes = 0;
     text->lines[li].nchars = 0;
@@ -237,6 +241,7 @@ void delete_line(struct text *text, uint32_t line) {
   }
 
   --text->nlines;
+  free(text->lines[text->nlines].data);
   text->lines[text->nlines].data = NULL;
   text->lines[text->nlines].nbytes = 0;
   text->lines[text->nlines].nchars = 0;
@@ -264,7 +269,8 @@ void text_insert_at(struct text *text, uint32_t line, uint32_t col,
 
       insert_at(text, line, col, line_data, linelen, nchars);
 
-      if (linelen == 0) {
+      col += nchars;
+      if (linelen == 0 || col < text_line_length(text, line)) {
         new_line_at(text, line, col);
       }
 
@@ -290,17 +296,38 @@ void text_insert_at(struct text *text, uint32_t line, uint32_t col,
 void text_delete(struct text *text, uint32_t start_line, uint32_t start_col,
                  uint32_t end_line, uint32_t end_col) {
 
+  uint32_t maxline = text->nlines > 0 ? text->nlines - 1 : 0;
+
+  // make sure we stay inside
+  if (start_line > maxline) {
+    start_line = maxline;
+    start_col = text->lines[start_line].nchars > 0
+                    ? text->lines[start_line].nchars - 1
+                    : 0;
+  }
+
+  if (end_line > maxline) {
+    end_line = maxline;
+    end_col = text->lines[end_line].nchars;
+  }
+
   struct line *firstline = &text->lines[start_line];
   struct line *lastline = &text->lines[end_line];
+
+  // clamp column
   if (start_col > firstline->nchars) {
-    return;
+    start_col = firstline->nchars > 0 ? firstline->nchars - 1 : 0;
   }
 
   // handle deletion of newlines
   if (end_col > lastline->nchars) {
-    ++end_line;
-    end_col = 0;
-    lastline = &text->lines[end_line];
+    if (end_line + 1 < text->nlines) {
+      end_col = 0;
+      ++end_line;
+      lastline = &text->lines[end_line];
+    } else {
+      end_col = lastline->nchars;
+    }
   }
 
   uint32_t bytei = utf8_nbytes(lastline->data, lastline->nbytes, end_col);

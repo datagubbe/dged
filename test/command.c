@@ -53,6 +53,8 @@ void test_register_command() {
          "Expected number of commands to be 3 after inserting two more");
   ASSERT(cmds.capacity > 1,
          "Expected capacity to have increased to accommodate new commands");
+
+  command_registry_destroy(&cmds);
 }
 
 void test_lookup_command() {
@@ -70,6 +72,8 @@ void test_lookup_command() {
          "Expected to be able to look up inserted command by hash");
   ASSERT_STR_EQ(cmd->name, "fake",
                 "Expected the found function to have the correct name");
+
+  command_registry_destroy(&cmds);
 }
 
 int32_t failing_command(struct command_ctx ctx, int argc, const char *argv[]) {
@@ -91,6 +95,8 @@ void test_execute_command() {
   struct command *fail_cmd = lookup_command(&cmds, "fejl");
   int32_t res2 = execute_command(fail_cmd, &cmds, NULL, NULL, 0, NULL);
   ASSERT(res2 != 0, "Expected failing command to fail");
+
+  command_registry_destroy(&cmds);
 }
 
 void run_command_tests() {

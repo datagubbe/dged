@@ -4,6 +4,7 @@
 
 #include "command.h"
 #include "text.h"
+#include "undo.h"
 #include "window.h"
 
 struct keymap;
@@ -123,10 +124,23 @@ struct buffer {
 
   /** Buffer update hooks */
   struct update_hooks update_hooks;
+
+  /** Buffer undo stack */
+  struct undo_stack undo;
+
+  /** Has this buffer been modified from when it was last saved */
+  bool modified;
+
+  /** Can this buffer be changed */
+  bool readonly;
+
+  /** Modeline buffer (may be NULL) */
+  struct modeline *modeline;
 };
 
 struct buffer buffer_create(char *name, bool modeline);
 void buffer_destroy(struct buffer *buffer);
+void buffer_static_teardown();
 
 uint32_t buffer_keymaps(struct buffer *buffer, struct keymap **keymaps_out);
 void buffer_add_keymap(struct buffer *buffer, struct keymap *keymap);
@@ -134,6 +148,9 @@ void buffer_add_keymap(struct buffer *buffer, struct keymap *keymap);
 int buffer_add_text(struct buffer *buffer, uint8_t *text, uint32_t nbytes);
 void buffer_clear(struct buffer *buffer);
 bool buffer_is_empty(struct buffer *buffer);
+bool buffer_is_modified(struct buffer *buffer);
+bool buffer_is_readonly(struct buffer *buffer);
+void buffer_set_readonly(struct buffer *buffer, bool readonly);
 
 void buffer_kill_line(struct buffer *buffer);
 void buffer_forward_delete_char(struct buffer *buffer);
@@ -149,8 +166,11 @@ void buffer_beginning_of_line(struct buffer *buffer);
 void buffer_newline(struct buffer *buffer);
 void buffer_indent(struct buffer *buffer);
 
+void buffer_undo(struct buffer *buffer);
+
 void buffer_goto_beginning(struct buffer *buffer);
 void buffer_goto_end(struct buffer *buffer);
+void buffer_goto(struct buffer *buffer, uint32_t line, uint32_t col);
 
 void buffer_set_mark(struct buffer *buffer);
 void buffer_clear_mark(struct buffer *buffer);
@@ -204,6 +224,7 @@ BUFFER_WRAPCMD(buffer_paste);
 BUFFER_WRAPCMD(buffer_paste_older);
 BUFFER_WRAPCMD(buffer_goto_beginning);
 BUFFER_WRAPCMD(buffer_goto_end);
+BUFFER_WRAPCMD(buffer_undo);
 
 static struct command BUFFER_COMMANDS[] = {
     {.name = "kill-line", .fn = buffer_kill_line_cmd},
@@ -228,4 +249,5 @@ static struct command BUFFER_COMMANDS[] = {
     {.name = "paste-older", .fn = buffer_paste_older_cmd},
     {.name = "goto-beginning", .fn = buffer_goto_beginning_cmd},
     {.name = "goto-end", .fn = buffer_goto_end_cmd},
+    {.name = "undo", .fn = buffer_undo_cmd},
 };
