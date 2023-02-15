@@ -297,10 +297,6 @@ struct text_chunk *copy_region(struct buffer *buffer, struct region region) {
 
   if (curr->allocated) {
     free(curr->text);
-    curr->text = NULL;
-    curr->nbytes = curr->nchars = 0;
-    curr->line = 0;
-    curr->allocated = false;
   }
 
   struct text_chunk txt =

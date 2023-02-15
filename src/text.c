@@ -241,7 +241,6 @@ void delete_line(struct text *text, uint32_t line) {
   }
 
   --text->nlines;
-  free(text->lines[text->nlines].data);
   text->lines[text->nlines].data = NULL;
   text->lines[text->nlines].nbytes = 0;
   text->lines[text->nlines].nchars = 0;
