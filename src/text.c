@@ -212,8 +212,7 @@ void new_line_at(struct text *text, uint32_t line, uint32_t col) {
   ensure_line(text, line);
 
   uint32_t newline = line + 1;
-  bool has_newline = col < text->lines[line].nchars || newline < text->nlines;
-  append_empty_lines(text, has_newline ? 1 : 0);
+  append_empty_lines(text, 1);
 
   mark_lines_changed(text, line, text->nlines - line);
 
@@ -269,7 +268,10 @@ void text_insert_at(struct text *text, uint32_t line, uint32_t col,
       insert_at(text, line, col, line_data, linelen, nchars);
 
       col += nchars;
-      if (linelen == 0 || col < text_line_length(text, line)) {
+
+      // only insert a newline if we have to
+      if (linelen == 0 || col < text_line_length(text, line) ||
+          line + 1 < text->nlines) {
         new_line_at(text, line, col);
       }
 
