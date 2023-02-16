@@ -178,14 +178,14 @@ void delete_with_undo(struct buffer *buffer, struct buffer_location start,
   struct text_chunk txt =
       text_get_region(buffer->text, start.line, start.col, end.line, end.col);
 
+  undo_push_boundary(&buffer->undo,
+                     (struct undo_boundary){.save_point = false});
+
   undo_push_delete(
       &buffer->undo,
       (struct undo_delete){.data = txt.text,
                            .nbytes = txt.nbytes,
                            .pos = {.row = start.line, .col = start.col}});
-
-  undo_push_boundary(&buffer->undo,
-                     (struct undo_boundary){.save_point = false});
 
   text_delete(buffer->text, start.line, start.col, end.line, end.col);
   buffer->modified = true;
@@ -567,15 +567,14 @@ int buffer_add_text(struct buffer *buffer, uint8_t *text, uint32_t nbytes) {
   moveh(buffer, cols_added);
 
   struct buffer_location final = buffer->dot;
-  undo_push_add(
-      &buffer->undo,
-      (struct undo_add){.begin = {.row = initial.line, .col = initial.col},
-                        .end = {.row = final.line, .col = final.col}});
-
   if (lines_added > 0) {
     undo_push_boundary(&buffer->undo,
                        (struct undo_boundary){.save_point = false});
   }
+  undo_push_add(
+      &buffer->undo,
+      (struct undo_add){.begin = {.row = initial.line, .col = initial.col},
+                        .end = {.row = final.line, .col = final.col}});
 
   buffer->modified = true;
   return lines_added;
