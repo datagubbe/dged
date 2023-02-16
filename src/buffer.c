@@ -377,7 +377,8 @@ bool maybe_delete_region(struct buffer *buffer) {
 }
 
 void buffer_kill_line(struct buffer *buffer) {
-  uint32_t nchars = text_line_length(buffer->text, buffer->dot.line);
+  uint32_t nchars =
+      text_line_length(buffer->text, buffer->dot.line) - buffer->dot.col;
   if (nchars == 0) {
     nchars = 1;
   }
