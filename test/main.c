@@ -39,6 +39,9 @@ int main() {
   printf("\n🐜 \x1b[1;36mRunning minibuffer tests...\x1b[0m\n");
   run_minibuffer_tests();
 
+  printf("\n 📓 \x1b[1;36mRunning settings tests...\x1b[0m\n");
+  run_settings_tests();
+
   struct timespec elapsed;
   clock_gettime(CLOCK_MONOTONIC, &elapsed);
   uint64_t elapsed_nanos =

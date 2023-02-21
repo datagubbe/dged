@@ -1,5 +1,7 @@
+#include "command.h"
 #include "buffer.h"
 #include "buffers.h"
+#include "hash.h"
 #include "minibuffer.h"
 
 #include <errno.h>
@@ -26,16 +28,6 @@ void command_registry_destroy(struct commands *commands) {
   commands->capacity = 0;
 }
 
-uint32_t hash_command_name(const char *name) {
-  unsigned long hash = 5381;
-  int c;
-
-  while ((c = *name++))
-    hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
-
-  return hash;
-}
-
 uint32_t register_command(struct commands *commands, struct command command) {
   if (commands->ncommands == commands->capacity) {
     commands->capacity *= 2;
@@ -43,7 +35,7 @@ uint32_t register_command(struct commands *commands, struct command command) {
         commands->commands, sizeof(struct hashed_command) * commands->capacity);
   }
 
-  uint32_t hash = hash_command_name(command.name);
+  uint32_t hash = hash_name(command.name);
   commands->commands[commands->ncommands] =
       (struct hashed_command){.command = command, .hash = hash};
 
@@ -60,7 +52,7 @@ void register_commands(struct commands *command_list, struct command *commands,
 
 struct command *lookup_command(struct commands *command_list,
                                const char *name) {
-  uint32_t needle = hash_command_name(name);
+  uint32_t needle = hash_name(name);
   return lookup_command_by_hash(command_list, needle);
 }
 
@@ -86,53 +78,68 @@ int32_t execute_command(struct command *command, struct commands *commands,
           .userdata = command->userdata,
           .commands = commands,
           .self = command,
+          .saved_argv = {0},
+          .saved_argc = 0,
       },
       argc, argv);
 }
 
+void command_ctx_push_arg(struct command_ctx *ctx, const char *argv) {
+  if (ctx->saved_argc < 64) {
+    ctx->saved_argv[ctx->saved_argc] = strdup(argv);
+    ++ctx->saved_argc;
+  }
+}
+
+void command_ctx_free(struct command_ctx *ctx) {
+  for (uint32_t i = 0; i < ctx->saved_argc; ++i) {
+    free((char *)ctx->saved_argv[i]);
+  }
+
+  ctx->saved_argc = 0;
+}
+
 int32_t find_file(struct command_ctx ctx, int argc, const char *argv[]) {
   const char *pth = NULL;
-  if (argc == 1) {
-    pth = argv[0];
-    struct stat sb;
-    if (stat(pth, &sb) < 0 && errno != ENOENT) {
-      minibuffer_echo("stat on %s failed: %s", pth, strerror(errno));
-      return 1;
-    }
-
-    if (S_ISDIR(sb.st_mode) && errno != ENOENT) {
-      minibuffer_echo("TODO: implement dired!");
-      return 1;
-    }
-
-    window_set_buffer(ctx.active_window,
-                      buffers_add(ctx.buffers, buffer_from_file((char *)pth)));
-    minibuffer_echo_timeout(4, "buffer \"%s\" loaded",
-                            ctx.active_window->buffer->name);
-
-  } else {
-    minibuffer_prompt(ctx, "find file: ");
+  if (argc == 0) {
+    return minibuffer_prompt(ctx, "find file: ");
   }
+
+  pth = argv[0];
+  struct stat sb;
+  if (stat(pth, &sb) < 0 && errno != ENOENT) {
+    minibuffer_echo("stat on %s failed: %s", pth, strerror(errno));
+    return 1;
+  }
+
+  if (S_ISDIR(sb.st_mode) && errno != ENOENT) {
+    minibuffer_echo("TODO: implement dired!");
+    return 1;
+  }
+
+  window_set_buffer(ctx.active_window,
+                    buffers_add(ctx.buffers, buffer_from_file((char *)pth)));
+  minibuffer_echo_timeout(4, "buffer \"%s\" loaded",
+                          ctx.active_window->buffer->name);
 
   return 0;
 }
 
 int32_t write_file(struct command_ctx ctx, int argc, const char *argv[]) {
   const char *pth = NULL;
-  if (argc == 1) {
-    pth = argv[0];
-    buffer_write_to(ctx.active_window->buffer, pth);
-  } else {
-    minibuffer_prompt(ctx, "write to file: ");
+  if (argc == 0) {
+    return minibuffer_prompt(ctx, "write to file: ");
   }
+
+  pth = argv[0];
+  buffer_write_to(ctx.active_window->buffer, pth);
 
   return 0;
 }
 
 int32_t run_interactive(struct command_ctx ctx, int argc, const char *argv[]) {
   if (argc == 0) {
-    minibuffer_prompt(ctx, "execute: ");
-    return 0;
+    return minibuffer_prompt(ctx, "execute: ");
   }
 
   struct command *cmd = lookup_command(ctx.commands, argv[0]);
@@ -174,12 +181,11 @@ int32_t switch_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
   if (argc == 0) {
     ctx.self = &do_switch_buffer_cmd;
     if (ctx.active_window->prev_buffer != NULL) {
-      minibuffer_prompt(
+      return minibuffer_prompt(
           ctx, "buffer (default %s): ", ctx.active_window->prev_buffer->name);
     } else {
-      minibuffer_prompt(ctx, "buffer: ");
+      return minibuffer_prompt(ctx, "buffer: ");
     }
-    return 0;
   }
 
   return execute_command(&do_switch_buffer_cmd, ctx.commands, ctx.active_window,

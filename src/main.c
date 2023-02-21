@@ -13,6 +13,7 @@
 #include "display.h"
 #include "minibuffer.h"
 #include "reactor.h"
+#include "settings.h"
 
 struct frame_allocator frame_allocator;
 
@@ -84,6 +85,9 @@ int main(int argc, char *argv[]) {
 
   signal(SIGTERM, terminate);
 
+  settings_init(64);
+  buffer_static_init();
+
   frame_allocator = frame_allocator_create(16 * 1024 * 1024);
 
   // create reactor
@@ -103,6 +107,8 @@ int main(int argc, char *argv[]) {
                     sizeof(GLOBAL_COMMANDS) / sizeof(GLOBAL_COMMANDS[0]));
   register_commands(&commands, BUFFER_COMMANDS,
                     sizeof(BUFFER_COMMANDS) / sizeof(BUFFER_COMMANDS[0]));
+  register_commands(&commands, SETTINGS_COMMANDS,
+                    sizeof(SETTINGS_COMMANDS) / sizeof(SETTINGS_COMMANDS[0]));
 
   // keymaps
   struct keymap *current_keymap = NULL;
@@ -307,6 +313,7 @@ int main(int argc, char *argv[]) {
     frame_allocator_clear(&frame_allocator);
   }
 
+  minibuffer_destroy();
   buffer_destroy(&minibuffer);
   buffers_destroy(&buflist);
   display_clear(display);
@@ -317,6 +324,7 @@ int main(int argc, char *argv[]) {
   reactor_destroy(reactor);
   frame_allocator_destroy(&frame_allocator);
   buffer_static_teardown();
+  settings_destroy();
 
   return 0;
 }

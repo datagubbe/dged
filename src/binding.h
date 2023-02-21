@@ -1,3 +1,4 @@
+#include "hash.h"
 #include "keyboard.h"
 
 /**
@@ -36,7 +37,7 @@ enum binding_type {
 #define BINDING_INNER(mod_, c_, command_)                                      \
   (struct binding) {                                                           \
     .key = {.mod = mod_, .key = c_}, .type = BindingType_Command,              \
-    .command = hash_command_name(command_)                                     \
+    .command = hash_name(command_)                                             \
   }
 
 #define ANONYMOUS_BINDING_INNER(mod_, c_, command_)                            \

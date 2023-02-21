@@ -1,6 +1,7 @@
 #include "minibuffer.h"
 #include "binding.h"
 #include "buffer.h"
+#include "command.h"
 #include "display.h"
 
 #include <stdarg.h>
@@ -11,9 +12,11 @@
 static struct minibuffer {
   struct buffer *buffer;
   struct timespec expires;
+
   char prompt[128];
   struct command_ctx prompt_command_ctx;
   bool prompt_active;
+
   struct keymap keymap;
 } g_minibuffer = {0};
 
@@ -26,17 +29,25 @@ void draw_prompt(struct command_list *commands, void *userdata) {
 
 int32_t execute(struct command_ctx ctx, int argc, const char *argv[]) {
   if (g_minibuffer.prompt_active) {
+    struct command_ctx *c = &g_minibuffer.prompt_command_ctx;
+
     struct text_chunk line = buffer_get_line(g_minibuffer.buffer, 0);
     char *l = (char *)malloc(line.nbytes + 1);
     memcpy(l, line.text, line.nbytes);
     l[line.nbytes] = '\0';
 
+    // propagate any saved arguments
+    char *argv[64];
+    for (uint32_t i = 0; i < c->saved_argc; ++i) {
+      argv[i] = (char *)c->saved_argv[i];
+    }
+    argv[c->saved_argc] = l;
+    uint32_t argc = c->saved_argc + (line.nbytes > 0 ? 1 : 0);
+
     // split on ' '
-    const char *argv[128] = {l};
-    argc = line.nbytes > 0 ? 1 : 0;
     for (uint32_t bytei = 0; bytei < line.nbytes; ++bytei) {
       uint8_t byte = line.text[bytei];
-      if (byte == ' ') {
+      if (byte == ' ' && argc < 64) {
         l[bytei] = '\0';
         argv[argc] = l + bytei + 1;
         ++argc;
@@ -44,11 +55,11 @@ int32_t execute(struct command_ctx ctx, int argc, const char *argv[]) {
     }
 
     minibuffer_abort_prompt();
-    struct command_ctx *ctx = &g_minibuffer.prompt_command_ctx;
-    uint32_t res = execute_command(ctx->self, ctx->commands, ctx->active_window,
-                                   ctx->buffers, argc, argv);
+    int32_t res = execute_command(c->self, c->commands, c->active_window,
+                                  c->buffers, argc, (const char **)argv);
 
     free(l);
+
     return res;
   } else {
     return 0;
@@ -58,16 +69,6 @@ int32_t execute(struct command_ctx ctx, int argc, const char *argv[]) {
 struct command execute_minibuffer_command = {
     .fn = execute,
     .name = "minibuffer-execute",
-    .userdata = NULL,
-};
-
-int32_t complete(struct command_ctx ctx, int argc, const char *argv[]) {
-  return 0;
-}
-
-struct command complete_minibuffer_command = {
-    .fn = complete,
-    .name = "minibuffer-complete",
     .userdata = NULL,
 };
 
@@ -101,7 +102,6 @@ void minibuffer_init(struct buffer *buffer) {
 
   struct binding bindings[] = {
       ANONYMOUS_BINDING(Ctrl, 'M', &execute_minibuffer_command),
-      ANONYMOUS_BINDING(Ctrl, 'I', &complete_minibuffer_command),
   };
   keymap_bind_keys(&g_minibuffer.keymap, bindings,
                    sizeof(bindings) / sizeof(bindings[0]));
@@ -128,6 +128,10 @@ void echo(uint32_t timeout, const char *fmt, va_list args) {
   g_minibuffer.expires.tv_sec += timeout;
 }
 
+void minibuffer_destroy() {
+  command_ctx_free(&g_minibuffer.prompt_command_ctx);
+}
+
 void minibuffer_echo(const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);
@@ -142,20 +146,24 @@ void minibuffer_echo_timeout(uint32_t timeout, const char *fmt, ...) {
   va_end(args);
 }
 
-void minibuffer_prompt(struct command_ctx command_ctx, const char *fmt, ...) {
+int32_t minibuffer_prompt(struct command_ctx command_ctx, const char *fmt,
+                          ...) {
   if (g_minibuffer.buffer == NULL) {
-    return;
+    return 1;
   }
 
   minibuffer_clear();
-
   g_minibuffer.prompt_active = true;
+
+  command_ctx_free(&g_minibuffer.prompt_command_ctx);
   g_minibuffer.prompt_command_ctx = command_ctx;
 
   va_list args;
   va_start(args, fmt);
   vsnprintf(g_minibuffer.prompt, sizeof(g_minibuffer.prompt), fmt, args);
   va_end(args);
+
+  return 0;
 }
 
 void minibuffer_abort_prompt() {

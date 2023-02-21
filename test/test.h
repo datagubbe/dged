@@ -17,5 +17,6 @@ void run_command_tests();
 void run_keyboard_tests();
 void run_allocator_tests();
 void run_minibuffer_tests();
+void run_settings_tests();
 
 #endif

@@ -5,12 +5,13 @@ default: dged
 
 SOURCES = src/binding.c src/buffer.c src/command.c src/display.c \
 	src/keyboard.c src/minibuffer.c src/text.c \
-	src/utf8.c src/buffers.c src/window.c src/allocator.c src/undo.c
+	src/utf8.c src/buffers.c src/window.c src/allocator.c src/undo.c \
+	src/settings.c
 
 DGED_SOURCES = $(SOURCES) src/main.c
 TEST_SOURCES = test/assert.c test/buffer.c test/text.c test/utf8.c test/main.c \
 	test/command.c test/keyboard.c test/fake-reactor.c test/allocator.c \
-	test/minibuffer.c test/undo.c
+	test/minibuffer.c test/undo.c test/settings.c
 
 prefix != if [ -n "$$prefix" ]; then echo "$$prefix"; else echo "/usr"; fi
 

@@ -4,6 +4,7 @@
 #include "errno.h"
 #include "minibuffer.h"
 #include "reactor.h"
+#include "settings.h"
 #include "utf8.h"
 
 #include <fcntl.h>
@@ -147,6 +148,12 @@ void buffer_destroy(struct buffer *buffer) {
 void buffer_clear(struct buffer *buffer) {
   text_clear(buffer->text);
   buffer->dot.col = buffer->dot.line = 0;
+}
+
+void buffer_static_init() {
+  settings_register_setting(
+      "editor.tab-width",
+      (struct setting_value){.type = Setting_Number, .number_value = 4});
 }
 
 void buffer_static_teardown() {
@@ -585,8 +592,10 @@ void buffer_newline(struct buffer *buffer) {
 }
 
 void buffer_indent(struct buffer *buffer) {
-  // TODO: config
-  buffer_add_text(buffer, (uint8_t *)"    ", 4);
+  struct setting *setting = settings_get("editor.tab-width");
+  buffer_add_text(
+      buffer, (uint8_t *)"                ",
+      setting->value.number_value > 16 ? 16 : setting->value.number_value);
 }
 
 uint32_t buffer_add_update_hook(struct buffer *buffer, update_hook_cb hook,

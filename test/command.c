@@ -2,6 +2,7 @@
 #include "test.h"
 
 #include "command.h"
+#include "hash.h"
 
 void test_command_registry_create() {
   struct commands cmds = command_registry_create(10);
@@ -66,8 +67,7 @@ void test_lookup_command() {
   ASSERT_STR_EQ(cmd->name, "fake",
                 "Expected the found function to have the correct name");
 
-  struct command *also_cmd =
-      lookup_command_by_hash(&cmds, hash_command_name("fake"));
+  struct command *also_cmd = lookup_command_by_hash(&cmds, hash_name("fake"));
   ASSERT(cmd != NULL,
          "Expected to be able to look up inserted command by hash");
   ASSERT_STR_EQ(cmd->name, "fake",

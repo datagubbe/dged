@@ -1,3 +1,6 @@
+#ifndef _COMMAND_H
+#define _COMMAND_H
+
 /** @file command.h
  * Commands and command registries
  */
@@ -40,6 +43,10 @@ struct command_ctx {
    * User data set up by the command currently being executed.
    */
   void *userdata;
+
+  const char *saved_argv[64];
+
+  int saved_argc;
 };
 
 /** A command function callback which holds the implementation of a command */
@@ -165,6 +172,9 @@ struct command *lookup_command(struct commands *commands, const char *name);
 struct command *lookup_command_by_hash(struct commands *commands,
                                        uint32_t hash);
 
+void command_ctx_push_arg(struct command_ctx *ctx, const char *argv);
+void command_ctx_free(struct command_ctx *ctx);
+
 /**
  *  @defgroup common-commands Implementation of common commands
  * @{
@@ -191,3 +201,4 @@ int32_t run_interactive(struct command_ctx ctx, int argc, const char *argv[]);
 int32_t switch_buffer(struct command_ctx ctx, int argc, const char *argv[]);
 
 /**@}*/
+#endif

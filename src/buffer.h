@@ -140,6 +140,8 @@ struct buffer {
 
 struct buffer buffer_create(char *name, bool modeline);
 void buffer_destroy(struct buffer *buffer);
+
+void buffer_static_init();
 void buffer_static_teardown();
 
 uint32_t buffer_keymaps(struct buffer *buffer, struct keymap **keymaps_out);

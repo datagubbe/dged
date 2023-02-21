@@ -16,6 +16,13 @@ struct command_ctx;
 void minibuffer_init(struct buffer *buffer);
 
 /**
+ * Destroy the minibuffer
+ *
+ * Note that this does not release the buffer used.
+ */
+void minibuffer_destroy();
+
+/**
  * Echo a message to the minibuffer.
  *
  * @param fmt Format string for the message.
@@ -42,8 +49,10 @@ void minibuffer_echo_timeout(uint32_t timeout, const char *fmt, ...);
  * command (or other command) when the user confirms the input.
  * @param fmt Format string for the prompt.
  * @param ... Format arguments.
+ * @returns a return code suitable to return from a command to signal more input
+ * is needed.
  */
-void minibuffer_prompt(struct command_ctx command_ctx, const char *fmt, ...);
+int32_t minibuffer_prompt(struct command_ctx command_ctx, const char *fmt, ...);
 
 /**
  * Abort the current minibuffer prompt.
@@ -51,6 +60,14 @@ void minibuffer_prompt(struct command_ctx command_ctx, const char *fmt, ...);
  * This returns focus to the previously focused window.
  */
 void minibuffer_abort_prompt();
+
+/**
+ * Minibuffer prompt args
+ */
+struct minibuffer_prompt_args {
+  int argc;
+  const char **argv;
+};
 
 /**
  * Clear the current text in the minibuffer.
