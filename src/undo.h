@@ -1,3 +1,4 @@
+#include "vec.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -40,10 +41,8 @@ struct undo_record {
 #define INVALID_TOP -1
 
 struct undo_stack {
-  struct undo_record *records;
-  uint32_t nrecords;
+  VEC(struct undo_record) records;
   uint32_t top;
-  uint32_t capacity;
   bool undo_in_progress;
 };
 

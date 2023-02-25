@@ -3,12 +3,14 @@
 
 #include "command.h"
 #include "hash.h"
+#include "hashmap.h"
 
 void test_command_registry_create() {
   struct commands cmds = command_registry_create(10);
 
-  ASSERT(cmds.capacity == 10, "Expected capacity to be the specified value");
-  ASSERT(cmds.ncommands == 0,
+  ASSERT(HASHMAP_CAPACITY(&cmds.commands) == 10,
+         "Expected capacity to be the specified value");
+  ASSERT(HASHMAP_SIZE(&cmds.commands) == 0,
          "Expected number of commands to initially be empty");
 
   command_registry_destroy(&cmds);
@@ -41,7 +43,7 @@ void test_register_command() {
   };
   register_command(&cmds, cmd);
 
-  ASSERT(cmds.ncommands == 1,
+  ASSERT(HASHMAP_SIZE(&cmds.commands) == 1,
          "Expected number of commands to be 1 after inserting one");
 
   struct command multi[] = {
@@ -50,9 +52,9 @@ void test_register_command() {
   };
 
   register_commands(&cmds, multi, 2);
-  ASSERT(cmds.ncommands == 3,
+  ASSERT(HASHMAP_SIZE(&cmds.commands) == 3,
          "Expected number of commands to be 3 after inserting two more");
-  ASSERT(cmds.capacity > 1,
+  ASSERT(HASHMAP_CAPACITY(&cmds.commands) > 1,
          "Expected capacity to have increased to accommodate new commands");
 
   command_registry_destroy(&cmds);

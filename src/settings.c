@@ -1,7 +1,9 @@
 #include "settings.h"
 #include "command.h"
 #include "hash.h"
+#include "hashmap.h"
 #include "minibuffer.h"
+#include "vec.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,83 +11,55 @@
 
 static struct settings g_settings = {0};
 
-void settings_resize(uint32_t new_capacity) {
-  if (new_capacity > g_settings.capacity) {
-    g_settings.settings =
-        realloc(g_settings.settings, sizeof(struct setting) * new_capacity);
-  }
-}
-
 void settings_init(uint32_t initial_capacity) {
-  settings_resize(initial_capacity);
-  g_settings.capacity = initial_capacity;
-  g_settings.nsettings = 0;
+  HASHMAP_INIT(&g_settings.settings, initial_capacity, hash_name);
 }
 
 void settings_destroy() {
-  for (uint32_t i = 0; i < g_settings.nsettings; ++i) {
-    struct setting *setting = &g_settings.settings[i];
+  HASHMAP_FOR_EACH(&g_settings.settings, struct setting_entry * entry) {
+    struct setting *setting = &entry->value;
     if (setting->value.type == Setting_String) {
       free(setting->value.string_value);
     }
   }
 
-  free(g_settings.settings);
-  g_settings.settings = NULL;
-  g_settings.capacity = 0;
-  g_settings.nsettings = 0;
+  HASHMAP_DESTROY(&g_settings.settings);
 }
 
 void settings_register_setting(const char *path,
                                struct setting_value default_value) {
-  if (g_settings.nsettings + 1 == g_settings.capacity) {
-    g_settings.capacity *= 2;
-    settings_resize(g_settings.capacity);
+  HASHMAP_APPEND(&g_settings.settings, struct setting_entry, path,
+                 struct setting_entry * s);
+
+  if (s != NULL) {
+    struct setting *new_setting = &s->value;
+    new_setting->value = default_value;
+    strncpy(new_setting->path, path, 128);
+    new_setting->path[127] = '\0';
   }
-
-  struct setting *s = &g_settings.settings[g_settings.nsettings];
-  s->value = default_value;
-  s->hash = hash_name(path);
-  strncpy(s->path, path, 128);
-  s->path[127] = '\0';
-
-  ++g_settings.nsettings;
 }
 
 struct setting *settings_get(const char *path) {
-  uint32_t needle = hash_name(path);
-
-  for (uint32_t i = 0; i < g_settings.nsettings; ++i) {
-    struct setting *setting = &g_settings.settings[i];
-    if (setting->hash == needle) {
-      return setting;
-    }
-  }
-
-  return NULL;
+  HASHMAP_GET(&g_settings.settings, struct setting_entry, path,
+              struct setting * s);
+  return s;
 }
 
 void settings_get_prefix(const char *prefix, struct setting **settings_out[],
                          uint32_t *nsettings_out) {
 
   uint32_t capacity = 16;
-  struct setting **res = malloc(sizeof(struct setting *) * capacity);
-  uint32_t nsettings = 0;
-  for (uint32_t i = 0; i < g_settings.nsettings; ++i) {
-    struct setting *setting = &g_settings.settings[i];
+  VEC(struct setting *) res;
+  VEC_INIT(&res, 16);
+  HASHMAP_FOR_EACH(&g_settings.settings, struct setting_entry * entry) {
+    struct setting *setting = &entry->value;
     if (strncmp(prefix, setting->path, strlen(prefix)) == 0) {
-      if (nsettings + 1 == capacity) {
-        capacity *= 2;
-        res = realloc(res, sizeof(struct setting *) * capacity);
-      }
-
-      res[nsettings] = setting;
-      ++nsettings;
+      VEC_PUSH(&res, setting);
     }
   }
 
-  *nsettings_out = nsettings;
-  *settings_out = res;
+  *nsettings_out = VEC_SIZE(&res);
+  *settings_out = VEC_ENTRIES(&res);
 }
 
 void settings_set(const char *path, struct setting_value value) {

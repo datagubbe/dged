@@ -185,14 +185,13 @@ void delete_with_undo(struct buffer *buffer, struct buffer_location start,
   struct text_chunk txt =
       text_get_region(buffer->text, start.line, start.col, end.line, end.col);
 
-  undo_push_boundary(&buffer->undo,
-                     (struct undo_boundary){.save_point = false});
-
   undo_push_delete(
       &buffer->undo,
       (struct undo_delete){.data = txt.text,
                            .nbytes = txt.nbytes,
                            .pos = {.row = start.line, .col = start.col}});
+  undo_push_boundary(&buffer->undo,
+                     (struct undo_boundary){.save_point = false});
 
   text_delete(buffer->text, start.line, start.col, end.line, end.col);
   buffer->modified = true;
@@ -522,6 +521,11 @@ void buffer_to_file(struct buffer *buffer) {
     return;
   }
 
+  if (!buffer->modified) {
+    minibuffer_echo_timeout(4, "buffer already saved");
+    return;
+  }
+
   FILE *file = fopen(buffer->filename, "w");
   if (file == NULL) {
     minibuffer_echo("failed to open file %s for writing: %s", buffer->filename,
@@ -538,6 +542,7 @@ void buffer_to_file(struct buffer *buffer) {
                           buffer->filename);
   fclose(file);
 
+  buffer->modified = false;
   undo_push_boundary(&buffer->undo, (struct undo_boundary){.save_point = true});
 }
 
@@ -574,14 +579,15 @@ int buffer_add_text(struct buffer *buffer, uint8_t *text, uint32_t nbytes) {
   moveh(buffer, cols_added);
 
   struct buffer_location final = buffer->dot;
-  if (lines_added > 0) {
-    undo_push_boundary(&buffer->undo,
-                       (struct undo_boundary){.save_point = false});
-  }
   undo_push_add(
       &buffer->undo,
       (struct undo_add){.begin = {.row = initial.line, .col = initial.col},
                         .end = {.row = final.line, .col = final.col}});
+
+  if (lines_added > 0) {
+    undo_push_boundary(&buffer->undo,
+                       (struct undo_boundary){.save_point = false});
+  }
 
   buffer->modified = true;
   return lines_added;
@@ -679,6 +685,7 @@ void buffer_undo(struct buffer *buffer) {
     }
     }
   }
+  undo_push_boundary(undo, (struct undo_boundary){.save_point = false});
 
   free(records);
   undo_end(undo);

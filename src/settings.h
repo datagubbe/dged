@@ -1,4 +1,5 @@
 #include "command.h"
+#include "hashmap.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -48,25 +49,17 @@ struct setting {
   /** Path of the setting. */
   char path[128];
 
-  /** Hashed path that can be used for equality checks. */
-  uint32_t hash;
-
   /** Value of the setting. */
   struct setting_value value;
 };
+
+HASHMAP_ENTRY_TYPE(setting_entry, struct setting);
 
 /**
  * A collection of settings.
  */
 struct settings {
-  /** Settings */
-  struct setting *settings;
-
-  /** Number of settings currently in collection. */
-  uint32_t nsettings;
-
-  /** Current capacity of collection. */
-  uint32_t capacity;
+  HASHMAP(struct setting_entry) settings;
 };
 
 /**

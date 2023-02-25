@@ -4,6 +4,7 @@
 /** @file command.h
  * Commands and command registries
  */
+#include "hashmap.h"
 #include <stdint.h>
 
 struct buffer;
@@ -78,10 +79,10 @@ struct command {
 /**
  * A command registry
  */
+HASHMAP_ENTRY_TYPE(command_entry, struct command);
+
 struct commands {
-  struct hashed_command *commands;
-  uint32_t ncommands;
-  uint32_t capacity;
+  HASHMAP(struct command_entry) commands;
 };
 
 /**

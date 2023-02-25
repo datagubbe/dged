@@ -2,6 +2,7 @@
 #include "buffer.h"
 #include "buffers.h"
 #include "hash.h"
+#include "hashmap.h"
 #include "minibuffer.h"
 
 #include <errno.h>
@@ -9,37 +10,21 @@
 #include <string.h>
 #include <sys/stat.h>
 
-struct hashed_command {
-  uint32_t hash;
-  struct command command;
-};
-
 struct commands command_registry_create(uint32_t capacity) {
-  return (struct commands){
-      .commands = calloc(capacity, sizeof(struct hashed_command)),
-      .ncommands = 0,
-      .capacity = capacity,
-  };
+
+  struct commands cmds = {0};
+  HASHMAP_INIT(&cmds.commands, capacity, hash_name);
+  return cmds;
 }
 
 void command_registry_destroy(struct commands *commands) {
-  free(commands->commands);
-  commands->ncommands = 0;
-  commands->capacity = 0;
+  HASHMAP_DESTROY(&commands->commands);
 }
 
 uint32_t register_command(struct commands *commands, struct command command) {
-  if (commands->ncommands == commands->capacity) {
-    commands->capacity *= 2;
-    commands->commands = realloc(
-        commands->commands, sizeof(struct hashed_command) * commands->capacity);
-  }
-
-  uint32_t hash = hash_name(command.name);
-  commands->commands[commands->ncommands] =
-      (struct hashed_command){.command = command, .hash = hash};
-
-  ++commands->ncommands;
+  uint32_t hash = 0;
+  HASHMAP_INSERT(&commands->commands, struct command_entry, command.name,
+                 command, hash);
   return hash;
 }
 
@@ -52,19 +37,16 @@ void register_commands(struct commands *command_list, struct command *commands,
 
 struct command *lookup_command(struct commands *command_list,
                                const char *name) {
-  uint32_t needle = hash_name(name);
-  return lookup_command_by_hash(command_list, needle);
+  HASHMAP_GET(&command_list->commands, struct command_entry, name,
+              struct command * command);
+  return command;
 }
 
 struct command *lookup_command_by_hash(struct commands *commands,
                                        uint32_t hash) {
-  for (uint32_t ci = 0; ci < commands->ncommands; ++ci) {
-    if (commands->commands[ci].hash == hash) {
-      return &commands->commands[ci].command;
-    }
-  }
-
-  return NULL;
+  HASHMAP_GET_BY_HASH(&commands->commands, struct command_entry, hash,
+                      struct command * command);
+  return command;
 }
 
 int32_t execute_command(struct command *command, struct commands *commands,
