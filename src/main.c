@@ -11,6 +11,7 @@
 #include "buffer.h"
 #include "buffers.h"
 #include "display.h"
+#include "lang.h"
 #include "minibuffer.h"
 #include "reactor.h"
 #include "settings.h"
@@ -86,6 +87,7 @@ int main(int argc, char *argv[]) {
   signal(SIGTERM, terminate);
 
   settings_init(64);
+  languages_init(true);
   buffer_static_init();
 
   frame_allocator = frame_allocator_create(16 * 1024 * 1024);

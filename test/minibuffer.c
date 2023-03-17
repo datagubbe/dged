@@ -6,6 +6,7 @@
 #include "buffer.h"
 #include "display.h"
 #include "minibuffer.h"
+#include "settings.h"
 
 static struct buffer b = {0};
 
@@ -15,6 +16,7 @@ void *alloc_fn(size_t sz) { return frame_allocator_alloc(g_alloc, sz); }
 
 void init() {
   if (b.name == NULL) {
+    settings_init(10);
     b = buffer_create("minibuffer", false);
   }
 
@@ -24,6 +26,7 @@ void init() {
 void destroy() {
   if (b.name != NULL) {
     buffer_destroy(&b);
+    settings_destroy();
   }
 }
 

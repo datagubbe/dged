@@ -2,6 +2,7 @@
 #include "binding.h"
 #include "display.h"
 #include "errno.h"
+#include "lang.h"
 #include "minibuffer.h"
 #include "reactor.h"
 #include "settings.h"
@@ -62,6 +63,7 @@ struct buffer buffer_create(char *name, bool modeline) {
       .scroll = {0},
       .update_hooks = {0},
       .nkeymaps_max = 10,
+      .lang = lang_from_id("fnd"),
   };
 
   undo_init(&b.undo, 100);
@@ -154,6 +156,10 @@ void buffer_static_init() {
   settings_register_setting(
       "editor.tab-width",
       (struct setting_value){.type = Setting_Number, .number_value = 4});
+
+  settings_register_setting(
+      "editor.show-whitespace",
+      (struct setting_value){.type = Setting_Bool, .bool_value = true});
 }
 
 void buffer_static_teardown() {
@@ -502,6 +508,10 @@ struct buffer buffer_from_file(char *filename) {
     fclose(file);
   }
 
+  const char *ext = strrchr(b.filename, '.');
+  if (ext != NULL) {
+    b.lang = lang_from_extension(ext + 1);
+  }
   undo_push_boundary(&b.undo, (struct undo_boundary){.save_point = true});
   return b;
 }
@@ -598,10 +608,9 @@ void buffer_newline(struct buffer *buffer) {
 }
 
 void buffer_indent(struct buffer *buffer) {
-  struct setting *setting = settings_get("editor.tab-width");
-  buffer_add_text(
-      buffer, (uint8_t *)"                ",
-      setting->value.number_value > 16 ? 16 : setting->value.number_value);
+  uint32_t tab_width = buffer->lang.tab_width;
+  buffer_add_text(buffer, (uint8_t *)"                ",
+                  tab_width > 16 ? 16 : tab_width);
 }
 
 uint32_t buffer_add_update_hook(struct buffer *buffer, update_hook_cb hook,
@@ -701,6 +710,8 @@ struct cmdbuf {
   struct region region;
   bool mark_set;
 
+  bool show_ws;
+
   struct line_render_hook *line_render_hooks;
   uint32_t nlinerender_hooks;
 };
@@ -722,7 +733,7 @@ void render_line(struct text_chunk *line, void *userdata) {
   uint32_t text_nchars =
       scroll_bytes > line->nchars ? 0 : line->nchars - cmdbuf->scroll.col;
 
-  command_list_set_show_whitespace(cmdbuf->cmds, true);
+  command_list_set_show_whitespace(cmdbuf->cmds, cmdbuf->show_ws);
   struct buffer_location *begin = &cmdbuf->region.begin,
                          *end = &cmdbuf->region.end;
 
@@ -864,9 +875,10 @@ struct update_hook_result buffer_modeline_hook(struct buffer *buffer,
   struct tm *lt = localtime(&now);
   char left[128], right[128];
 
-  snprintf(left, 128, "  %c%c %-16s (%d, %d)", buffer->modified ? '*' : '-',
-           buffer->readonly ? '%' : '-', buffer->name, buffer->dot.line + 1,
-           visual_dot_col(buffer, buffer->dot.col));
+  snprintf(left, 128, "  %c%c %-16s (%d, %d) (%s)",
+           buffer->modified ? '*' : '-', buffer->readonly ? '%' : '-',
+           buffer->name, buffer->dot.line + 1,
+           visual_dot_col(buffer, buffer->dot.col), buffer->lang.name);
   snprintf(right, 128, "(%.2f ms) %02d:%02d", frame_time / 1e6, lt->tm_hour,
            lt->tm_min);
 
@@ -1003,6 +1015,8 @@ void buffer_update(struct buffer *buffer, uint32_t width, uint32_t height,
 
   scroll(buffer, line_delta, col_delta);
 
+  struct setting *show_ws = settings_get("editor.show-whitespace");
+
   struct cmdbuf cmdbuf = (struct cmdbuf){
       .cmds = commands,
       .scroll = buffer->scroll,
@@ -1013,6 +1027,7 @@ void buffer_update(struct buffer *buffer, uint32_t width, uint32_t height,
       .nlinerender_hooks = nlinehooks,
       .mark_set = buffer->mark_set,
       .region = to_region(buffer->dot, buffer->mark),
+      .show_ws = show_ws != NULL ? show_ws->value.bool_value : true,
   };
   text_for_each_line(buffer->text, buffer->scroll.line, height, render_line,
                      &cmdbuf);

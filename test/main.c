@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <time.h>
 
+#include "lang.h"
+#include "settings.h"
 #include "test.h"
 
 void handle_abort() { exit(1); }

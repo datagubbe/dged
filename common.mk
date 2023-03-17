@@ -6,7 +6,7 @@ default: dged
 SOURCES = src/binding.c src/buffer.c src/command.c src/display.c \
 	src/keyboard.c src/minibuffer.c src/text.c \
 	src/utf8.c src/buffers.c src/window.c src/allocator.c src/undo.c \
-	src/settings.c
+	src/settings.c src/lang.c
 
 DGED_SOURCES = $(SOURCES) src/main.c
 TEST_SOURCES = test/assert.c test/buffer.c test/text.c test/utf8.c test/main.c \

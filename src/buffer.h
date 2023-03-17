@@ -3,6 +3,7 @@
 #include <stdio.h>
 
 #include "command.h"
+#include "lang.h"
 #include "text.h"
 #include "undo.h"
 #include "window.h"
@@ -136,6 +137,9 @@ struct buffer {
 
   /** Modeline buffer (may be NULL) */
   struct modeline *modeline;
+
+  /** Buffer programming language */
+  struct language lang;
 };
 
 struct buffer buffer_create(char *name, bool modeline);
