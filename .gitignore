@@ -1,9 +1,6 @@
-# obj file dir
-/objs/
-
-# exe
-/dged
-/run-tests
+# build dirs
+/build/
+/obj/
 
 # clangd things
 /compile_commands.json

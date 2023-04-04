@@ -389,6 +389,10 @@ bool maybe_delete_region(struct buffer *buffer) {
 }
 
 void buffer_kill_line(struct buffer *buffer) {
+  if (text_num_lines(buffer->text) == 0) {
+    return;
+  }
+
   uint32_t nchars =
       text_line_length(buffer->text, buffer->dot.line) - buffer->dot.col;
   if (nchars == 0) {

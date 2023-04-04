@@ -1,6 +1,5 @@
 { stdenv
 , clang-tools
-, gnumake
 , bmake
 , pkg-config
 , tree-sitter
@@ -15,7 +14,6 @@ stdenv.mkDerivation {
   doCheck = true;
 
   nativeBuildInputs = [
-    gnumake
     bmake
     pkg-config
     clang-tools
@@ -24,6 +22,7 @@ stdenv.mkDerivation {
   ];
 
   buildPhase = ''
+    bmake build
     bmake dged
     bmake docs
   '';
