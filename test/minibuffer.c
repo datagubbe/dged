@@ -4,6 +4,7 @@
 
 #include "allocator.h"
 #include "buffer.h"
+#include "command.h"
 #include "display.h"
 #include "minibuffer.h"
 #include "settings.h"
@@ -16,7 +17,8 @@ void *alloc_fn(size_t sz) { return frame_allocator_alloc(g_alloc, sz); }
 
 void init() {
   if (b.name == NULL) {
-    settings_init(10);
+    struct commands commands = command_registry_create(10);
+    settings_init(10, &commands);
     b = buffer_create("minibuffer", false);
   }
 

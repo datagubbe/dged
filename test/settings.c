@@ -1,11 +1,14 @@
 #include "assert.h"
 #include "test.h"
 
+#include "command.h"
 #include "settings.h"
+
 #include <stdlib.h>
 
 void test_get() {
-  settings_init(10);
+  struct commands commands = command_registry_create(10);
+  settings_init(10, &commands);
   settings_register_setting(
       "my.setting",
       (struct setting_value){.type = Setting_Bool, .bool_value = false});
@@ -37,7 +40,8 @@ void test_get() {
 }
 
 void test_set() {
-  settings_init(10);
+  struct commands commands = command_registry_create(10);
+  settings_init(10, &commands);
   settings_register_setting(
       "my.setting",
       (struct setting_value){.type = Setting_Bool, .bool_value = false});
