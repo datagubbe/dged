@@ -306,6 +306,10 @@ void text_insert_at(struct text *text, uint32_t line, uint32_t col,
 void text_delete(struct text *text, uint32_t start_line, uint32_t start_col,
                  uint32_t end_line, uint32_t end_col) {
 
+  if (text->nlines == 0) {
+    return;
+  }
+
   uint32_t maxline = text->nlines > 0 ? text->nlines - 1 : 0;
 
   // make sure we stay inside
@@ -455,7 +459,7 @@ struct text_chunk text_get_region(struct text *text, uint32_t start_line,
   // correct last line
   struct copy_cmd *cmd_last = &copy_cmds[nlines - 1];
   uint32_t byteindex = utf8_nbytes(last_line->data, last_line->nbytes, end_col);
-  cmd_last->nbytes -= (last_line->nchars - end_col);
+  cmd_last->nbytes -= (last_line->nbytes - byteindex);
   total_bytes -= (last_line->nbytes - byteindex);
   total_chars -= (last_line->nchars - end_col);
 

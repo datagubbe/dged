@@ -42,8 +42,8 @@ struct lookup_result lookup_key(struct keymap *keymaps, uint32_t nkeymaps,
     --kmi;
     struct keymap *keymap = &keymaps[kmi];
 
-    for (uint32_t bi = 0; bi < keymap->nbindings; ++bi) {
-      struct binding *binding = &keymap->bindings[bi];
+    for (uint32_t bi = keymap->nbindings; bi > 0; --bi) {
+      struct binding *binding = &keymap->bindings[bi - 1];
       if (key_equal(key, &binding->key)) {
         switch (binding->type) {
         case BindingType_Command: {

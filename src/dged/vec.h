@@ -1,6 +1,8 @@
 #ifndef _VEC_H
 #define _VEC_H
 
+#include <stdlib.h>
+
 #define VEC(entry)                                                             \
   struct {                                                                     \
     entry *entries;                                                            \

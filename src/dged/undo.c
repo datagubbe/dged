@@ -32,18 +32,18 @@ void undo_destroy(struct undo_stack *undo) {
 uint32_t undo_push_boundary(struct undo_stack *undo,
                             struct undo_boundary boundary) {
 
-  VEC_APPEND(&undo->records, struct undo_record * rec);
-  rec->type = Undo_Boundary;
-  rec->boundary = boundary;
-
   // we can only have one save point
   if (boundary.save_point) {
     VEC_FOR_EACH(&undo->records, struct undo_record * rec) {
-      if (rec->type && Undo_Boundary && rec->boundary.save_point) {
+      if (rec->type == Undo_Boundary && rec->boundary.save_point) {
         rec->boundary.save_point = false;
       }
     }
   }
+
+  VEC_APPEND(&undo->records, struct undo_record * rec);
+  rec->type = Undo_Boundary;
+  rec->boundary = boundary;
 
   if (!undo->undo_in_progress) {
     undo->top = VEC_SIZE(&undo->records) - 1;

@@ -224,8 +224,8 @@ void command_list_draw_text(struct command_list *list, uint32_t col,
   struct draw_text_cmd *cmd =
       add_command(list, RenderCommand_DrawText)->draw_txt;
   cmd->data = data;
-  cmd->col = col + list->xoffset;
-  cmd->row = row + list->yoffset;
+  cmd->col = col;
+  cmd->row = row;
   cmd->len = len;
 }
 

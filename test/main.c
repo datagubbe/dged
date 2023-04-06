@@ -4,8 +4,6 @@
 #include <stdlib.h>
 #include <time.h>
 
-#include "lang.h"
-#include "settings.h"
 #include "test.h"
 
 void handle_abort() { exit(1); }
@@ -43,6 +41,9 @@ int main() {
 
   printf("\n 📓 \x1b[1;36mRunning settings tests...\x1b[0m\n");
   run_settings_tests();
+
+  printf("\n 🎁 \x1b[1;36mRunning container tests...\x1b[0m\n");
+  run_container_tests();
 
   struct timespec elapsed;
   clock_gettime(CLOCK_MONOTONIC, &elapsed);

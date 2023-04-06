@@ -1,6 +1,7 @@
-#include "reactor.h"
 #include <stdbool.h>
 #include <stdint.h>
+
+#include "dged/reactor.h"
 
 struct fake_reactor_impl {
   bool (*poll_event)(void *userdata, uint32_t ev_id);

@@ -7,15 +7,16 @@ default: dged
 build:
 	mkdir -p build
 
-SOURCES = src/binding.c src/buffer.c src/command.c src/display.c \
-	src/keyboard.c src/minibuffer.c src/text.c \
-	src/utf8.c src/buffers.c src/window.c src/allocator.c src/undo.c \
-	src/settings.c src/lang.c
+SOURCES = src/dged/binding.c src/dged/buffer.c src/dged/command.c src/dged/display.c \
+	src/dged/keyboard.c src/dged/minibuffer.c src/dged/text.c \
+	src/dged/utf8.c src/dged/buffers.c src/dged/window.c src/dged/allocator.c src/dged/undo.c \
+	src/dged/settings.c src/dged/lang.c
 
-DGED_SOURCES = $(SOURCES) src/main.c
+MAIN_SOURCES = src/main/main.c src/main/cmds.c src/main/bindings.c
+
 TEST_SOURCES = test/assert.c test/buffer.c test/text.c test/utf8.c test/main.c \
 	test/command.c test/keyboard.c test/fake-reactor.c test/allocator.c \
-	test/minibuffer.c test/undo.c test/settings.c
+	test/minibuffer.c test/undo.c test/settings.c test/container.c
 
 prefix ?= "/usr"
 
@@ -24,14 +25,15 @@ prefix ?= "/usr"
 
 UNAME_S != uname -s | tr '[:upper:]' '[:lower:]'
 
-CFLAGS = -Werror -g -std=c99 -I $(.CURDIR)/src
+CFLAGS = -Werror -g -std=c99 -I $(.CURDIR)/src -I $(.CURDIR)/src/main
 
 DEPS = $(DGED_SOURCES:.c=.d) $(TEST_SOURCES:.c=.d)
 
 OBJS = $(SOURCES:.c=.o)
+MAIN_OBJS = $(MAIN_SOURCES:.c=.o)
 TEST_OBJS = $(TEST_SOURCES:.c=.o)
 
-FILES = $(DEPS) $(DGED_SOURCES:.c=.o) dged libdged.a $(TEST_OBJS)
+FILES = $(DEPS) $(MAIN_OBJS) $(OBJS) dged libdged.a $(TEST_OBJS)
 
 .sinclude "$(UNAME_S).mk"
 
@@ -45,8 +47,8 @@ FILES = $(DEPS) $(DGED_SOURCES:.c=.o) dged libdged.a $(TEST_OBJS)
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-dged: src/main.o libdged.a
-	$(CC) $(LDFLAGS) src/main.o libdged.a -o dged
+dged: $(MAIN_OBJS) libdged.a
+	$(CC) $(LDFLAGS) $(MAIN_OBJS) libdged.a -o dged
 
 libdged.a: $(OBJS) $(PLATFORM_OBJS)
 	$(AR) -rc libdged.a $(OBJS) $(PLATFORM_OBJS)
@@ -55,7 +57,7 @@ run-tests: $(TEST_OBJS) $(OBJS)
 	$(CC) $(LDFLAGS) $(TEST_OBJS) $(OBJS) -o run-tests
 
 check: run-tests
-	clang-format --dry-run --Werror $(DGED_SOURCES:%.c=../%.c) $(TEST_SOURCES:%c=../%c)
+	clang-format --dry-run --Werror $(SOURCES:%.c=../%.c) $(MAIN_SOURCES:%.c=../%.c) $(TEST_SOURCES:%c=../%c)
 	./run-tests
 
 run: dged
@@ -68,7 +70,7 @@ debug-tests: run-tests
 	gdb ./run-tests
 
 format:
-	clang-format -i $(DGED_SOURCES) $(TEST_SOURCES)
+	clang-format -i $(SOURCES:%.c=../%.c) $(MAIN_SOURCES:%.c=../%.c) $(TEST_SOURCES:%c=../%c)
 
 clean:
 	rm -f $(FILES)

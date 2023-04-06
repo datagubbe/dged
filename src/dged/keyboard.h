@@ -139,5 +139,7 @@ bool key_equal(struct key *key1, struct key *key2);
  * @param key @ref key "Key" to get text representation for.
  * @param buf character buffer for holding the result.
  * @param capacity The capacity of buf.
+ *
+ * @returns The number of characters written to buf.
  */
-void key_name(struct key *key, char *buf, size_t capacity);
+uint32_t key_name(struct key *key, char *buf, size_t capacity);

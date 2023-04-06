@@ -1,7 +1,7 @@
+#include "dged/allocator.h"
+
 #include "assert.h"
 #include "test.h"
-
-#include "allocator.h"
 
 void test_frame_allocator() {
   struct frame_allocator fa = frame_allocator_create(128);

@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "bits/stdint-uintn.h"
 #include "command.h"
 #include "lang.h"
 #include "text.h"
@@ -53,7 +54,7 @@ struct update_hook_result {
 
 /** Buffer update hook callback function */
 typedef struct update_hook_result (*update_hook_cb)(
-    struct buffer *buffer, struct command_list *commands, uint32_t width,
+    struct buffer_view *view, struct command_list *commands, uint32_t width,
     uint32_t height, uint64_t frame_time, void *userdata);
 
 /**
@@ -69,6 +70,8 @@ struct update_hook {
   /** Optional userdata to pass to the callback function unmodified */
   void *userdata;
 };
+
+typedef void (*create_hook_cb)(struct buffer *buffer, void *userdata);
 
 /**
  * A set of update hooks
@@ -86,6 +89,41 @@ struct buffer_location {
   uint32_t col;
 };
 
+struct match {
+  struct buffer_location begin;
+  struct buffer_location end;
+};
+
+struct buffer_view {
+  /** Location of dot (cursor) */
+  struct buffer_location dot;
+
+  /** Location of mark (where a selection starts) */
+  struct buffer_location mark;
+
+  /** Current buffer scroll position */
+  struct buffer_location scroll;
+
+  /** True if the start of a selection has been set */
+  bool mark_set;
+
+  /** Modeline buffer (may be NULL) */
+  struct modeline *modeline;
+
+  bool line_numbers;
+
+  struct buffer *buffer;
+};
+
+struct buffer_view buffer_view_create(struct buffer *buffer, bool modeline,
+                                      bool line_numbers);
+struct buffer_view buffer_view_clone(struct buffer_view *view);
+
+void buffer_view_scroll_down(struct buffer_view *view, uint32_t height);
+void buffer_view_scroll_up(struct buffer_view *view, uint32_t height);
+
+void buffer_view_destroy(struct buffer_view *view);
+
 /**
  * A buffer of text that can be modified, read from and written to disk.
  *
@@ -96,32 +134,12 @@ struct buffer {
 
   /** Buffer name */
   char *name;
+
   /** Associated filename, this is where the buffer will be saved to */
   char *filename;
 
   /** Text data structure */
   struct text *text;
-
-  /** Location of dot (cursor) */
-  struct buffer_location dot;
-
-  /** Location of mark (where a selection starts) */
-  struct buffer_location mark;
-
-  /** True if the start of a selection has been set */
-  bool mark_set;
-
-  /** Buffer-local keymaps in reverse priority order */
-  struct keymap *keymaps;
-
-  /** Number of buffer-local keymaps */
-  uint32_t nkeymaps;
-
-  /** Maximum number of keymaps */
-  uint32_t nkeymaps_max;
-
-  /** Current buffer scroll position */
-  struct buffer_location scroll;
 
   /** Buffer update hooks */
   struct update_hooks update_hooks;
@@ -135,67 +153,67 @@ struct buffer {
   /** Can this buffer be changed */
   bool readonly;
 
-  /** Modeline buffer (may be NULL) */
-  struct modeline *modeline;
-
   /** Buffer programming language */
   struct language lang;
 };
 
-struct buffer buffer_create(char *name, bool modeline);
+struct buffer buffer_create(char *name);
 void buffer_destroy(struct buffer *buffer);
 
-void buffer_static_init(struct commands *commands);
+void buffer_static_init();
 void buffer_static_teardown();
 
-uint32_t buffer_keymaps(struct buffer *buffer, struct keymap **keymaps_out);
-void buffer_add_keymap(struct buffer *buffer, struct keymap *keymap);
-
-int buffer_add_text(struct buffer *buffer, uint8_t *text, uint32_t nbytes);
-void buffer_clear(struct buffer *buffer);
+int buffer_add_text(struct buffer_view *view, uint8_t *text, uint32_t nbytes);
+void buffer_set_text(struct buffer *buffer, uint8_t *text, uint32_t nbytes);
+void buffer_clear(struct buffer_view *view);
 bool buffer_is_empty(struct buffer *buffer);
 bool buffer_is_modified(struct buffer *buffer);
 bool buffer_is_readonly(struct buffer *buffer);
 void buffer_set_readonly(struct buffer *buffer, bool readonly);
 
-void buffer_kill_line(struct buffer *buffer);
-void buffer_forward_delete_char(struct buffer *buffer);
-void buffer_backward_delete_char(struct buffer *buffer);
-void buffer_backward_char(struct buffer *buffer);
-void buffer_backward_word(struct buffer *buffer);
-void buffer_forward_char(struct buffer *buffer);
-void buffer_forward_word(struct buffer *buffer);
-void buffer_backward_line(struct buffer *buffer);
-void buffer_forward_line(struct buffer *buffer);
-void buffer_end_of_line(struct buffer *buffer);
-void buffer_beginning_of_line(struct buffer *buffer);
-void buffer_newline(struct buffer *buffer);
-void buffer_indent(struct buffer *buffer);
+void buffer_kill_line(struct buffer_view *view);
+void buffer_forward_delete_char(struct buffer_view *view);
+void buffer_backward_delete_char(struct buffer_view *view);
+void buffer_backward_char(struct buffer_view *view);
+void buffer_backward_word(struct buffer_view *view);
+void buffer_forward_char(struct buffer_view *view);
+void buffer_forward_word(struct buffer_view *view);
+void buffer_backward_line(struct buffer_view *view);
+void buffer_forward_line(struct buffer_view *view);
+void buffer_end_of_line(struct buffer_view *view);
+void buffer_beginning_of_line(struct buffer_view *view);
+void buffer_newline(struct buffer_view *view);
+void buffer_indent(struct buffer_view *view);
 
-void buffer_undo(struct buffer *buffer);
+void buffer_undo(struct buffer_view *view);
 
-void buffer_goto_beginning(struct buffer *buffer);
-void buffer_goto_end(struct buffer *buffer);
-void buffer_goto(struct buffer *buffer, uint32_t line, uint32_t col);
+void buffer_goto_beginning(struct buffer_view *view);
+void buffer_goto_end(struct buffer_view *view);
+void buffer_goto(struct buffer_view *view, uint32_t line, uint32_t col);
 
-void buffer_set_mark(struct buffer *buffer);
-void buffer_clear_mark(struct buffer *buffer);
-void buffer_set_mark_at(struct buffer *buffer, uint32_t line, uint32_t col);
+void buffer_find(struct buffer *buffer, const char *pattern,
+                 struct match **matches, uint32_t *nmatches);
 
-void buffer_copy(struct buffer *buffer);
-void buffer_paste(struct buffer *buffer);
-void buffer_paste_older(struct buffer *buffer);
-void buffer_cut(struct buffer *buffer);
+void buffer_set_mark(struct buffer_view *view);
+void buffer_clear_mark(struct buffer_view *view);
+void buffer_set_mark_at(struct buffer_view *view, uint32_t line, uint32_t col);
+
+void buffer_copy(struct buffer_view *view);
+void buffer_paste(struct buffer_view *view);
+void buffer_paste_older(struct buffer_view *view);
+void buffer_cut(struct buffer_view *view);
 
 struct text_chunk buffer_get_line(struct buffer *buffer, uint32_t line);
 
 uint32_t buffer_add_update_hook(struct buffer *buffer, update_hook_cb hook,
                                 void *userdata);
 
+uint32_t buffer_add_create_hook(create_hook_cb hook, void *userdata);
+
 struct buffer buffer_from_file(char *filename);
 void buffer_to_file(struct buffer *buffer);
 void buffer_write_to(struct buffer *buffer, const char *filename);
 
-void buffer_update(struct buffer *buffer, uint32_t width, uint32_t height,
+void buffer_update(struct buffer_view *view, uint32_t width, uint32_t height,
                    struct command_list *commands, uint64_t frame_time,
                    uint32_t *relline, uint32_t *relcol);

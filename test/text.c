@@ -1,12 +1,12 @@
-#include "assert.h"
-#include "stdio.h"
-#include "test.h"
-
-#include "text.h"
-
 #include <stdlib.h>
 #include <string.h>
 #include <wchar.h>
+
+#include "dged/text.h"
+
+#include "assert.h"
+#include "stdio.h"
+#include "test.h"
 
 void assert_line_eq(struct text_chunk line, const char *txt, const char *msg) {
   ASSERT(strncmp((const char *)line.text, txt, line.nbytes) == 0, msg);

@@ -1,9 +1,10 @@
-#include "utf8.h"
+#include <string.h>
+#include <wchar.h>
+
+#include "dged/utf8.h"
+
 #include "assert.h"
 #include "test.h"
-#include "wchar.h"
-
-#include <string.h>
 
 void test_nchars_nbytes() {
   ASSERT(utf8_nchars((uint8_t *)"👴", strlen("👴")) == 1,

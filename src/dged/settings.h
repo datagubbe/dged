@@ -69,7 +69,7 @@ struct settings {
  * @param initial_capacity Initial capacity of the settings collection.
  * @returns Nothing, the settings collection is a global instance.
  */
-void settings_init(uint32_t initial_capacity, struct commands *commands);
+void settings_init(uint32_t initial_capacity);
 
 /**
  * Destroy the global collection of settings.
@@ -117,3 +117,21 @@ void settings_get_prefix(const char *prefix, struct setting **settings_out[],
  * type for the setting. If not, the new value is ignored.
  */
 void settings_set(const char *path, struct setting_value value);
+
+/**
+ * Set a value for a setting.
+ *
+ * @param setting Pointer to a setting to set.
+ * @param value The new value of the setting. The type has to match the declared
+ * type for the setting. If not, the new value is ignored.
+ */
+void setting_set_value(struct setting *setting, struct setting_value val);
+
+/**
+ * Create a string representation for a setting.
+ *
+ * @param setting Pointer to a setting to turn into a string.
+ * @param buf Character buffer to store resulting string in.
+ * @param n Size in bytes of @ref buf.
+ */
+void setting_to_string(struct setting *setting, char *buf, size_t n);

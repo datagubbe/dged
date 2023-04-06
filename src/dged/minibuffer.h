@@ -5,6 +5,7 @@
 
 struct buffer;
 struct command_ctx;
+struct keymap;
 
 /**
  * Initialize the minibuffer.
@@ -21,6 +22,10 @@ void minibuffer_init(struct buffer *buffer);
  * Note that this does not release the buffer used.
  */
 void minibuffer_destroy();
+
+struct text_chunk minibuffer_content();
+
+struct buffer *minibuffer_buffer();
 
 /**
  * Echo a message to the minibuffer.
@@ -49,10 +54,22 @@ void minibuffer_echo_timeout(uint32_t timeout, const char *fmt, ...);
  * command (or other command) when the user confirms the input.
  * @param fmt Format string for the prompt.
  * @param ... Format arguments.
- * @returns a return code suitable to return from a command to signal more input
- * is needed.
+ * @returns 0 on success.
  */
 int32_t minibuffer_prompt(struct command_ctx command_ctx, const char *fmt, ...);
+
+int32_t minibuffer_prompt_interactive(struct command_ctx command_ctx,
+                                      void (*update_callback)(),
+                                      const char *fmt, ...);
+
+void minibuffer_set_prompt(const char *fmt, ...);
+
+/**
+ * Evaluate the current contents of the minibuffer
+ *
+ * @returns zero on success, non-zero to indicate failure
+ */
+int32_t minibuffer_execute();
 
 /**
  * Abort the current minibuffer prompt.
@@ -73,6 +90,8 @@ struct minibuffer_prompt_args {
  * Clear the current text in the minibuffer.
  */
 void minibuffer_clear();
+
+bool minibuffer_empty();
 
 /**
  * Is the minibuffer currently displaying something?

@@ -1,8 +1,9 @@
+#include <stdlib.h>
+
+#include "dged/undo.h"
+
 #include "assert.h"
 #include "test.h"
-
-#include "undo.h"
-#include <stdlib.h>
 
 void test_undo_insert() {
   struct undo_stack undo;

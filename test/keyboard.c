@@ -1,11 +1,12 @@
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#include "dged/keyboard.h"
+
 #include "assert.h"
 #include "fake-reactor.h"
 #include "test.h"
-
-#include "keyboard.h"
-#include "unistd.h"
-#include <stdlib.h>
-#include <string.h>
 
 struct call_count {
   uint32_t poll;

@@ -11,18 +11,8 @@
 
 static struct settings g_settings = {0};
 
-int32_t settings_get_cmd(struct command_ctx ctx, int argc, const char *argv[]);
-int32_t settings_set_cmd(struct command_ctx ctx, int argc, const char *argv[]);
-
-void settings_init(uint32_t initial_capacity, struct commands *commands) {
+void settings_init(uint32_t initial_capacity) {
   HASHMAP_INIT(&g_settings.settings, initial_capacity, hash_name);
-  static struct command settings_commands[] = {
-      {.name = "set", .fn = settings_set_cmd},
-      {.name = "get", .fn = settings_get_cmd},
-  };
-
-  register_commands(commands, settings_commands,
-                    sizeof(settings_commands) / sizeof(settings_commands[0]));
 }
 
 void settings_destroy() {
@@ -102,64 +92,4 @@ void setting_to_string(struct setting *setting, char *buf, size_t n) {
     snprintf(buf, n, "%s", setting->value.string_value);
     break;
   }
-}
-
-int32_t settings_get_cmd(struct command_ctx ctx, int argc, const char *argv[]) {
-  if (argc == 0) {
-    return minibuffer_prompt(ctx, "setting: ");
-  }
-
-  struct setting *setting = settings_get(argv[0]);
-  if (setting == NULL) {
-    minibuffer_echo_timeout(4, "no such setting \"%s\"", argv[0]);
-    return 1;
-  } else {
-    char buf[128];
-    setting_to_string(setting, buf, 128);
-    minibuffer_echo("%s = %s", argv[0], buf);
-  }
-
-  return 0;
-}
-
-int32_t settings_set_cmd(struct command_ctx ctx, int argc, const char *argv[]) {
-  if (argc == 0) {
-    return minibuffer_prompt(ctx, "setting: ");
-  } else if (argc == 1) {
-    // validate setting here as well for a better experience
-    struct setting *setting = settings_get(argv[0]);
-    if (setting == NULL) {
-      minibuffer_echo_timeout(4, "no such setting \"%s\"", argv[0]);
-      return 1;
-    }
-
-    command_ctx_push_arg(&ctx, argv[0]);
-    return minibuffer_prompt(ctx, "value: ");
-  }
-
-  struct setting *setting = settings_get(argv[0]);
-  if (setting == NULL) {
-    minibuffer_echo_timeout(4, "no such setting \"%s\"", argv[0]);
-    return 1;
-  } else {
-    const char *value = argv[1];
-    struct setting_value new_value = {.type = setting->value.type};
-    switch (setting->value.type) {
-    case Setting_Bool:
-      new_value.bool_value = strncmp("true", value, 4) == 0 ||
-                             strncmp("yes", value, 3) == 0 ||
-                             strncmp("on", value, 2) == 0;
-      break;
-    case Setting_Number:
-      new_value.number_value = atol(value);
-      break;
-    case Setting_String:
-      new_value.string_value = (char *)value;
-      break;
-    }
-
-    setting_set_value(setting, new_value);
-  }
-
-  return 0;
 }

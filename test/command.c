@@ -1,9 +1,9 @@
 #include "assert.h"
 #include "test.h"
 
-#include "command.h"
-#include "hash.h"
-#include "hashmap.h"
+#include "dged/command.h"
+#include "dged/hash.h"
+#include "dged/hashmap.h"
 
 void test_command_registry_create() {
   struct commands cmds = command_registry_create(10);

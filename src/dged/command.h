@@ -176,30 +176,4 @@ struct command *lookup_command_by_hash(struct commands *commands,
 void command_ctx_push_arg(struct command_ctx *ctx, const char *argv);
 void command_ctx_free(struct command_ctx *ctx);
 
-/**
- *  @defgroup common-commands Implementation of common commands
- * @{
- */
-
-/**
- * Find and visit a file in the current window.
- */
-int32_t find_file(struct command_ctx ctx, int argc, const char *argv[]);
-
-/**
- * Write the active buffer to a file
- */
-int32_t write_file(struct command_ctx ctx, int argc, const char *argv[]);
-
-/**
- * Run a command interactively from the minibuffer.
- */
-int32_t run_interactive(struct command_ctx ctx, int argc, const char *argv[]);
-
-/**
- * Switch to another buffer in the currently active window
- */
-int32_t switch_buffer(struct command_ctx ctx, int argc, const char *argv[]);
-
-/**@}*/
 #endif

@@ -141,7 +141,7 @@ bool key_equal(struct key *key1, struct key *key2) {
   return key_equal_char(key1, key2->mod, key2->key);
 }
 
-void key_name(struct key *key, char *buf, size_t capacity) {
+uint32_t key_name(struct key *key, char *buf, size_t capacity) {
   const char *mod = "";
   switch (key->mod) {
   case Ctrl:
