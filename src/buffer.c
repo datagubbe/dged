@@ -330,7 +330,7 @@ bool moveh(struct buffer *buffer, int coldelta) {
 }
 
 void buffer_goto(struct buffer *buffer, uint32_t line, uint32_t col) {
-  int64_t linedelta = (int64_t)line - 1 - (int64_t)buffer->dot.line;
+  int64_t linedelta = (int64_t)line - (int64_t)buffer->dot.line;
   movev(buffer, linedelta);
 
   int64_t coldelta = (int64_t)col - (int64_t)buffer->dot.col;

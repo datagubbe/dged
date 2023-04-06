@@ -88,7 +88,7 @@ int main(int argc, char *argv[]) {
                                      {NULL, 0, NULL, 0}};
 
   char *filename = NULL;
-  uint32_t jumpline = 0;
+  uint32_t jumpline = 1;
   bool goto_end = false;
   char ch;
   while ((ch = getopt_long(argc, argv, "el:", longopts, NULL)) != -1) {
@@ -170,7 +170,7 @@ int main(int argc, char *argv[]) {
     if (goto_end) {
       buffer_goto_end(&initial_buffer);
     } else
-      buffer_goto(&initial_buffer, jumpline, 0);
+      buffer_goto(&initial_buffer, jumpline > 0 ? jumpline - 1 : 0, 0);
   } else {
     const char *welcome_txt = "Welcome to the editor for datagubbar 👴\n";
     buffer_add_text(&initial_buffer, (uint8_t *)welcome_txt,

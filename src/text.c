@@ -245,17 +245,10 @@ void delete_line(struct text *text, uint32_t line) {
   text->lines[text->nlines].nchars = 0;
 }
 
-void text_append(struct text *text, uint8_t *bytes, uint32_t nbytes,
-                 uint32_t *lines_added, uint32_t *cols_added) {
-  uint32_t line = text->nlines > 0 ? text->nlines - 1 : 0;
-  uint32_t col = text_line_length(text, line);
-
-  text_insert_at(text, line, col, bytes, nbytes, lines_added, cols_added);
-}
-
-void text_insert_at(struct text *text, uint32_t line, uint32_t col,
-                    uint8_t *bytes, uint32_t nbytes, uint32_t *lines_added,
-                    uint32_t *cols_added) {
+void text_insert_at_inner(struct text *text, uint32_t line, uint32_t col,
+                          uint8_t *bytes, uint32_t nbytes,
+                          uint32_t *lines_added, uint32_t *cols_added,
+                          bool force_newline) {
   uint32_t linelen = 0, start_line = line;
 
   *cols_added = 0;
@@ -270,7 +263,7 @@ void text_insert_at(struct text *text, uint32_t line, uint32_t col,
       col += nchars;
 
       // only insert a newline if we have to
-      if (linelen == 0 || col < text_line_length(text, line) ||
+      if (force_newline || linelen == 0 || col < text_line_length(text, line) ||
           line + 1 < text->nlines) {
         new_line_at(text, line, col);
       }
@@ -292,6 +285,22 @@ void text_insert_at(struct text *text, uint32_t line, uint32_t col,
   }
 
   *lines_added = line - start_line;
+}
+
+void text_append(struct text *text, uint8_t *bytes, uint32_t nbytes,
+                 uint32_t *lines_added, uint32_t *cols_added) {
+  uint32_t line = text->nlines > 0 ? text->nlines - 1 : 0;
+  uint32_t col = text_line_length(text, line);
+
+  text_insert_at_inner(text, line, col, bytes, nbytes, lines_added, cols_added,
+                       true);
+}
+
+void text_insert_at(struct text *text, uint32_t line, uint32_t col,
+                    uint8_t *bytes, uint32_t nbytes, uint32_t *lines_added,
+                    uint32_t *cols_added) {
+  text_insert_at_inner(text, line, col, bytes, nbytes, lines_added, cols_added,
+                       false);
 }
 
 void text_delete(struct text *text, uint32_t start_line, uint32_t start_col,
