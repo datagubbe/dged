@@ -11,8 +11,18 @@
 
 static struct settings g_settings = {0};
 
-void settings_init(uint32_t initial_capacity) {
+int32_t settings_get_cmd(struct command_ctx ctx, int argc, const char *argv[]);
+int32_t settings_set_cmd(struct command_ctx ctx, int argc, const char *argv[]);
+
+void settings_init(uint32_t initial_capacity, struct commands *commands) {
   HASHMAP_INIT(&g_settings.settings, initial_capacity, hash_name);
+  static struct command settings_commands[] = {
+      {.name = "set", .fn = settings_set_cmd},
+      {.name = "get", .fn = settings_get_cmd},
+  };
+
+  register_commands(commands, settings_commands,
+                    sizeof(settings_commands) / sizeof(settings_commands[0]));
 }
 
 void settings_destroy() {

@@ -1,3 +1,4 @@
+#include <getopt.h>
 #include <locale.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -8,6 +9,8 @@
 
 #include "allocator.h"
 #include "binding.h"
+#include "bits/getopt_core.h"
+#include "bits/getopt_ext.h"
 #include "buffer.h"
 #include "buffers.h"
 #include "display.h"
@@ -76,19 +79,49 @@ uint64_t calc_frame_time_ns(struct timespec *timers, uint32_t num_timer_pairs) {
   return total;
 }
 
+void usage() { printf("TODO: print usage\n"); }
+
 int main(int argc, char *argv[]) {
+
+  static struct option longopts[] = {{"line", required_argument, NULL, 'l'},
+                                     {"end", no_argument, NULL, 'e'},
+                                     {NULL, 0, NULL, 0}};
+
   char *filename = NULL;
-  if (argc >= 1) {
-    filename = argv[1];
+  uint32_t jumpline = 0;
+  bool goto_end = false;
+  char ch;
+  while ((ch = getopt_long(argc, argv, "el:", longopts, NULL)) != -1) {
+    switch (ch) {
+    case 'l':
+      jumpline = atoi(optarg);
+      break;
+    case 'e':
+      goto_end = true;
+      break;
+    default:
+      usage();
+      return 1;
+    }
+  }
+  argc -= optind;
+  argv += optind;
+
+  if (argc > 1) {
+    fprintf(stderr, "More than one file to open is not supported\n");
+    return 2;
+  } else if (argc == 1) {
+    filename = strdup(argv[0]);
   }
 
   setlocale(LC_ALL, "");
 
   signal(SIGTERM, terminate);
 
-  settings_init(64);
+  struct commands commands = command_registry_create(32);
+  settings_init(64, &commands);
   languages_init(true);
-  buffer_static_init();
+  buffer_static_init(&commands);
 
   frame_allocator = frame_allocator_create(16 * 1024 * 1024);
 
@@ -103,14 +136,9 @@ int main(int argc, char *argv[]) {
   // init keyboard
   struct keyboard kbd = keyboard_create(reactor);
 
-  // commands
-  struct commands commands = command_registry_create(32);
+  // global commands, TODO: move these, they should exist even if main does not
   register_commands(&commands, GLOBAL_COMMANDS,
                     sizeof(GLOBAL_COMMANDS) / sizeof(GLOBAL_COMMANDS[0]));
-  register_commands(&commands, BUFFER_COMMANDS,
-                    sizeof(BUFFER_COMMANDS) / sizeof(BUFFER_COMMANDS[0]));
-  register_commands(&commands, SETTINGS_COMMANDS,
-                    sizeof(SETTINGS_COMMANDS) / sizeof(SETTINGS_COMMANDS[0]));
 
   // keymaps
   struct keymap *current_keymap = NULL;
@@ -139,6 +167,10 @@ int main(int argc, char *argv[]) {
   if (filename != NULL) {
     buffer_destroy(&initial_buffer);
     initial_buffer = buffer_from_file(filename);
+    if (goto_end) {
+      buffer_goto_end(&initial_buffer);
+    } else
+      buffer_goto(&initial_buffer, jumpline, 0);
   } else {
     const char *welcome_txt = "Welcome to the editor for datagubbar 👴\n";
     buffer_add_text(&initial_buffer, (uint8_t *)welcome_txt,

@@ -1,8 +1,9 @@
-#include "command.h"
 #include "hashmap.h"
 
 #include <stdbool.h>
 #include <stdint.h>
+
+struct commands;
 
 /**
  * The type of setting value.
@@ -68,7 +69,7 @@ struct settings {
  * @param initial_capacity Initial capacity of the settings collection.
  * @returns Nothing, the settings collection is a global instance.
  */
-void settings_init(uint32_t initial_capacity);
+void settings_init(uint32_t initial_capacity, struct commands *commands);
 
 /**
  * Destroy the global collection of settings.
@@ -116,11 +117,3 @@ void settings_get_prefix(const char *prefix, struct setting **settings_out[],
  * type for the setting. If not, the new value is ignored.
  */
 void settings_set(const char *path, struct setting_value value);
-
-int32_t settings_get_cmd(struct command_ctx ctx, int argc, const char *argv[]);
-int32_t settings_set_cmd(struct command_ctx ctx, int argc, const char *argv[]);
-
-static struct command SETTINGS_COMMANDS[] = {
-    {.name = "set", .fn = settings_set_cmd},
-    {.name = "get", .fn = settings_get_cmd},
-};

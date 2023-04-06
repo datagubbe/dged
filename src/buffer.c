@@ -152,7 +152,39 @@ void buffer_clear(struct buffer *buffer) {
   buffer->dot.col = buffer->dot.line = 0;
 }
 
-void buffer_static_init() {
+#define BUFFER_WRAPCMD(fn)                                                     \
+  static int32_t fn##_cmd(struct command_ctx ctx, int argc,                    \
+                          const char *argv[]) {                                \
+    fn(ctx.active_window->buffer);                                             \
+    return 0;                                                                  \
+  }
+
+// commands
+BUFFER_WRAPCMD(buffer_kill_line);
+BUFFER_WRAPCMD(buffer_forward_delete_char);
+BUFFER_WRAPCMD(buffer_backward_delete_char);
+BUFFER_WRAPCMD(buffer_backward_char);
+BUFFER_WRAPCMD(buffer_backward_word);
+BUFFER_WRAPCMD(buffer_forward_char);
+BUFFER_WRAPCMD(buffer_forward_word);
+BUFFER_WRAPCMD(buffer_backward_line);
+BUFFER_WRAPCMD(buffer_forward_line);
+BUFFER_WRAPCMD(buffer_end_of_line);
+BUFFER_WRAPCMD(buffer_beginning_of_line);
+BUFFER_WRAPCMD(buffer_newline);
+BUFFER_WRAPCMD(buffer_indent);
+BUFFER_WRAPCMD(buffer_to_file);
+BUFFER_WRAPCMD(buffer_set_mark);
+BUFFER_WRAPCMD(buffer_clear_mark);
+BUFFER_WRAPCMD(buffer_copy);
+BUFFER_WRAPCMD(buffer_cut);
+BUFFER_WRAPCMD(buffer_paste);
+BUFFER_WRAPCMD(buffer_paste_older);
+BUFFER_WRAPCMD(buffer_goto_beginning);
+BUFFER_WRAPCMD(buffer_goto_end);
+BUFFER_WRAPCMD(buffer_undo);
+
+void buffer_static_init(struct commands *commands) {
   settings_register_setting(
       "editor.tab-width",
       (struct setting_value){.type = Setting_Number, .number_value = 4});
@@ -160,6 +192,35 @@ void buffer_static_init() {
   settings_register_setting(
       "editor.show-whitespace",
       (struct setting_value){.type = Setting_Bool, .bool_value = true});
+
+  static struct command buffer_commands[] = {
+      {.name = "kill-line", .fn = buffer_kill_line_cmd},
+      {.name = "delete-char", .fn = buffer_forward_delete_char_cmd},
+      {.name = "backward-delete-char", .fn = buffer_backward_delete_char_cmd},
+      {.name = "backward-char", .fn = buffer_backward_char_cmd},
+      {.name = "backward-word", .fn = buffer_backward_word_cmd},
+      {.name = "forward-char", .fn = buffer_forward_char_cmd},
+      {.name = "forward-word", .fn = buffer_forward_word_cmd},
+      {.name = "backward-line", .fn = buffer_backward_line_cmd},
+      {.name = "forward-line", .fn = buffer_forward_line_cmd},
+      {.name = "end-of-line", .fn = buffer_end_of_line_cmd},
+      {.name = "beginning-of-line", .fn = buffer_beginning_of_line_cmd},
+      {.name = "newline", .fn = buffer_newline_cmd},
+      {.name = "indent", .fn = buffer_indent_cmd},
+      {.name = "buffer-write-to-file", .fn = buffer_to_file_cmd},
+      {.name = "set-mark", .fn = buffer_set_mark_cmd},
+      {.name = "clear-mark", .fn = buffer_clear_mark_cmd},
+      {.name = "copy", .fn = buffer_copy_cmd},
+      {.name = "cut", .fn = buffer_cut_cmd},
+      {.name = "paste", .fn = buffer_paste_cmd},
+      {.name = "paste-older", .fn = buffer_paste_older_cmd},
+      {.name = "goto-beginning", .fn = buffer_goto_beginning_cmd},
+      {.name = "goto-end", .fn = buffer_goto_end_cmd},
+      {.name = "undo", .fn = buffer_undo_cmd},
+  };
+
+  register_commands(commands, buffer_commands,
+                    sizeof(buffer_commands) / sizeof(buffer_commands[0]));
 }
 
 void buffer_static_teardown() {
@@ -269,7 +330,7 @@ bool moveh(struct buffer *buffer, int coldelta) {
 }
 
 void buffer_goto(struct buffer *buffer, uint32_t line, uint32_t col) {
-  int64_t linedelta = (int64_t)line - (int64_t)buffer->dot.line;
+  int64_t linedelta = (int64_t)line - 1 - (int64_t)buffer->dot.line;
   movev(buffer, linedelta);
 
   int64_t coldelta = (int64_t)col - (int64_t)buffer->dot.col;

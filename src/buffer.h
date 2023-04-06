@@ -145,7 +145,7 @@ struct buffer {
 struct buffer buffer_create(char *name, bool modeline);
 void buffer_destroy(struct buffer *buffer);
 
-void buffer_static_init();
+void buffer_static_init(struct commands *commands);
 void buffer_static_teardown();
 
 uint32_t buffer_keymaps(struct buffer *buffer, struct keymap **keymaps_out);
@@ -199,61 +199,3 @@ void buffer_write_to(struct buffer *buffer, const char *filename);
 void buffer_update(struct buffer *buffer, uint32_t width, uint32_t height,
                    struct command_list *commands, uint64_t frame_time,
                    uint32_t *relline, uint32_t *relcol);
-
-// commands
-#define BUFFER_WRAPCMD(fn)                                                     \
-  static int32_t fn##_cmd(struct command_ctx ctx, int argc,                    \
-                          const char *argv[]) {                                \
-    fn(ctx.active_window->buffer);                                             \
-    return 0;                                                                  \
-  }
-
-BUFFER_WRAPCMD(buffer_kill_line);
-BUFFER_WRAPCMD(buffer_forward_delete_char);
-BUFFER_WRAPCMD(buffer_backward_delete_char);
-BUFFER_WRAPCMD(buffer_backward_char);
-BUFFER_WRAPCMD(buffer_backward_word);
-BUFFER_WRAPCMD(buffer_forward_char);
-BUFFER_WRAPCMD(buffer_forward_word);
-BUFFER_WRAPCMD(buffer_backward_line);
-BUFFER_WRAPCMD(buffer_forward_line);
-BUFFER_WRAPCMD(buffer_end_of_line);
-BUFFER_WRAPCMD(buffer_beginning_of_line);
-BUFFER_WRAPCMD(buffer_newline);
-BUFFER_WRAPCMD(buffer_indent);
-BUFFER_WRAPCMD(buffer_to_file);
-BUFFER_WRAPCMD(buffer_set_mark);
-BUFFER_WRAPCMD(buffer_clear_mark);
-BUFFER_WRAPCMD(buffer_copy);
-BUFFER_WRAPCMD(buffer_cut);
-BUFFER_WRAPCMD(buffer_paste);
-BUFFER_WRAPCMD(buffer_paste_older);
-BUFFER_WRAPCMD(buffer_goto_beginning);
-BUFFER_WRAPCMD(buffer_goto_end);
-BUFFER_WRAPCMD(buffer_undo);
-
-static struct command BUFFER_COMMANDS[] = {
-    {.name = "kill-line", .fn = buffer_kill_line_cmd},
-    {.name = "delete-char", .fn = buffer_forward_delete_char_cmd},
-    {.name = "backward-delete-char", .fn = buffer_backward_delete_char_cmd},
-    {.name = "backward-char", .fn = buffer_backward_char_cmd},
-    {.name = "backward-word", .fn = buffer_backward_word_cmd},
-    {.name = "forward-char", .fn = buffer_forward_char_cmd},
-    {.name = "forward-word", .fn = buffer_forward_word_cmd},
-    {.name = "backward-line", .fn = buffer_backward_line_cmd},
-    {.name = "forward-line", .fn = buffer_forward_line_cmd},
-    {.name = "end-of-line", .fn = buffer_end_of_line_cmd},
-    {.name = "beginning-of-line", .fn = buffer_beginning_of_line_cmd},
-    {.name = "newline", .fn = buffer_newline_cmd},
-    {.name = "indent", .fn = buffer_indent_cmd},
-    {.name = "buffer-write-to-file", .fn = buffer_to_file_cmd},
-    {.name = "set-mark", .fn = buffer_set_mark_cmd},
-    {.name = "clear-mark", .fn = buffer_clear_mark_cmd},
-    {.name = "copy", .fn = buffer_copy_cmd},
-    {.name = "cut", .fn = buffer_cut_cmd},
-    {.name = "paste", .fn = buffer_paste_cmd},
-    {.name = "paste-older", .fn = buffer_paste_older_cmd},
-    {.name = "goto-beginning", .fn = buffer_goto_beginning_cmd},
-    {.name = "goto-end", .fn = buffer_goto_end_cmd},
-    {.name = "undo", .fn = buffer_undo_cmd},
-};
