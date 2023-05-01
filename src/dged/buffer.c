@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 #include <wchar.h>
@@ -126,6 +127,7 @@ struct buffer buffer_create(char *name) {
       .modified = false,
       .readonly = false,
       .lang = lang_from_id("fnd"),
+      .last_write = {0},
   };
 
   undo_init(&b.undo, 100);
@@ -467,15 +469,14 @@ void buffer_end_of_line(struct buffer_view *view) {
 
 void buffer_beginning_of_line(struct buffer_view *view) { view->dot.col = 0; }
 
-struct buffer buffer_from_file(char *filename) {
-  struct buffer b = buffer_create(basename((char *)filename));
-  b.filename = strdup(filename);
-  if (access(b.filename, F_OK) == 0) {
-    FILE *file = fopen(filename, "r");
+void buffer_read_from_file(struct buffer *b) {
+  struct stat sb;
+  if (stat(b->filename, &sb) == 0) {
+    FILE *file = fopen(b->filename, "r");
 
     if (file == NULL) {
-      minibuffer_echo("Error opening %s: %s", filename, strerror(errno));
-      return b;
+      minibuffer_echo("Error opening %s: %s", b->filename, strerror(errno));
+      return;
     }
 
     while (true) {
@@ -483,24 +484,35 @@ struct buffer buffer_from_file(char *filename) {
       int bytes = fread(buff, 1, 4096, file);
       if (bytes > 0) {
         uint32_t ignore;
-        text_append(b.text, buff, bytes, &ignore, &ignore);
+        text_append(b->text, buff, bytes, &ignore, &ignore);
       } else if (bytes == 0) {
         break; // EOF
       } else {
-        minibuffer_echo("error reading from %s: %s", filename, strerror(errno));
+        minibuffer_echo("error reading from %s: %s", b->filename,
+                        strerror(errno));
         fclose(file);
-        return b;
+        return;
       }
     }
 
     fclose(file);
+    b->last_write = sb.st_mtim;
+  } else {
+    minibuffer_echo("Error opening %s: %s", b->filename, strerror(errno));
+    return;
   }
 
-  const char *ext = strrchr(b.filename, '.');
+  const char *ext = strrchr(b->filename, '.');
   if (ext != NULL) {
-    b.lang = lang_from_extension(ext + 1);
+    b->lang = lang_from_extension(ext + 1);
   }
-  undo_push_boundary(&b.undo, (struct undo_boundary){.save_point = true});
+  undo_push_boundary(&b->undo, (struct undo_boundary){.save_point = true});
+}
+
+struct buffer buffer_from_file(char *filename) {
+  struct buffer b = buffer_create(basename((char *)filename));
+  b.filename = strdup(filename);
+  buffer_read_from_file(&b);
   return b;
 }
 
@@ -540,6 +552,7 @@ void buffer_to_file(struct buffer *buffer) {
                           buffer->filename);
   fclose(file);
 
+  clock_gettime(CLOCK_REALTIME, &buffer->last_write);
   buffer->modified = false;
   undo_push_boundary(&buffer->undo, (struct undo_boundary){.save_point = true});
 }
@@ -547,6 +560,26 @@ void buffer_to_file(struct buffer *buffer) {
 void buffer_write_to(struct buffer *buffer, const char *filename) {
   buffer->filename = strdup(filename);
   buffer_to_file(buffer);
+}
+
+void buffer_reload(struct buffer *buffer) {
+  if (buffer->filename == NULL) {
+    return;
+  }
+
+  // check if we actually need to reload
+  struct stat sb;
+  if (stat(buffer->filename, &sb) < 0) {
+    minibuffer_echo_timeout(4, "failed to run stat on %s", buffer->filename);
+    return;
+  }
+
+  if (sb.st_mtim.tv_sec != buffer->last_write.tv_sec) {
+    text_clear(buffer->text);
+    buffer_read_from_file(buffer);
+  } else {
+    minibuffer_echo_timeout(2, "buffer %s not changed", buffer->filename);
+  }
 }
 
 struct search_data {
@@ -774,15 +807,18 @@ void render_line(struct text_chunk *line, void *userdata) {
        bytei < text_nbytes_scroll && linewidth < cmdbuf->width; ++bytei) {
     uint8_t *txt = &text[bytei];
     if (*txt == '\t') {
-      linewidth += 3;
+      linewidth += 4;
     } else if (utf8_byte_is_unicode_start(*txt)) {
       wchar_t wc;
-      if (mbrtowc(&wc, (char *)txt, 6, NULL) >= 0) {
-        linewidth += wcwidth(wc) - 1;
+      size_t nbytes;
+      if ((nbytes = mbrtowc(&wc, (char *)txt, 6, NULL)) > 0) {
+        text_nbytes += nbytes - 1;
+        linewidth += wcwidth(wc);
       }
+    } else if (utf8_byte_is_ascii(*txt)) {
+      ++linewidth;
     }
 
-    ++linewidth;
     ++text_nbytes;
   }
 

@@ -307,6 +307,7 @@ BUFFER_WRAPCMD_POS(buffer_beginning_of_line);
 BUFFER_WRAPCMD_POS(buffer_newline);
 BUFFER_WRAPCMD_POS(buffer_indent);
 BUFFER_WRAPCMD(buffer_to_file);
+BUFFER_WRAPCMD(buffer_reload);
 BUFFER_WRAPCMD_POS(buffer_set_mark);
 BUFFER_WRAPCMD_POS(buffer_clear_mark);
 BUFFER_WRAPCMD_POS(buffer_copy);
@@ -357,6 +358,7 @@ void register_buffer_commands(struct commands *commands) {
       {.name = "undo", .fn = buffer_undo_cmd},
       {.name = "scroll-down", .fn = buffer_view_scroll_down_cmd},
       {.name = "scroll-up", .fn = buffer_view_scroll_up_cmd},
+      {.name = "reload", .fn = buffer_reload_cmd},
   };
 
   register_commands(commands, buffer_commands,

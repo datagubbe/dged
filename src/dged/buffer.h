@@ -1,6 +1,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <time.h>
 
 #include "bits/stdint-uintn.h"
 #include "command.h"
@@ -138,6 +139,8 @@ struct buffer {
   /** Associated filename, this is where the buffer will be saved to */
   char *filename;
 
+  struct timespec last_write;
+
   /** Text data structure */
   struct text *text;
 
@@ -213,6 +216,7 @@ uint32_t buffer_add_create_hook(create_hook_cb hook, void *userdata);
 struct buffer buffer_from_file(char *filename);
 void buffer_to_file(struct buffer *buffer);
 void buffer_write_to(struct buffer *buffer, const char *filename);
+void buffer_reload(struct buffer *buffer);
 
 void buffer_update(struct buffer_view *view, uint32_t width, uint32_t height,
                    struct command_list *commands, uint64_t frame_time,
