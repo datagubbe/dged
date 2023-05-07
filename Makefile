@@ -23,9 +23,10 @@ prefix ?= "/usr"
 .SUFFIXES:
 .SUFFIXES: .c .o .d
 
-UNAME_S != uname -s | tr '[:upper:]' '[:lower:]'
-
 CFLAGS = -Werror -g -std=c99 -I $(.CURDIR)/src -I $(.CURDIR)/src/main
+
+UNAME_S != uname -s | tr '[:upper:]' '[:lower:]'
+.sinclude "$(UNAME_S).mk"
 
 DEPS = $(DGED_SOURCES:.c=.d) $(TEST_SOURCES:.c=.d)
 
@@ -34,8 +35,6 @@ MAIN_OBJS = $(MAIN_SOURCES:.c=.o)
 TEST_OBJS = $(TEST_SOURCES:.c=.o)
 
 FILES = $(DEPS) $(MAIN_OBJS) $(OBJS) dged libdged.a $(TEST_OBJS)
-
-.sinclude "$(UNAME_S).mk"
 
 # dependency generation
 .c.d:
@@ -48,10 +47,10 @@ FILES = $(DEPS) $(MAIN_OBJS) $(OBJS) dged libdged.a $(TEST_OBJS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 dged: $(MAIN_OBJS) libdged.a
-	$(CC) $(LDFLAGS) $(MAIN_OBJS) libdged.a -o dged
+	$(CC) $(LDFLAGS) $(MAIN_OBJS) libdged.a -o dged -lm
 
-libdged.a: $(OBJS) $(PLATFORM_OBJS)
-	$(AR) -rc libdged.a $(OBJS) $(PLATFORM_OBJS)
+libdged.a: $(OBJS)
+	$(AR) -rc libdged.a $(OBJS)
 
 run-tests: $(TEST_OBJS) $(OBJS)
 	$(CC) $(LDFLAGS) $(TEST_OBJS) $(OBJS) -o run-tests

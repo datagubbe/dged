@@ -1,6 +1,5 @@
 #include "buffer.h"
 #include "binding.h"
-#include "bits/stdint-uintn.h"
 #include "dged/vec.h"
 #include "display.h"
 #include "errno.h"
@@ -119,9 +118,9 @@ uint32_t buffer_add_create_hook(create_hook_cb hook, void *userdata) {
   return g_num_create_hooks - 1;
 }
 
-struct buffer buffer_create(char *name) {
+struct buffer create_internal(char *name, char *filename) {
   struct buffer b = (struct buffer){
-      .filename = NULL,
+      .filename = filename,
       .name = strdup(name),
       .text = text_create(10),
       .modified = false,
@@ -131,6 +130,13 @@ struct buffer buffer_create(char *name) {
   };
 
   undo_init(&b.undo, 100);
+
+  return b;
+}
+
+struct buffer buffer_create(char *name) {
+
+  struct buffer b = create_internal(name, NULL);
 
   for (uint32_t hooki = 0; hooki < g_num_create_hooks; ++hooki) {
     g_create_hooks[hooki].callback(&b, g_create_hooks[hooki].userdata);
@@ -182,8 +188,13 @@ bool buffer_is_empty(struct buffer *buffer) {
 bool buffer_is_modified(struct buffer *buffer) { return buffer->modified; }
 
 bool buffer_is_readonly(struct buffer *buffer) { return buffer->readonly; }
+
 void buffer_set_readonly(struct buffer *buffer, bool readonly) {
   buffer->readonly = readonly;
+}
+
+bool buffer_is_backed(struct buffer *buffer) {
+  return buffer->filename != NULL;
 }
 
 void delete_with_undo(struct buffer *buffer, struct buffer_location start,
@@ -510,9 +521,14 @@ void buffer_read_from_file(struct buffer *b) {
 }
 
 struct buffer buffer_from_file(char *filename) {
-  struct buffer b = buffer_create(basename((char *)filename));
-  b.filename = strdup(filename);
+  char *full_filename = realpath(filename, NULL);
+  struct buffer b = create_internal(basename((char *)filename), full_filename);
   buffer_read_from_file(&b);
+
+  for (uint32_t hooki = 0; hooki < g_num_create_hooks; ++hooki) {
+    g_create_hooks[hooki].callback(&b, g_create_hooks[hooki].userdata);
+  }
+
   return b;
 }
 
@@ -812,7 +828,6 @@ void render_line(struct text_chunk *line, void *userdata) {
       wchar_t wc;
       size_t nbytes;
       if ((nbytes = mbrtowc(&wc, (char *)txt, 6, NULL)) > 0) {
-        text_nbytes += nbytes - 1;
         linewidth += wcwidth(wc);
       }
     } else if (utf8_byte_is_ascii(*txt)) {

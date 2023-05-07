@@ -173,6 +173,7 @@ bool buffer_is_empty(struct buffer *buffer);
 bool buffer_is_modified(struct buffer *buffer);
 bool buffer_is_readonly(struct buffer *buffer);
 void buffer_set_readonly(struct buffer *buffer, bool readonly);
+bool buffer_is_backed(struct buffer *buffer);
 
 void buffer_kill_line(struct buffer_view *view);
 void buffer_forward_delete_char(struct buffer_view *view);

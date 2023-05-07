@@ -47,8 +47,16 @@ int32_t find_file(struct command_ctx ctx, int argc, const char *argv[]) {
     return 1;
   }
 
-  window_set_buffer(ctx.active_window,
-                    buffers_add(ctx.buffers, buffer_from_file((char *)pth)));
+  const char *filename = realpath(pth, NULL);
+  struct buffer *b = buffers_find_by_filename(ctx.buffers, filename);
+  free((char *)filename);
+  if (b == NULL) {
+    b = buffers_add(ctx.buffers, buffer_from_file((char *)pth));
+  } else {
+    buffer_reload(b);
+  }
+
+  window_set_buffer(ctx.active_window, b);
   minibuffer_echo_timeout(4, "buffer \"%s\" loaded",
                           window_buffer(ctx.active_window)->name);
 
@@ -317,18 +325,30 @@ BUFFER_WRAPCMD_POS(buffer_paste_older);
 BUFFER_WRAPCMD_POS(buffer_goto_beginning);
 BUFFER_WRAPCMD_POS(buffer_goto_end);
 BUFFER_WRAPCMD_POS(buffer_undo);
+
 static int32_t buffer_view_scroll_up_cmd(struct command_ctx ctx, int argc,
                                          const char *argv[]) {
   buffer_view_scroll_up(window_buffer_view(ctx.active_window),
                         window_height(ctx.active_window));
   return 0;
 };
+
 static int32_t buffer_view_scroll_down_cmd(struct command_ctx ctx, int argc,
                                            const char *argv[]) {
   buffer_view_scroll_down(window_buffer_view(ctx.active_window),
                           window_height(ctx.active_window));
   return 0;
 };
+
+static int32_t buffer_goto_line(struct command_ctx ctx, int argc,
+                                const char *argv[]) {
+  if (argc == 0) {
+    return minibuffer_prompt(ctx, "line: ");
+  }
+
+  uint32_t line = atoi(argv[0]);
+  buffer_goto(window_buffer_view(ctx.active_window), line - 1, 0);
+}
 
 void register_buffer_commands(struct commands *commands) {
 
@@ -359,6 +379,7 @@ void register_buffer_commands(struct commands *commands) {
       {.name = "scroll-down", .fn = buffer_view_scroll_down_cmd},
       {.name = "scroll-up", .fn = buffer_view_scroll_up_cmd},
       {.name = "reload", .fn = buffer_reload_cmd},
+      {.name = "goto-line", .fn = buffer_goto_line},
   };
 
   register_commands(commands, buffer_commands,

@@ -2,31 +2,50 @@
 #include "buffer.h"
 
 #include <stdlib.h>
+
 #include <string.h>
 
 void buffers_init(struct buffers *buffers, uint32_t initial_capacity) {
-  buffers->buffers = calloc(initial_capacity, sizeof(struct buffer));
-  buffers->nbuffers = 0;
-  buffers->capacity = initial_capacity;
+  VEC_INIT(&buffers->buffers, initial_capacity);
+  VEC_INIT(&buffers->add_hooks, 32);
 }
 
 struct buffer *buffers_add(struct buffers *buffers, struct buffer buffer) {
-  if (buffers->nbuffers == buffers->capacity) {
-    buffers->capacity *= 2;
-    buffers->buffers =
-        realloc(buffers->buffers, sizeof(struct buffer) * buffers->capacity);
+  VEC_PUSH(&buffers->buffers, buffer);
+
+  struct buffer *slot = VEC_BACK(&buffers->buffers);
+  VEC_FOR_EACH(&buffers->add_hooks, struct buffers_hook * hook) {
+    hook->callback(slot, hook->userdata);
   }
 
-  buffers->buffers[buffers->nbuffers] = buffer;
-  ++buffers->nbuffers;
+  return slot;
+}
 
-  return &buffers->buffers[buffers->nbuffers - 1];
+uint32_t buffers_add_add_hook(struct buffers *buffers, buffers_hook_cb callback,
+                              void *userdata) {
+  VEC_PUSH(&buffers->add_hooks, ((struct buffers_hook){
+                                    .callback = callback,
+                                    .userdata = userdata,
+                                }));
+
+  return VEC_SIZE(&buffers->add_hooks) - 1;
 }
 
 struct buffer *buffers_find(struct buffers *buffers, const char *name) {
-  for (uint32_t bufi = 0; bufi < buffers->nbuffers; ++bufi) {
-    if (strcmp(name, buffers->buffers[bufi].name) == 0) {
-      return &buffers->buffers[bufi];
+  VEC_FOR_EACH(&buffers->buffers, struct buffer * b) {
+    if (strcmp(name, b->name) == 0) {
+      return b;
+    }
+  }
+
+  return NULL;
+}
+
+struct buffer *buffers_find_by_filename(struct buffers *buffers,
+                                        const char *path) {
+  VEC_FOR_EACH(&buffers->buffers, struct buffer * b) {
+    if (b->filename != NULL && strcmp(path, b->filename) == 0) {
+      return b;
     }
   }
 
@@ -34,10 +53,7 @@ struct buffer *buffers_find(struct buffers *buffers, const char *name) {
 }
 
 void buffers_destroy(struct buffers *buffers) {
-  for (uint32_t bufi = 0; bufi < buffers->nbuffers; ++bufi) {
-    buffer_destroy(&buffers->buffers[bufi]);
-  }
+  VEC_FOR_EACH(&buffers->buffers, struct buffer * b) { buffer_destroy(b); }
 
-  buffers->nbuffers = 0;
-  free(buffers->buffers);
+  VEC_DESTROY(&buffers->buffers);
 }

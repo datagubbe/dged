@@ -59,6 +59,59 @@ uint64_t calc_frame_time_ns(struct timespec *timers, uint32_t num_timer_pairs) {
 #define TIMED_SCOPE_BEGIN(timer) clock_gettime(CLOCK_MONOTONIC, &timer##_begin)
 #define TIMED_SCOPE_END(timer) clock_gettime(CLOCK_MONOTONIC, &timer##_end)
 
+struct watched_file {
+  uint32_t watch_id;
+  struct buffer *buffer;
+};
+
+VEC(struct watched_file) g_watched_files;
+
+void watch_file(struct buffer *buffer, void *userdata) {
+  if (buffer_is_backed(buffer)) {
+    struct reactor *reactor = (struct reactor *)userdata;
+    VEC_APPEND(&g_watched_files, struct watched_file * w);
+    w->buffer = buffer;
+    w->watch_id = reactor_watch_file(reactor, buffer->filename, FileWritten);
+  }
+}
+
+void reload_buffer(struct buffer *buffer) {
+  if (!buffer_is_modified(buffer)) {
+    buffer_reload(buffer);
+  } else {
+    minibuffer_echo("not updating buffer %s because it contains changes",
+                    buffer->name);
+  }
+}
+
+void update_file_watches(struct reactor *reactor) {
+  // first, find invalid file watches and try to update them
+  VEC_FOR_EACH(&g_watched_files, struct watched_file * w) {
+    if (w->watch_id == -1) {
+      w->watch_id =
+          reactor_watch_file(reactor, w->buffer->filename, FileWritten);
+      reload_buffer(w->buffer);
+    }
+  }
+
+  // then pick up any events we might have
+  struct file_event ev;
+  while (reactor_next_file_event(reactor, &ev)) {
+    // find the buffer we need to reload
+    VEC_FOR_EACH(&g_watched_files, struct watched_file * w) {
+      if (w->watch_id == ev.id) {
+        if (ev.mask & LastEvent != 0) {
+          w->watch_id = -1;
+          continue;
+        }
+
+        reload_buffer(w->buffer);
+        break;
+      }
+    }
+  }
+}
+
 void usage() { printf("TODO: print usage\n"); }
 
 int main(int argc, char *argv[]) {
@@ -127,8 +180,11 @@ int main(int argc, char *argv[]) {
   struct keymap *current_keymap = NULL;
   struct keymap *global_keymap = register_bindings();
 
+  VEC_INIT(&g_watched_files, 32);
+
   struct buffers buflist = {0};
   buffers_init(&buflist, 32);
+  buffers_add_add_hook(&buflist, watch_file, (void *)reactor);
   struct buffer initial_buffer = buffer_create("welcome");
   if (filename != NULL) {
     buffer_destroy(&initial_buffer);
@@ -269,6 +325,8 @@ int main(int argc, char *argv[]) {
       }
     }
     TIMED_SCOPE_END(keyboard);
+
+    update_file_watches(reactor);
 
     // calculate frame time
     struct timespec timers[] = {buffer_begin, buffer_end,     display_begin,

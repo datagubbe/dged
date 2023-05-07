@@ -5,6 +5,8 @@
 #include "display.h"
 #include "minibuffer.h"
 
+#include <math.h>
+
 enum window_type {
   Window_Buffer,
   Window_HSplit,
@@ -96,8 +98,8 @@ static void window_tree_resize(struct window_node *root, uint32_t height,
   BINTREE_PARENT(root) = NULL;
 
   struct window *root_window = &BINTREE_VALUE(root);
-  uint32_t width_ratio_percent = (width * 100) / (root_window->width);
-  uint32_t height_ratio_percent = (height * 100) / (root_window->height);
+  uint32_t original_root_width = root_window->width;
+  uint32_t original_root_height = root_window->height;
   root_window->width = width;
   root_window->height = height;
 
@@ -108,8 +110,10 @@ static void window_tree_resize(struct window_node *root, uint32_t height,
     if (BINTREE_PARENT(n) != NULL && n != root) {
       if (BINTREE_LEFT(BINTREE_PARENT(n)) == n) {
         // if left child, use scale from root
-        w->width = (width_ratio_percent * w->width) / 100;
-        w->height = (height_ratio_percent * w->height) / 100;
+        w->width = round(((float)w->width / (float)original_root_width) *
+                         (float)root_window->width);
+        w->height = round(((float)w->height / (float)original_root_height) *
+                          (float)root_window->height);
       } else {
         // if right child, fill rest of space after left and parent resize
         struct window *left_sibling =

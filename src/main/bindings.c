@@ -35,11 +35,14 @@ void set_default_buffer_bindings(struct keymap *keymap) {
       BINDING(Ctrl, 'S', "find-next"),
       BINDING(Ctrl, 'R', "find-prev"),
 
+      BINDING(Meta, 'g', "goto-line"),
       BINDING(Meta, '<', "goto-beginning"),
       BINDING(Meta, '>', "goto-end"),
 
       BINDING(Ctrl, 'V', "scroll-down"),
       BINDING(Meta, 'v', "scroll-up"),
+      BINDING(Spec, '6', "scroll-down"),
+      BINDING(Spec, '5', "scroll-up"),
 
       BINDING(ENTER, "newline"),
       BINDING(TAB, "indent"),
@@ -204,4 +207,6 @@ void destroy_keymaps() {
       km->active = false;
     }
   }
+
+  VEC_DESTROY(&g_buffer_keymaps);
 }
