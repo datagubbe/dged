@@ -27,6 +27,7 @@ void windows_set_active(struct window *window);
 struct window *windows_focus(uint32_t id);
 struct window *windows_get_active();
 struct window *windows_focus_next();
+struct window *window_find_by_buffer(struct buffer *b);
 
 void window_set_buffer(struct window *window, struct buffer *buffer);
 struct buffer *window_buffer(struct window *window);

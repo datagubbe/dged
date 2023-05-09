@@ -522,6 +522,9 @@ void buffer_read_from_file(struct buffer *b) {
 
 struct buffer buffer_from_file(char *filename) {
   char *full_filename = realpath(filename, NULL);
+  if (full_filename == NULL) {
+    full_filename = strdup(filename);
+  }
   struct buffer b = create_internal(basename((char *)filename), full_filename);
   buffer_read_from_file(&b);
 

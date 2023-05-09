@@ -348,5 +348,7 @@ int main(int argc, char *argv[]) {
   buffer_static_teardown();
   settings_destroy();
 
+  VEC_DESTROY(&g_watched_files);
+
   return 0;
 }

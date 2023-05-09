@@ -61,4 +61,5 @@ void buffers_destroy(struct buffers *buffers) {
   VEC_FOR_EACH(&buffers->buffers, struct buffer * b) { buffer_destroy(b); }
 
   VEC_DESTROY(&buffers->buffers);
+  VEC_DESTROY(&buffers->add_hooks);
 }

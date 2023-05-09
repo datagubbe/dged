@@ -202,6 +202,20 @@ void windows_set_active(struct window *window) {
   }
 }
 
+struct window *window_find_by_buffer(struct buffer *b) {
+  struct window_node *n = BINTREE_ROOT(&g_windows.windows);
+  BINTREE_FIRST(n);
+  while (n != NULL) {
+    struct window *w = &BINTREE_VALUE(n);
+    if (window_buffer(w) == b) {
+      return w;
+    }
+    BINTREE_NEXT(n);
+  }
+
+  return NULL;
+}
+
 struct window *windows_get_active() {
   return &BINTREE_VALUE(g_windows.active);
 }

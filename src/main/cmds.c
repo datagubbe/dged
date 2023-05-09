@@ -14,6 +14,7 @@
 
 int32_t _abort(struct command_ctx ctx, int argc, const char *argv[]) {
   minibuffer_abort_prompt();
+  buffer_clear_mark(window_buffer_view(ctx.active_window));
   minibuffer_echo_timeout(4, "💣 aborted");
   return 0;
 }
@@ -48,8 +49,15 @@ int32_t find_file(struct command_ctx ctx, int argc, const char *argv[]) {
   }
 
   const char *filename = realpath(pth, NULL);
+  if (filename == NULL) {
+    filename = pth;
+  }
   struct buffer *b = buffers_find_by_filename(ctx.buffers, filename);
-  free((char *)filename);
+
+  if (filename != pth) {
+    free((char *)filename);
+  }
+
   if (b == NULL) {
     b = buffers_add(ctx.buffers, buffer_from_file((char *)pth));
   } else {
@@ -272,12 +280,61 @@ int32_t timers(struct command_ctx ctx, int argc, const char *argv[]) {
 void buffer_to_list_line(struct buffer *buffer, void *userdata) {
   struct buffer_view *listbuf = (struct buffer_view *)userdata;
   char buf[1024];
-  size_t written = snprintf(buf, 1024, "%-16s %s\n", buffer->name,
-                            buffer->filename != NULL ? buffer->filename : "<no-file>");
+  size_t written =
+      snprintf(buf, 1024, "%-16s %s\n", buffer->name,
+               buffer->filename != NULL ? buffer->filename : "<no-file>");
 
   if (written > 0) {
     buffer_add_text(listbuf, (uint8_t *)buf, written);
   }
+}
+
+int32_t buflist_visit_cmd(struct command_ctx ctx, int argc,
+                          const char *argv[]) {
+  struct window *w = ctx.active_window;
+
+  struct buffer_view *bv = window_buffer_view(w);
+  struct text_chunk text = buffer_get_line(bv->buffer, bv->dot.line);
+
+  char *end = (char *)memchr(text.text, ' ', text.nbytes);
+
+  if (end != NULL) {
+    uint32_t len = end - (char *)text.text;
+    char *bufname = (char *)malloc(len + 1);
+    memcpy(bufname, text.text, len);
+    bufname[len] = '\0';
+
+    struct buffer *target = buffers_find(ctx.buffers, bufname);
+    if (target != NULL) {
+      struct window *tgt_window = window_find_by_buffer(target);
+      if (tgt_window != NULL) {
+        windows_set_active(tgt_window);
+      } else {
+        window_set_buffer(w, target);
+      }
+    }
+  }
+  return 0;
+}
+
+int32_t buflist_close_cmd(struct command_ctx ctx, int argc,
+                          const char *argv[]) {
+  window_close(ctx.active_window);
+  return 0;
+}
+
+void buflist_refresh(struct buffers *buffers, struct buffer_view *target) {
+  buffer_set_readonly(target->buffer, false);
+  buffer_clear(target);
+  buffers_for_each(buffers, buffer_to_list_line, target);
+  buffer_goto_beginning(target);
+  buffer_set_readonly(target->buffer, true);
+}
+
+int32_t buflist_refresh_cmd(struct command_ctx ctx, int argc,
+                            const char *argv[]) {
+  buflist_refresh(ctx.buffers, window_buffer_view(ctx.active_window));
+  return 0;
 }
 
 int32_t buffer_list(struct command_ctx ctx, int argc, const char *argv[]) {
@@ -286,18 +343,38 @@ int32_t buffer_list(struct command_ctx ctx, int argc, const char *argv[]) {
     b = buffers_add(ctx.buffers, buffer_create("buffers"));
   }
 
-  struct window *new_window_a, *new_window_b;
-  window_split(ctx.active_window, &new_window_a, &new_window_b);
+  struct window *w = window_find_by_buffer(b);
+  if (w == NULL) {
+    struct window *new_window_a;
+    window_split(ctx.active_window, &new_window_a, &w);
 
-  window_set_buffer(new_window_b, b);
+    window_set_buffer(w, b);
+  }
 
-  struct buffer_view *bv = window_buffer_view(new_window_b);
-  buffer_set_readonly(b, false);
-  buffer_clear(bv);
-  buffers_for_each(ctx.buffers, buffer_to_list_line, bv);
+  buflist_refresh(ctx.buffers, window_buffer_view(w));
 
-  buffer_goto_beginning(bv);
-  buffer_set_readonly(b, true);
+  static struct command buflist_visit = {
+      .name = "buflist-visit",
+      .fn = buflist_visit_cmd,
+  };
+
+  static struct command buflist_close = {
+      .name = "buflist-close",
+      .fn = buflist_close_cmd,
+  };
+
+  static struct command buflist_refresh = {
+      .name = "buflist-refresh",
+      .fn = buflist_refresh_cmd,
+  };
+
+  struct binding bindings[] = {
+      ANONYMOUS_BINDING(Ctrl, 'M', &buflist_visit),
+      ANONYMOUS_BINDING(None, 'q', &buflist_close),
+      ANONYMOUS_BINDING(None, 'g', &buflist_refresh),
+  };
+  buffer_bind_keys(b, bindings, sizeof(bindings) / sizeof(bindings[0]));
+  windows_set_active(w);
 
   return 0;
 }

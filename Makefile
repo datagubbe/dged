@@ -31,10 +31,11 @@ UNAME_S != uname -s | tr '[:upper:]' '[:lower:]'
 DEPS = $(DGED_SOURCES:.c=.d) $(TEST_SOURCES:.c=.d)
 
 OBJS = $(SOURCES:.c=.o)
+PLATFORM_OBJS = $(PLATFORM_SOURCES:.c=.o)
 MAIN_OBJS = $(MAIN_SOURCES:.c=.o)
 TEST_OBJS = $(TEST_SOURCES:.c=.o)
 
-FILES = $(DEPS) $(MAIN_OBJS) $(OBJS) dged libdged.a $(TEST_OBJS)
+FILES = $(DEPS) $(MAIN_OBJS) $(OBJS) dged libdged.a $(TEST_OBJS) $(PLATFORM_OBJS)
 
 # dependency generation
 .c.d:
@@ -49,11 +50,11 @@ FILES = $(DEPS) $(MAIN_OBJS) $(OBJS) dged libdged.a $(TEST_OBJS)
 dged: $(MAIN_OBJS) libdged.a
 	$(CC) $(LDFLAGS) $(MAIN_OBJS) libdged.a -o dged -lm
 
-libdged.a: $(OBJS)
-	$(AR) -rc libdged.a $(OBJS)
+libdged.a: $(OBJS) $(PLATFORM_OBJS)
+	$(AR) -rc libdged.a $(OBJS) $(PLATFORM_OBJS)
 
 run-tests: $(TEST_OBJS) $(OBJS)
-	$(CC) $(LDFLAGS) $(TEST_OBJS) $(OBJS) -o run-tests
+	$(CC) $(LDFLAGS) $(TEST_OBJS) $(OBJS) -lm -o run-tests
 
 check: run-tests
 	clang-format --dry-run --Werror $(SOURCES:%.c=../%.c) $(MAIN_SOURCES:%.c=../%.c) $(TEST_SOURCES:%c=../%c)
@@ -80,7 +81,7 @@ install: dged
 	install -m 755 $(.OBJDIR)/dged $(prefix)/bin/dged
 
 	install -d $(prefix)/share/man/man1
-	install -m 644 dged.1 $(prefix)/share/man/man1/dged.1
+	install -m 644 $(.CURDIR)/dged.1 $(prefix)/share/man/man1/dged.1
 
 docs:
 	doxygen $(.CURDIR)/Doxyfile
