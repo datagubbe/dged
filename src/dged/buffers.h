@@ -25,4 +25,6 @@ struct buffer *buffers_find_by_filename(struct buffers *buffers, const char *pat
 uint32_t buffers_add_add_hook(struct buffers *buffers, buffers_hook_cb callback, void *userdata);
 uint32_t buffers_add_remove_hook(struct buffers *buffers, buffers_hook_cb callback, void *userdata);
 
+void buffers_for_each(struct buffers *buffers, buffers_hook_cb callback, void *userdata);
+
 void buffers_destroy(struct buffers *buffers);

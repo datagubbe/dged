@@ -83,6 +83,7 @@ struct keymap *register_bindings() {
       BINDING(Ctrl, 'F', "find-file"),
       BINDING(Ctrl, 'W', "write-file"),
       BINDING(None, 'b', "switch-buffer"),
+      BINDING(Ctrl, 'B', "buffer-list"),
 
       BINDING(None, '0', "window-close"),
       BINDING(None, '1', "window-close-others"),

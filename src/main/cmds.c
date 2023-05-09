@@ -269,6 +269,39 @@ int32_t timers(struct command_ctx ctx, int argc, const char *argv[]) {
   return 0;
 }
 
+void buffer_to_list_line(struct buffer *buffer, void *userdata) {
+  struct buffer_view *listbuf = (struct buffer_view *)userdata;
+  char buf[1024];
+  size_t written = snprintf(buf, 1024, "%-16s %s\n", buffer->name,
+                            buffer->filename != NULL ? buffer->filename : "<no-file>");
+
+  if (written > 0) {
+    buffer_add_text(listbuf, (uint8_t *)buf, written);
+  }
+}
+
+int32_t buffer_list(struct command_ctx ctx, int argc, const char *argv[]) {
+  struct buffer *b = buffers_find(ctx.buffers, "buffers");
+  if (b == NULL) {
+    b = buffers_add(ctx.buffers, buffer_create("buffers"));
+  }
+
+  struct window *new_window_a, *new_window_b;
+  window_split(ctx.active_window, &new_window_a, &new_window_b);
+
+  window_set_buffer(new_window_b, b);
+
+  struct buffer_view *bv = window_buffer_view(new_window_b);
+  buffer_set_readonly(b, false);
+  buffer_clear(bv);
+  buffers_for_each(ctx.buffers, buffer_to_list_line, bv);
+
+  buffer_goto_beginning(bv);
+  buffer_set_readonly(b, true);
+
+  return 0;
+}
+
 void register_global_commands(struct commands *commands,
                               void (*terminate_cb)()) {
 
@@ -281,6 +314,7 @@ void register_global_commands(struct commands *commands,
       {.name = "find-next", .fn = find, .userdata = "forward"},
       {.name = "find-prev", .fn = find, .userdata = "backward"},
       {.name = "timers", .fn = timers},
+      {.name = "buffer-list", .fn = buffer_list},
       {.name = "exit", .fn = exit_editor, .userdata = terminate_cb}};
 
   register_commands(commands, global_commands,

@@ -52,6 +52,11 @@ struct buffer *buffers_find_by_filename(struct buffers *buffers,
   return NULL;
 }
 
+void buffers_for_each(struct buffers *buffers, buffers_hook_cb callback,
+                      void *userdata) {
+  VEC_FOR_EACH(&buffers->buffers, struct buffer * b) { callback(b, userdata); }
+}
+
 void buffers_destroy(struct buffers *buffers) {
   VEC_FOR_EACH(&buffers->buffers, struct buffer * b) { buffer_destroy(b); }
 
