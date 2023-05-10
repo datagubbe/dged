@@ -112,7 +112,11 @@ void update_file_watches(struct reactor *reactor) {
   }
 }
 
-void usage() { printf("TODO: print usage\n"); }
+void usage() {
+  printf("dged - a text editor for datagubbar/datagummor!\n");
+  printf("usage: dged [-l/--line line_number] [-e/--end] [-h/--help] "
+         "[filename]\n");
+}
 
 int main(int argc, char *argv[]) {
 

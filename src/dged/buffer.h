@@ -177,7 +177,9 @@ bool buffer_is_backed(struct buffer *buffer);
 
 void buffer_kill_line(struct buffer_view *view);
 void buffer_forward_delete_char(struct buffer_view *view);
+void buffer_forward_delete_word(struct buffer_view *view);
 void buffer_backward_delete_char(struct buffer_view *view);
+void buffer_backward_delete_word(struct buffer_view *view);
 void buffer_backward_char(struct buffer_view *view);
 void buffer_backward_word(struct buffer_view *view);
 void buffer_forward_char(struct buffer_view *view);

@@ -50,6 +50,8 @@ void set_default_buffer_bindings(struct keymap *keymap) {
       BINDING(Ctrl, 'K', "kill-line"),
       BINDING(DELETE, "delete-char"),
       BINDING(Ctrl, 'D', "delete-char"),
+      BINDING(Meta, 'd', "delete-word"),
+      BINDING(Meta, 'D', "backward-delete-word"),
       BINDING(BACKSPACE, "backward-delete-char"),
 
       BINDING(Ctrl, '@', "set-mark"),

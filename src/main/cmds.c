@@ -415,6 +415,8 @@ void register_global_commands(struct commands *commands,
 BUFFER_WRAPCMD_POS(buffer_kill_line);
 BUFFER_WRAPCMD_POS(buffer_forward_delete_char);
 BUFFER_WRAPCMD_POS(buffer_backward_delete_char);
+BUFFER_WRAPCMD_POS(buffer_forward_delete_word);
+BUFFER_WRAPCMD_POS(buffer_backward_delete_word);
 BUFFER_WRAPCMD_POS(buffer_backward_char);
 BUFFER_WRAPCMD_POS(buffer_backward_word);
 BUFFER_WRAPCMD_POS(buffer_forward_char);
@@ -465,6 +467,8 @@ void register_buffer_commands(struct commands *commands) {
 
   static struct command buffer_commands[] = {
       {.name = "kill-line", .fn = buffer_kill_line_cmd},
+      {.name = "delete-word", .fn = buffer_forward_delete_word_cmd},
+      {.name = "backward-delete-word", .fn = buffer_backward_delete_word_cmd},
       {.name = "delete-char", .fn = buffer_forward_delete_char_cmd},
       {.name = "backward-delete-char", .fn = buffer_backward_delete_char_cmd},
       {.name = "backward-char", .fn = buffer_backward_char_cmd},

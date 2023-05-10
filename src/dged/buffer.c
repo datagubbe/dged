@@ -434,6 +434,34 @@ void buffer_backward_delete_char(struct buffer_view *view) {
   }
 }
 
+void buffer_forward_delete_word(struct buffer_view *view) {
+  if (maybe_delete_region(view)) {
+    return;
+  }
+
+  struct buffer_location start = view->dot;
+  buffer_forward_word(view);
+  struct buffer_location end = view->dot;
+
+  buffer_goto(view, start.line, start.col);
+
+  delete_with_undo(view->buffer, start, end);
+}
+
+void buffer_backward_delete_word(struct buffer_view *view) {
+  if (maybe_delete_region(view)) {
+    return;
+  }
+
+  struct buffer_location end = view->dot;
+  buffer_backward_word(view);
+  struct buffer_location start = view->dot;
+
+  buffer_goto(view, start.line, start.col);
+
+  delete_with_undo(view->buffer, start, end);
+}
+
 void buffer_backward_char(struct buffer_view *view) { moveh(view, -1); }
 void buffer_forward_char(struct buffer_view *view) { moveh(view, 1); }
 
