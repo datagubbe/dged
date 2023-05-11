@@ -300,6 +300,7 @@ int32_t buflist_visit_cmd(struct command_ctx ctx, int argc,
     bufname[len] = '\0';
 
     struct buffer *target = buffers_find(ctx.buffers, bufname);
+    free(bufname);
     if (target != NULL) {
       struct window *tgt_window = window_find_by_buffer(target);
       if (tgt_window != NULL) {

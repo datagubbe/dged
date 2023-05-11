@@ -115,9 +115,12 @@ struct language lang_from_filename(const char *filename) {
       regex_t regex;
       if (regcomp(&regex, val, REG_EXTENDED) == 0 &&
           regexec(&regex, filename, 0, NULL, 0) == 0) {
-        regfree(&regex);
+
         char lang_path[128] = {0};
         strncpy(lang_path, setting->path, setting_name - setting->path);
+
+        regfree(&regex);
+        free(settings);
         return lang_from_settings(lang_path);
       }
       regfree(&regex);
