@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -60,7 +61,9 @@ struct fake_keyboard create_fake_keyboard(struct fake_reactor_impl *reactor) {
 }
 
 void fake_keyboard_write(struct fake_keyboard *kbd, const char *s) {
-  write(kbd->writefd, s, strlen(s));
+  if (write(kbd->writefd, s, strlen(s)) < 0) {
+    printf("write to kbd fd failed: %s\n", strerror(errno));
+  }
 }
 
 void fake_keyboard_close_write(struct fake_keyboard *kbd) {

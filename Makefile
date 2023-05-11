@@ -23,7 +23,7 @@ prefix ?= "/usr"
 .SUFFIXES:
 .SUFFIXES: .c .o .d
 
-CFLAGS = -Werror -g -std=c99 -I $(.CURDIR)/src -I $(.CURDIR)/src/main
+CFLAGS += -Werror -g -std=c99 -I $(.CURDIR)/src -I $(.CURDIR)/src/main
 
 UNAME_S != uname -s | tr '[:upper:]' '[:lower:]'
 .sinclude "$(UNAME_S).mk"

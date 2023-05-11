@@ -8,6 +8,7 @@
 #include "dged/buffers.h"
 #include "dged/command.h"
 #include "dged/minibuffer.h"
+#include "dged/path.h"
 #include "dged/settings.h"
 
 #include "bindings.h"
@@ -48,15 +49,9 @@ int32_t find_file(struct command_ctx ctx, int argc, const char *argv[]) {
     return 1;
   }
 
-  const char *filename = realpath(pth, NULL);
-  if (filename == NULL) {
-    filename = pth;
-  }
+  const char *filename = to_abspath(pth);
   struct buffer *b = buffers_find_by_filename(ctx.buffers, filename);
-
-  if (filename != pth) {
-    free((char *)filename);
-  }
+  free((char *)filename);
 
   if (b == NULL) {
     b = buffers_add(ctx.buffers, buffer_from_file((char *)pth));

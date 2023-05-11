@@ -5,6 +5,7 @@
 #include "errno.h"
 #include "lang.h"
 #include "minibuffer.h"
+#include "path.h"
 #include "reactor.h"
 #include "settings.h"
 #include "utf8.h"
@@ -510,8 +511,10 @@ void buffer_beginning_of_line(struct buffer_view *view) { view->dot.col = 0; }
 
 void buffer_read_from_file(struct buffer *b) {
   struct stat sb;
-  if (stat(b->filename, &sb) == 0) {
-    FILE *file = fopen(b->filename, "r");
+  char *fullname = expanduser(b->filename);
+  if (stat(fullname, &sb) == 0) {
+    FILE *file = fopen(fullname, "r");
+    free(fullname);
 
     if (file == NULL) {
       minibuffer_echo("Error opening %s: %s", b->filename, strerror(errno));
@@ -538,21 +541,16 @@ void buffer_read_from_file(struct buffer *b) {
     b->last_write = sb.st_mtim;
   } else {
     minibuffer_echo("Error opening %s: %s", b->filename, strerror(errno));
+    free(fullname);
     return;
   }
 
-  const char *ext = strrchr(b->filename, '.');
-  if (ext != NULL) {
-    b->lang = lang_from_extension(ext + 1);
-  }
+  b->lang = lang_from_filename(b->filename);
   undo_push_boundary(&b->undo, (struct undo_boundary){.save_point = true});
 }
 
 struct buffer buffer_from_file(char *filename) {
-  char *full_filename = realpath(filename, NULL);
-  if (full_filename == NULL) {
-    full_filename = strdup(filename);
-  }
+  char *full_filename = to_abspath(filename);
   struct buffer b = create_internal(basename((char *)filename), full_filename);
   buffer_read_from_file(&b);
 
@@ -583,7 +581,9 @@ void buffer_to_file(struct buffer *buffer) {
     return;
   }
 
-  FILE *file = fopen(buffer->filename, "w");
+  char *fullname = expanduser(buffer->filename);
+  FILE *file = fopen(fullname, "w");
+  free(fullname);
   if (file == NULL) {
     minibuffer_echo("failed to open file %s for writing: %s", buffer->filename,
                     strerror(errno));
@@ -605,7 +605,7 @@ void buffer_to_file(struct buffer *buffer) {
 }
 
 void buffer_write_to(struct buffer *buffer, const char *filename) {
-  buffer->filename = strdup(filename);
+  buffer->filename = to_abspath(filename);
   buffer_to_file(buffer);
 }
 
@@ -978,8 +978,8 @@ uint32_t visual_dot_col(struct buffer_view *view, uint32_t dot_col) {
 }
 
 void render_modeline(struct modeline *modeline, struct buffer_view *view,
-                     struct command_list *commands, uint32_t width,
-                     uint32_t height, uint64_t frame_time) {
+                     struct command_list *commands, uint32_t window_id,
+                     uint32_t width, uint32_t height, uint64_t frame_time) {
   char buf[width * 4];
 
   static uint64_t samples[10] = {0};
@@ -996,9 +996,9 @@ void render_modeline(struct modeline *modeline, struct buffer_view *view,
   struct tm *lt = localtime(&now);
   char left[128], right[128];
 
-  snprintf(left, 128, "  %c%c %-16s (%d, %d) (%s)",
+  snprintf(left, 128, "  %c%c %d:%-16s (%d, %d) (%s)",
            view->buffer->modified ? '*' : '-',
-           view->buffer->readonly ? '%' : '-', view->buffer->name,
+           view->buffer->readonly ? '%' : '-', window_id, view->buffer->name,
            view->dot.line + 1, visual_dot_col(view, view->dot.col),
            view->buffer->lang.name);
   snprintf(right, 128, "(%.2f ms) %02d:%02d", frame_time / 1e6, lt->tm_hour,
@@ -1072,9 +1072,9 @@ uint32_t longest_linenum(struct buffer *buffer) {
   return longest_nchars;
 }
 
-void buffer_update(struct buffer_view *view, uint32_t width, uint32_t height,
-                   struct command_list *commands, uint64_t frame_time,
-                   uint32_t *relline, uint32_t *relcol) {
+void buffer_update(struct buffer_view *view, uint32_t window_id, uint32_t width,
+                   uint32_t height, struct command_list *commands,
+                   uint64_t frame_time, uint32_t *relline, uint32_t *relcol) {
   if (width == 0 || height == 0) {
     return;
   }
@@ -1114,7 +1114,8 @@ void buffer_update(struct buffer_view *view, uint32_t width, uint32_t height,
   }
 
   if (view->modeline != NULL) {
-    render_modeline(view->modeline, view, commands, width, height, frame_time);
+    render_modeline(view->modeline, view, commands, window_id, width, height,
+                    frame_time);
     total_margins.bottom += 1;
   }
 

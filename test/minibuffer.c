@@ -50,13 +50,13 @@ void test_minibuffer_echo() {
   ASSERT(minibuffer_displaying(), "Minibuffer should now have text to display");
 
   minibuffer_clear();
-  buffer_update(&view, 100, 1, list, 0, &relline, &relcol);
+  buffer_update(&view, -1, 100, 1, list, 0, &relline, &relcol);
   ASSERT(!minibuffer_displaying(),
          "Minibuffer should have nothing to display after clearing");
 
   minibuffer_echo_timeout(0, "You will not see me");
 
-  buffer_update(&view, 100, 1, list, 0, &relline, &relcol);
+  buffer_update(&view, -1, 100, 1, list, 0, &relline, &relcol);
   ASSERT(!minibuffer_displaying(),
          "A zero timeout echo should be cleared after first update");
 

@@ -2,31 +2,34 @@
 #include "minibuffer.h"
 #include "settings.h"
 
+#include <regex.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-void define_lang(const char *name, const char *id, const char *extensions,
+void define_lang(const char *name, const char *id, const char *pattern,
                  uint32_t tab_width, const char *lang_srv) {
   char namebuf[128] = {0};
 
   size_t offs = snprintf(namebuf, 128, "languages.%s.", id);
 
   char *b = namebuf + offs;
-  snprintf(b, 128 - offs, "%s", "extensions");
+  snprintf(b, 128 - offs, "%s", "pattern");
   settings_register_setting(
       namebuf, (struct setting_value){.type = Setting_String,
-                                      .string_value = (char *)extensions});
+                                      .string_value = (char *)pattern});
 
   snprintf(b, 128 - offs, "%s", "tab-width");
   settings_register_setting(namebuf,
                             (struct setting_value){.type = Setting_Number,
                                                    .number_value = tab_width});
 
-  snprintf(b, 128 - offs, "%s", "lang-srv");
-  settings_register_setting(
-      namebuf, (struct setting_value){.type = Setting_String,
-                                      .string_value = (char *)lang_srv});
+  if (lang_srv != NULL) {
+    snprintf(b, 128 - offs, "%s", "lang-srv");
+    settings_register_setting(
+        namebuf, (struct setting_value){.type = Setting_String,
+                                        .string_value = (char *)lang_srv});
+  }
 
   snprintf(b, 128 - offs, "%s", "name");
   settings_register_setting(
@@ -42,10 +45,11 @@ static struct language g_fundamental = {
 
 void languages_init(bool register_default) {
   if (register_default) {
-    define_lang("C", "c", "c h", 2, "clangd");
-    define_lang("C++", "cxx", "cpp cxx cc c++ hh h", 2, "clangd");
-    define_lang("Rust", "rs", "rs", 4, "rust-analyzer");
-    define_lang("Nix", "nix", "nix", 4, "rnix-lsp");
+    define_lang("C", "c", ".*\\.(c|h)", 2, "clangd");
+    define_lang("C++", "cxx", ".*\\.(cpp|cxx|cc|c++|hh|h)", 2, "clangd");
+    define_lang("Rust", "rs", ".*\\.rs", 4, "rust-analyzer");
+    define_lang("Nix", "nix", ".*\\.nix", 4, "rnix-lsp");
+    define_lang("Makefile", "make", ".*(Makefile|\\.mk)", 4, NULL);
   }
 }
 
@@ -71,7 +75,7 @@ struct language lang_from_settings(const char *lang_path) {
 
   snprintf(b, 128 - offs, "%s", "lang-srv");
   struct setting *lang_srv = settings_get(setting_name_buf);
-  l.lang_srv = lang_srv->value.string_value;
+  l.lang_srv = lang_srv != NULL ? lang_srv->value.string_value : NULL;
 
   return l;
 }
@@ -91,10 +95,9 @@ void next_ext(const char *curr, const char **nxt, const char **end) {
   }
 }
 
-struct language lang_from_extension(const char *ext) {
+struct language lang_from_filename(const char *filename) {
 
-  uint32_t extlen = strlen(ext);
-  if (extlen == 0) {
+  if (strlen(filename) == 0) {
     return g_fundamental;
   }
 
@@ -103,29 +106,21 @@ struct language lang_from_extension(const char *ext) {
   uint32_t nsettings = 0;
   settings_get_prefix("languages.", &settings, &nsettings);
 
-  // find the first one with a matching extension list
+  // find the first one with a matching regex
   for (uint32_t i = 0; i < nsettings; ++i) {
     struct setting *setting = settings[i];
     char *setting_name = strrchr(setting->path, '.');
-    if (setting_name != NULL &&
-        strncmp(setting_name + 1, "extensions", 10) == 0) {
+    if (setting_name != NULL && strncmp(setting_name + 1, "pattern", 5) == 0) {
       const char *val = setting->value.string_value;
-
-      // go over extensions
-      const char *cext = val, *nxt = NULL, *end = NULL;
-      next_ext(cext, &nxt, &end);
-      while (nxt != end) {
-        if (extlen == (end - nxt) && strncmp(ext, nxt, (end - nxt)) == 0) {
-          char lang_path[128] = {0};
-          strncpy(lang_path, setting->path, setting_name - setting->path);
-
-          free(settings);
-          return lang_from_settings(lang_path);
-        }
-
-        cext = end + 1;
-        next_ext(cext, &nxt, &end);
+      regex_t regex;
+      if (regcomp(&regex, val, REG_EXTENDED) == 0 &&
+          regexec(&regex, filename, 0, NULL, 0) == 0) {
+        regfree(&regex);
+        char lang_path[128] = {0};
+        strncpy(lang_path, setting->path, setting_name - setting->path);
+        return lang_from_settings(lang_path);
       }
+      regfree(&regex);
     }
   }
 

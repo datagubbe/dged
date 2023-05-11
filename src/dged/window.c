@@ -147,14 +147,17 @@ void windows_resize(uint32_t height, uint32_t width) {
 void windows_update(void *(*frame_alloc)(size_t), uint64_t frame_time) {
   struct window_node *n = BINTREE_ROOT(&g_windows.windows);
   BINTREE_FIRST(n);
+  uint32_t window_id = 0;
   while (n != NULL) {
     struct window *w = &BINTREE_VALUE(n);
     if (w->type == Window_Buffer) {
       w->commands = command_list_create(w->height * w->width, frame_alloc, w->x,
                                         w->y, w->buffer_view.buffer->name);
 
-      buffer_update(&w->buffer_view, w->width, w->height, w->commands,
-                    frame_time, &w->relline, &w->relcol);
+      buffer_update(&w->buffer_view, window_id, w->width, w->height,
+                    w->commands, frame_time, &w->relline, &w->relcol);
+
+      ++window_id;
     }
 
     BINTREE_NEXT(n);
@@ -163,8 +166,8 @@ void windows_update(void *(*frame_alloc)(size_t), uint64_t frame_time) {
   struct window *w = &g_minibuffer_window;
   w->commands = command_list_create(w->height * w->width, frame_alloc, w->x,
                                     w->y, w->buffer_view.buffer->name);
-  buffer_update(&w->buffer_view, w->width, w->height, w->commands, frame_time,
-                &w->relline, &w->relcol);
+  buffer_update(&w->buffer_view, -1, w->width, w->height, w->commands,
+                frame_time, &w->relline, &w->relcol);
 }
 
 void windows_render(struct display *display) {

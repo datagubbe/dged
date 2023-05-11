@@ -23,7 +23,7 @@ stdenv.mkDerivation {
 
   buildPhase = ''
     bmake build
-    bmake dged
+    CFLAGS=-O2 bmake dged
     bmake docs
   '';
 
@@ -34,6 +34,4 @@ stdenv.mkDerivation {
   buildInputs = [
     tree-sitter
   ];
-
-  hardeningDisable = [ "fortify" ];
 }

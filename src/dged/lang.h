@@ -27,12 +27,12 @@ struct language {
 void languages_init(bool register_default);
 
 /**
- * Get a language config by file name extension.
+ * Get a language config by file name.
  *
- * @param[in] ext File extension
+ * @param[in] filename File name.
  * @returns A language config instance or the default language if not found.
  */
-struct language lang_from_extension(const char *ext);
+struct language lang_from_filename(const char *filename);
 
 /**
  * Get a language config by id. The language id is a short (all-lowercase)
