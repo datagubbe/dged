@@ -20,7 +20,7 @@
 #include "bindings.h"
 #include "cmds.h"
 
-struct frame_allocator frame_allocator;
+static struct frame_allocator frame_allocator;
 
 void *frame_alloc(size_t sz) {
   return frame_allocator_alloc(&frame_allocator, sz);

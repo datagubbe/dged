@@ -606,6 +606,7 @@ void buffer_to_file(struct buffer *buffer) {
 
 void buffer_write_to(struct buffer *buffer, const char *filename) {
   buffer->filename = to_abspath(filename);
+  buffer->modified = true;
   buffer_to_file(buffer);
 }
 
