@@ -120,8 +120,15 @@ struct keyboard_update keyboard_update(struct keyboard *kbd,
   nbytes += nread;
 
   if (nbytes > 0) {
-    upd.nbytes = nbytes;
     upd.raw = frame_alloc(nbytes);
+
+    if (upd.raw == NULL) {
+      fprintf(stderr, "failed to allocate buffer of %d bytes\n", nbytes);
+      free(buf);
+      return upd;
+    }
+
+    upd.nbytes = nbytes;
     memcpy(upd.raw, buf, nbytes);
     upd.keys = frame_alloc(sizeof(struct key) * nbytes);
     memset(upd.keys, 0, sizeof(struct key) * nbytes);

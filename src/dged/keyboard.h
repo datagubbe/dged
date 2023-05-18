@@ -48,9 +48,9 @@ struct key {
   /** Modifier keys pressed (or-ed together) */
   uint8_t mod;
   /** Index where this key press starts in the raw input buffer */
-  uint8_t start;
+  uint32_t start;
   /** Index where this key press ends in the raw input buffer */
-  uint8_t end;
+  uint32_t end;
 };
 
 /**
