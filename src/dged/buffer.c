@@ -307,7 +307,7 @@ bool buffer_region_has_size(struct buffer_view *view) {
 
 struct text_chunk *copy_region(struct buffer *buffer, struct region region) {
   struct text_chunk *curr = &g_kill_ring.buffer[g_kill_ring.curr_idx];
-  g_kill_ring.curr_idx = g_kill_ring.curr_idx + 1 % KILL_RING_SZ;
+  g_kill_ring.curr_idx = (g_kill_ring.curr_idx + 1) % KILL_RING_SZ;
 
   if (curr->allocated) {
     free(curr->text);
@@ -405,6 +405,7 @@ void buffer_kill_line(struct buffer_view *view) {
               .col = view->dot.col + nchars,
           },
   };
+
   copy_region(view->buffer, reg);
   delete_with_undo(view->buffer, view->dot,
                    (struct buffer_location){

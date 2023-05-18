@@ -3,11 +3,15 @@
 #include "hash.h"
 #include "hashmap.h"
 #include "minibuffer.h"
+#include "settings-parse.h"
+#include "utf8.h"
 #include "vec.h"
 
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 static struct settings g_settings = {0};
 
@@ -80,6 +84,15 @@ void settings_set(const char *path, struct setting_value value) {
   }
 }
 
+static void settings_upsert(const char *path, struct setting_value value) {
+  struct setting *setting = settings_get(path);
+  if (setting != NULL) {
+    setting_set_value(setting, value);
+  } else {
+    settings_register_setting(path, value);
+  }
+}
+
 void setting_to_string(struct setting *setting, char *buf, size_t n) {
   switch (setting->value.type) {
   case Setting_Bool:
@@ -92,4 +105,187 @@ void setting_to_string(struct setting *setting, char *buf, size_t n) {
     snprintf(buf, n, "%s", setting->value.string_value);
     break;
   }
+}
+
+static int32_t parse_toml(struct parser *state, char **errmsgs[]) {
+  char *curtbl = NULL;
+  char *curkey = NULL;
+  uint32_t errcnt = 0;
+
+  VEC(char *) errs;
+  VEC_INIT(&errs, 16);
+
+  struct token t = {0};
+  while (parser_next_token(state, &t)) {
+    switch (t.type) {
+    case Token_Table:
+      if (curtbl != NULL) {
+        free(curtbl);
+      }
+      curtbl = calloc(t.len + 1, 1);
+      strncpy(curtbl, (char *)t.data, t.len);
+      break;
+
+    case Token_InlineTable:
+      if (curkey != NULL) {
+        free(curtbl);
+        curtbl = strdup(curkey);
+      }
+      break;
+
+    case Token_Key:
+      if (curkey != NULL) {
+        free(curkey);
+      }
+      uint32_t len = t.len + 1;
+      if (curtbl != NULL) {
+        len += strlen(curtbl) /* space for the . */ + 1;
+      }
+
+      curkey = calloc(len, 1);
+      if (curtbl != NULL) {
+        strcpy(curkey, curtbl);
+        strncat(curkey, ".", 1);
+      }
+
+      strncat(curkey, (char *)t.data, t.len);
+      break;
+
+    case Token_IntValue:
+      int64_t i = *((int64_t *)t.data);
+      settings_upsert(curkey, (struct setting_value){.type = Setting_Number,
+                                                     .number_value = i});
+      break;
+
+    case Token_BoolValue:
+      bool b = *((bool *)t.data);
+      settings_upsert(curkey, (struct setting_value){.type = Setting_Bool,
+                                                     .bool_value = b});
+      break;
+
+    case Token_StringValue:
+      char *v = calloc(t.len + 1, 1);
+      strncpy(v, (char *)t.data, t.len);
+      settings_upsert(curkey, (struct setting_value){.type = Setting_String,
+                                                     .string_value = v});
+      free(v);
+      break;
+
+    case Token_Error:
+      char *err = malloc(t.len + 128);
+      snprintf(err, t.len + 128, "error (%d:%d): %.*s\n", t.row, t.col, t.len,
+               (char *)t.data);
+      VEC_PUSH(&errs, err);
+      break;
+    }
+  }
+
+  if (curtbl != NULL) {
+    free(curtbl);
+  }
+
+  if (curkey != NULL) {
+    free(curkey);
+  }
+
+  if (!VEC_EMPTY(&errs)) {
+    *errmsgs = VEC_ENTRIES(&errs);
+  } else {
+    *errmsgs = NULL;
+    VEC_DESTROY(&errs);
+  }
+  return VEC_SIZE(&errs);
+}
+
+struct str_cursor {
+  const char *data;
+  uint32_t pos;
+  uint32_t size;
+};
+
+size_t get_bytes_from_str(size_t nbytes, uint8_t *buf, void *userdata) {
+  struct str_cursor *c = (struct str_cursor *)userdata;
+  size_t left = c->size - c->pos;
+  size_t to_copy = nbytes > left ? left : nbytes;
+  if (to_copy > 0) {
+    memcpy(buf, c->data + c->pos, to_copy);
+  }
+
+  c->pos += to_copy;
+
+  return to_copy;
+}
+
+int32_t settings_from_string(const char *toml, char **errmsgs[]) {
+  struct str_cursor cursor = {
+      .data = toml,
+      .pos = 0,
+      .size = strlen(toml),
+  };
+
+  struct reader reader = {
+      .getbytes = get_bytes_from_str,
+      .userdata = (void *)&cursor,
+  };
+
+  struct parser parser = parser_create(reader);
+  int32_t ret = parse_toml(&parser, errmsgs);
+
+  parser_destroy(&parser);
+  return ret;
+}
+
+#define FILE_READER_BUFSZ 1024
+struct file_reader {
+  int fd;
+  uint8_t buffer[FILE_READER_BUFSZ];
+  uint32_t buflen;
+};
+
+static struct file_reader file_reader_create(int fd) {
+  return (struct file_reader){
+      .fd = fd,
+      .buffer = {0},
+      .buflen = 0,
+  };
+}
+
+static size_t get_bytes_from_file(size_t nbytes, uint8_t *buf, void *userdata) {
+  struct file_reader *r = (struct file_reader *)userdata;
+  if (nbytes > FILE_READER_BUFSZ) {
+    return read(r->fd, buf, nbytes);
+  }
+
+  if (nbytes > r->buflen) {
+    // fill buffer
+    r->buflen +=
+        read(r->fd, r->buffer + r->buflen, FILE_READER_BUFSZ - r->buflen);
+  }
+
+  size_t to_read = nbytes > r->buflen ? r->buflen : nbytes;
+  memcpy(buf, r->buffer, to_read);
+
+  r->buflen -= to_read;
+  memcpy(r->buffer, r->buffer + to_read, r->buflen);
+  return to_read;
+}
+
+int32_t settings_from_file(const char *path, char **errmsgs[]) {
+  int fd = open(path, O_RDONLY);
+  if (fd < 0) {
+    return fd;
+  }
+
+  struct file_reader file_reader = file_reader_create(fd);
+
+  struct reader reader = {
+      .getbytes = get_bytes_from_file,
+      .userdata = (void *)&file_reader,
+  };
+
+  struct parser parser = parser_create(reader);
+  int32_t ret = parse_toml(&parser, errmsgs);
+
+  parser_destroy(&parser);
+  return ret;
 }

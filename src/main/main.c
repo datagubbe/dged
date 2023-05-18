@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 #include "dged/allocator.h"
 #include "dged/binding.h"
@@ -14,6 +15,7 @@
 #include "dged/display.h"
 #include "dged/lang.h"
 #include "dged/minibuffer.h"
+#include "dged/path.h"
 #include "dged/reactor.h"
 #include "dged/settings.h"
 
@@ -163,6 +165,35 @@ int main(int argc, char *argv[]) {
   struct commands commands = command_registry_create(32);
 
   settings_init(64);
+  const char *config_path = getenv("XDG_CONFIG_HOME");
+  if (config_path == NULL) {
+    config_path = "~/.config";
+  }
+  char settings_file[1024];
+  snprintf(settings_file, 1024, "%s/dged/dged.toml", config_path);
+  char *settings_file_abs = expanduser(settings_file);
+  char **errmsgs = NULL;
+  if (access(settings_file_abs, F_OK) == 0) {
+    int32_t ret = settings_from_file(settings_file_abs, &errmsgs);
+    if (ret > 0) {
+      fprintf(stderr, "Error reading settings from %s:\n", settings_file_abs);
+      for (uint32_t erri = 0; erri < ret; ++erri) {
+        fprintf(stderr, "  - %s", errmsgs[erri]);
+        free(errmsgs[erri]);
+      }
+      free(errmsgs);
+      free(settings_file_abs);
+      return 3;
+    } else if (ret < 0) {
+      fprintf(stderr, "Error occured reading settings from %s:\n",
+              settings_file_abs);
+      free(settings_file_abs);
+      return 2;
+    }
+  }
+
+  free(settings_file_abs);
+
   languages_init(true);
   buffer_static_init();
 

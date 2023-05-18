@@ -68,7 +68,81 @@ void test_set() {
   settings_destroy();
 }
 
+void test_from_toml_string() {
+  char *content = "[  languages.c]\n"
+                  "name = \"C\"";
+
+  settings_init(10);
+  char **errmsgs = NULL;
+  int32_t res = settings_from_string(content, &errmsgs);
+  ASSERT(res == 0, "Expected valid TOML to parse successfully");
+
+  struct setting *setting = settings_get("languages.c.name");
+  ASSERT(setting != NULL,
+         "Expected to be able to retrieve setting after parsed from string");
+  ASSERT(setting->value.type == Setting_String, "Expected a string setting");
+  ASSERT_STR_EQ(setting->value.string_value, "C",
+                "Expected setting value to be \"C\"");
+
+  content = "sune = \"wrong";
+  res = settings_from_string(content, &errmsgs);
+  ASSERT(res >= 1, "Expected (at least) one error from invalid toml");
+  for (uint32_t i = 0; i < res; ++i) {
+    free(errmsgs[i]);
+  }
+  free(errmsgs);
+
+  content = "boll = truj";
+  res = settings_from_string(content, &errmsgs);
+  ASSERT(res >= 1, "Expected (at least) one error from an invalid bool");
+  for (uint32_t i = 0; i < res; ++i) {
+    free(errmsgs[i]);
+  }
+  free(errmsgs);
+
+  content = "[editor]\n"
+            "show-whitespace = true\n"
+            "tab-width = 3\n";
+  res = settings_from_string(content, &errmsgs);
+  ASSERT(res == 0, "Expected valid TOML to parse successfully");
+
+  setting = settings_get("editor.show-whitespace");
+  ASSERT(setting != NULL,
+         "Expected editor.show-whitespace to be set from TOML");
+  ASSERT(setting->value.bool_value,
+         "Expected editor.show-whitespace to be set to true from TOML");
+
+  setting = settings_get("editor.tab-width");
+  ASSERT(setting != NULL, "Expected editor.tab-width to be set from TOML");
+  ASSERT(setting->value.number_value == 3,
+         "Expected editor.tab-width to be set to 3 from TOML");
+
+  content = "[languages]\n"
+            "pang = { name = \"Bom\", \n"
+            "description = \"Tjoff\" }\n";
+  res = settings_from_string(content, &errmsgs);
+  ASSERT(res == 0, "Expected valid TOML to parse successfully");
+
+  setting = settings_get("languages.pang.name");
+  ASSERT(setting != NULL,
+         "Expected languages.pang.name to be set through inline table");
+  ASSERT_STR_EQ(setting->value.string_value, "Bom",
+                "Expected languages.pang.name to be \"Bom\"");
+
+  content = "multi = \"\"\"This is\n"
+            "a multiline string\"\"\"\n";
+  res = settings_from_string(content, &errmsgs);
+  ASSERT(res == 0, "Expected valid TOML to parse successfully");
+  setting = settings_get("multi");
+  ASSERT(setting != NULL, "Expected multi to be set");
+  ASSERT_STR_EQ(setting->value.string_value, "This is\na multiline string",
+                "Expected newline to have been preserved in multiline string");
+
+  settings_destroy();
+}
+
 void run_settings_tests() {
   run_test(test_get);
   run_test(test_set);
+  run_test(test_from_toml_string);
 }

@@ -57,6 +57,7 @@
 #define VEC_EMPTY(vec) ((vec)->nentries == 0)
 
 #define VEC_CLEAR(vec) (vec)->nentries = 0
+#define VEC_FRONT(vec) ((vec)->nentries > 0 ? &((vec)->entries[0]) : NULL)
 #define VEC_BACK(vec)                                                          \
   ((vec)->nentries > 0 ? &((vec)->entries[(vec)->nentries - 1]) : NULL)
 

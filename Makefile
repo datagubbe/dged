@@ -10,7 +10,7 @@ build:
 SOURCES = src/dged/binding.c src/dged/buffer.c src/dged/command.c src/dged/display.c \
 	src/dged/keyboard.c src/dged/minibuffer.c src/dged/text.c \
 	src/dged/utf8.c src/dged/buffers.c src/dged/window.c src/dged/allocator.c src/dged/undo.c \
-	src/dged/settings.c src/dged/lang.c
+	src/dged/settings.c src/dged/lang.c src/dged/settings-parse.c
 
 MAIN_SOURCES = src/main/main.c src/main/cmds.c src/main/bindings.c
 
