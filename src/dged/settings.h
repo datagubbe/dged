@@ -137,23 +137,24 @@ void setting_set_value(struct setting *setting, struct setting_value val);
 void setting_to_string(struct setting *setting, char *buf, size_t n);
 
 /**
-  * Parse settings from a string in TOML format.
-  *
-  * @param toml Pointer to a NULL-terminated string containing TOML settings.
-  * @param errmsgs Pointer to a string array where error messages will be placed. These
-  * messages must be freed after use.
-  * @returns 0 on success, n > 0 where n denotes the number of error messages in
-  * @ref errmsgs
-  */
+ * Parse settings from a string in TOML format.
+ *
+ * @param toml Pointer to a NULL-terminated string containing TOML settings.
+ * @param errmsgs Pointer to a string array where error messages will be placed.
+ * These messages must be freed after use.
+ * @returns 0 on success, n > 0 where n denotes the number of error messages in
+ * @ref errmsgs
+ */
 int32_t settings_from_string(const char *toml, char **errmsgs[]);
 
 /**
-  * Parse settings from a file in TOML format.
-  *
-  * @param toml Pointer to a NULL-terminated string describing a path to a TOML file with settings.
-  * @param errmsgs Pointer to a string array where error messages will be placed. These
-  * messages must be freed after use.
-  * @returns 0 on success, n > 0 where n denotes the number of error messages in
-  * @ref errmsgs
-  */
+ * Parse settings from a file in TOML format.
+ *
+ * @param toml Pointer to a NULL-terminated string describing a path to a TOML
+ * file with settings.
+ * @param errmsgs Pointer to a string array where error messages will be placed.
+ * These messages must be freed after use.
+ * @returns 0 on success, n > 0 where n denotes the number of error messages in
+ * @ref errmsgs
+ */
 int32_t settings_from_file(const char *path, char **errmsgs[]);

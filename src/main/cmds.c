@@ -115,12 +115,11 @@ int32_t do_switch_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
   }
 }
 
-static struct command do_switch_buffer_cmd = {.fn = do_switch_buffer,
-                                              .name = "do-switch-buffer"};
+COMMAND_FN("do-switch-buffer", do_switch_buffer, do_switch_buffer, NULL);
 
 int32_t switch_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
   if (argc == 0) {
-    ctx.self = &do_switch_buffer_cmd;
+    ctx.self = &do_switch_buffer_command;
     if (window_has_prev_buffer(ctx.active_window)) {
       return minibuffer_prompt(ctx, "buffer (default %s): ",
                                window_prev_buffer(ctx.active_window)->name);
@@ -129,8 +128,8 @@ int32_t switch_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
     }
   }
 
-  return execute_command(&do_switch_buffer_cmd, ctx.commands, ctx.active_window,
-                         ctx.buffers, argc, argv);
+  return execute_command(&do_switch_buffer_command, ctx.commands,
+                         ctx.active_window, ctx.buffers, argc, argv);
 }
 
 static char *g_last_search = NULL;
@@ -227,17 +226,11 @@ int32_t search_interactive(struct command_ctx ctx, int argc,
 
 static bool search_dir_backward = true;
 static bool search_dir_forward = false;
-static struct command search_forward_command = {
-    .fn = search_interactive,
-    .name = "search-forward",
-    .userdata = &search_dir_forward,
-};
 
-static struct command search_backward_command = {
-    .fn = search_interactive,
-    .name = "search-backward",
-    .userdata = &search_dir_backward,
-};
+COMMAND_FN("search-forward", search_forward, search_interactive,
+           &search_dir_forward);
+COMMAND_FN("search-backward", search_backward, search_interactive,
+           &search_dir_backward);
 
 int32_t find(struct command_ctx ctx, int argc, const char *argv[]) {
   bool reverse = strcmp((char *)ctx.userdata, "backward") == 0;
@@ -258,7 +251,6 @@ int32_t find(struct command_ctx ctx, int argc, const char *argv[]) {
 }
 
 int32_t timers(struct command_ctx ctx, int argc, const char *argv[]) {
-
   struct buffer *b = buffers_add(ctx.buffers, buffer_create("timers"));
   buffer_set_readonly(b, true);
   struct window *new_window_a, *new_window_b;
@@ -296,18 +288,12 @@ int32_t buflist_visit_cmd(struct command_ctx ctx, int argc,
   if (end != NULL) {
     uint32_t len = end - (char *)text.text;
     char *bufname = (char *)malloc(len + 1);
-    memcpy(bufname, text.text, len);
-    bufname[len] = '\0';
+    strncpy(bufname, text.text, len);
 
     struct buffer *target = buffers_find(ctx.buffers, bufname);
     free(bufname);
     if (target != NULL) {
-      struct window *tgt_window = window_find_by_buffer(target);
-      if (tgt_window != NULL) {
-        windows_set_active(tgt_window);
-      } else {
-        window_set_buffer(w, target);
-      }
+      window_set_buffer(w, target);
     }
   }
   return 0;
@@ -334,18 +320,13 @@ int32_t buflist_refresh_cmd(struct command_ctx ctx, int argc,
 }
 
 int32_t buffer_list(struct command_ctx ctx, int argc, const char *argv[]) {
-  struct buffer *b = buffers_find(ctx.buffers, "buffers");
+  struct buffer *b = buffers_find(ctx.buffers, "*buffers*");
   if (b == NULL) {
-    b = buffers_add(ctx.buffers, buffer_create("buffers"));
+    b = buffers_add(ctx.buffers, buffer_create("*buffers*"));
   }
 
-  struct window *w = window_find_by_buffer(b);
-  if (w == NULL) {
-    struct window *new_window_a;
-    window_split(ctx.active_window, &new_window_a, &w);
-
-    window_set_buffer(w, b);
-  }
+  struct window *w = ctx.active_window;
+  window_set_buffer(ctx.active_window, b);
 
   buflist_refresh(ctx.buffers, window_buffer_view(w));
 
@@ -377,7 +358,6 @@ int32_t buffer_list(struct command_ctx ctx, int argc, const char *argv[]) {
 
 void register_global_commands(struct commands *commands,
                               void (*terminate_cb)()) {
-
   struct command global_commands[] = {
       {.name = "find-file", .fn = find_file},
       {.name = "write-file", .fn = write_file},
@@ -460,7 +440,6 @@ static int32_t buffer_goto_line(struct command_ctx ctx, int argc,
 }
 
 void register_buffer_commands(struct commands *commands) {
-
   static struct command buffer_commands[] = {
       {.name = "kill-line", .fn = buffer_kill_line_cmd},
       {.name = "delete-word", .fn = buffer_forward_delete_word_cmd},

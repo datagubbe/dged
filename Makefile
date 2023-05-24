@@ -7,6 +7,12 @@ default: dged
 build:
 	mkdir -p build
 
+HEADERS = src/dged/settings.h src/dged/minibuffer.h src/dged/keyboard.h src/dged/binding.h \
+	src/dged/buffers.h src/dged/text.h src/dged/display.h src/dged/hashmap.h src/dged/path.h \
+	src/dged/buffer.h src/dged/btree.h src/dged/command.h src/dged/allocator.h src/dged/reactor.h \
+	src/dged/vec.h src/dged/window.h src/dged/hash.h src/dged/undo.h src/dged/lang.h \
+	src/dged/settings-parse.h src/dged/utf8.h src/main/cmds.h src/main/bindings.h
+
 SOURCES = src/dged/binding.c src/dged/buffer.c src/dged/command.c src/dged/display.c \
 	src/dged/keyboard.c src/dged/minibuffer.c src/dged/text.c \
 	src/dged/utf8.c src/dged/buffers.c src/dged/window.c src/dged/allocator.c src/dged/undo.c \
@@ -57,7 +63,7 @@ run-tests: $(TEST_OBJS) $(OBJS)
 	$(CC) $(LDFLAGS) $(TEST_OBJS) $(OBJS) -lm -o run-tests
 
 check: run-tests
-	clang-format --dry-run --Werror $(SOURCES:%.c=../%.c) $(MAIN_SOURCES:%.c=../%.c) $(TEST_SOURCES:%c=../%c)
+	clang-format --dry-run --Werror $(SOURCES:%.c=../%.c) $(MAIN_SOURCES:%.c=../%.c) $(TEST_SOURCES:%c=../%c) $(HEADERS:%.h=../%.h)
 	./run-tests
 
 run: dged
@@ -70,7 +76,7 @@ debug-tests: run-tests
 	gdb ./run-tests
 
 format:
-	clang-format -i $(SOURCES:%.c=../%.c) $(MAIN_SOURCES:%.c=../%.c) $(TEST_SOURCES:%c=../%c)
+	clang-format -i $(SOURCES:%.c=../%.c) $(MAIN_SOURCES:%.c=../%.c) $(TEST_SOURCES:%c=../%c) $(HEADERS:%.h=../%.h)
 
 clean:
 	rm -f $(FILES)

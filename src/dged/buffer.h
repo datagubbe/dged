@@ -221,6 +221,6 @@ void buffer_to_file(struct buffer *buffer);
 void buffer_write_to(struct buffer *buffer, const char *filename);
 void buffer_reload(struct buffer *buffer);
 
-void buffer_update(struct buffer_view *view, uint32_t window_id, uint32_t width, uint32_t height,
-                   struct command_list *commands, uint64_t frame_time,
-                   uint32_t *relline, uint32_t *relcol);
+void buffer_update(struct buffer_view *view, uint32_t window_id, uint32_t width,
+                   uint32_t height, struct command_list *commands,
+                   uint64_t frame_time, uint32_t *relline, uint32_t *relcol);

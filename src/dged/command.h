@@ -77,6 +77,16 @@ struct command {
 };
 
 /**
+ * Convenience macro for creating a command from a function.
+ */
+#define COMMAND_FN(name_, command_name, function, userdata_)                   \
+  static struct command command_name##_command = {                             \
+      .fn = function,                                                          \
+      .name = #name_,                                                          \
+      .userdata = userdata_,                                                   \
+  };
+
+/**
  * A command registry
  */
 HASHMAP_ENTRY_TYPE(command_entry, struct command);
