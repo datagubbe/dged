@@ -15,3 +15,5 @@ bool utf8_byte_is_unicode_start(uint8_t byte);
 bool utf8_byte_is_unicode_continuation(uint8_t byte);
 bool utf8_byte_is_ascii(uint8_t byte);
 bool utf8_byte_is_unicode(uint8_t byte);
+
+uint32_t utf8_visual_char_width(uint8_t *bytes, uint32_t len);

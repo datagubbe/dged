@@ -834,6 +834,62 @@ struct cmdbuf {
   uint32_t nlinerender_hooks;
 };
 
+static uint32_t visual_char_width(uint8_t *byte, uint32_t maxlen) {
+  if (*byte == '\t') {
+    return 4;
+  } else {
+    return utf8_visual_char_width(byte, maxlen);
+  }
+}
+
+static uint32_t visual_string_width(uint8_t *txt, uint32_t len,
+                                    uint32_t start_col, uint32_t end_col) {
+  uint32_t start_byte = utf8_nbytes(txt, len, start_col);
+  uint32_t end_byte = utf8_nbytes(txt, len, end_col);
+
+  uint32_t width = 0;
+  for (uint32_t bytei = start_byte; bytei < end_byte; ++bytei) {
+    width += visual_char_width(&txt[bytei], len - bytei);
+  }
+
+  return width;
+}
+
+static bool is_in_mark(struct buffer_location mark_begin,
+                       struct buffer_location mark_end,
+                       struct buffer_location pos) {
+  if (mark_begin.line == mark_end.line && mark_begin.col == mark_end.col) {
+    return false;
+  }
+
+  if (pos.line >= mark_begin.line && pos.line <= mark_end.line) {
+    if (pos.line == mark_end.line && pos.col <= mark_end.col &&
+        pos.line == mark_begin.line && pos.col >= mark_begin.col) {
+      // only one line is marked
+      return true;
+    } else if (pos.line == mark_begin.line && pos.line != mark_end.line &&
+               pos.col >= mark_begin.col) {
+      // we are on the first line marked
+      return true;
+    } else if (pos.line == mark_end.line && pos.line != mark_begin.line &&
+               pos.col <= mark_end.col) {
+      // we are on the last line marked
+      return true;
+    } else if (pos.line != mark_begin.line && pos.line != mark_end.line) {
+      // we are on fully marked lines
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// TODO: temporary
+enum property {
+  Prop_None,
+  Prop_Marked,
+};
+
 void render_line(struct text_chunk *line, void *userdata) {
   struct cmdbuf *cmdbuf = (struct cmdbuf *)userdata;
   uint32_t visual_line = line->line - cmdbuf->scroll.line + cmdbuf->line_offset;
@@ -843,95 +899,68 @@ void render_line(struct text_chunk *line, void *userdata) {
     hook->callback(line, visual_line, cmdbuf->cmds, hook->userdata);
   }
 
+  command_list_set_show_whitespace(cmdbuf->cmds, cmdbuf->show_ws);
+  struct buffer_location *begin = &cmdbuf->region.begin,
+                         *end = &cmdbuf->region.end;
+
+  // calculate scroll offsets
   uint32_t scroll_bytes =
       utf8_nbytes(line->text, line->nbytes, cmdbuf->scroll.col);
   uint32_t text_nbytes_scroll =
       scroll_bytes > line->nbytes ? 0 : line->nbytes - scroll_bytes;
   uint8_t *text = line->text + scroll_bytes;
 
-  // calculate how many chars we can fit in 'width'
-  uint32_t linewidth = cmdbuf->left_margin;
-  uint32_t text_nbytes = 0;
-  for (uint32_t bytei = 0;
-       bytei < text_nbytes_scroll && linewidth < cmdbuf->width; ++bytei) {
-    uint8_t *txt = &text[bytei];
-    if (*txt == '\t') {
-      linewidth += 4;
-    } else if (utf8_byte_is_unicode_start(*txt)) {
-      wchar_t wc;
-      size_t nbytes;
-      if ((nbytes = mbrtowc(&wc, (char *)txt, 6, NULL)) > 0) {
-        linewidth += wcwidth(wc);
-      }
-    } else if (utf8_byte_is_ascii(*txt)) {
-      ++linewidth;
+  uint32_t visual_col_start = cmdbuf->left_margin;
+  uint32_t cur_visual_col = visual_col_start;
+  uint32_t start_byte = 0, text_nbytes = 0;
+  enum property curprop = Prop_None;
+  for (uint32_t cur_byte = start_byte, coli = 0;
+       cur_byte < text_nbytes_scroll && cur_visual_col < cmdbuf->width &&
+       coli < line->nchars - cmdbuf->scroll.col;
+       ++coli) {
+
+    uint32_t bytes_remaining = text_nbytes_scroll - cur_byte;
+    uint32_t char_nbytes = utf8_nbytes(text + cur_byte, bytes_remaining, 1);
+    uint32_t char_vwidth = visual_char_width(text + cur_byte, bytes_remaining);
+
+    // calculate character properties
+    enum property prevprop = curprop;
+    curprop = cmdbuf->mark_set &&
+                      is_in_mark(*begin, *end,
+                                 (struct buffer_location){.col = coli,
+                                                          .line = line->line})
+                  ? Prop_Marked
+                  : Prop_None;
+
+    // handle changes to properties
+    if (curprop != prevprop) {
+      command_list_draw_text(cmdbuf->cmds, visual_col_start, visual_line,
+                             text + start_byte, cur_byte - start_byte);
+      visual_col_start = cur_visual_col;
+      start_byte = cur_byte;
     }
 
-    ++text_nbytes;
-  }
-
-  command_list_set_show_whitespace(cmdbuf->cmds, cmdbuf->show_ws);
-  struct buffer_location *begin = &cmdbuf->region.begin,
-                         *end = &cmdbuf->region.end;
-
-  // should we draw region?
-  if (cmdbuf->mark_set && line->line >= begin->line &&
-      line->line <= end->line) {
-    uint32_t byte_offset = 0;
-    uint32_t col_offset = 0;
-
-    // draw any text on the line that should not be part of region
-    if (begin->line == line->line) {
-      if (begin->col > cmdbuf->scroll.col) {
-        uint32_t nbytes =
-            utf8_nbytes(text, text_nbytes, begin->col - cmdbuf->scroll.col);
-        command_list_draw_text(cmdbuf->cmds, cmdbuf->left_margin, visual_line,
-                               text, nbytes);
-
-        byte_offset += nbytes;
-      }
-
-      col_offset = begin->col - cmdbuf->scroll.col;
-    }
-
-    // activate region color
-    command_list_set_index_color_bg(cmdbuf->cmds, 5);
-
-    // draw any text on line that should be part of region
-    if (end->line == line->line) {
-      if (end->col > cmdbuf->scroll.col) {
-        uint32_t nbytes =
-            utf8_nbytes(text + byte_offset, text_nbytes - byte_offset,
-                        end->col - col_offset - cmdbuf->scroll.col);
-        command_list_draw_text(cmdbuf->cmds, cmdbuf->left_margin + col_offset,
-                               visual_line, text + byte_offset, nbytes);
-        byte_offset += nbytes;
-      }
-
-      col_offset = end->col - cmdbuf->scroll.col;
+    if (curprop == Prop_Marked && prevprop == Prop_None) {
+      command_list_set_index_color_bg(cmdbuf->cmds, 5);
+    } else if (curprop == Prop_None && curprop != prevprop) {
       command_list_reset_color(cmdbuf->cmds);
     }
 
-    // draw rest of line
-    if (text_nbytes - byte_offset > 0) {
-      command_list_draw_text(cmdbuf->cmds, cmdbuf->left_margin + col_offset,
-                             visual_line, text + byte_offset,
-                             text_nbytes - byte_offset);
-    }
-
-    // done rendering region
-    command_list_reset_color(cmdbuf->cmds);
-
-  } else {
-    command_list_draw_text(cmdbuf->cmds, cmdbuf->left_margin, visual_line, text,
-                           text_nbytes);
+    cur_byte += char_nbytes;
+    text_nbytes += char_nbytes;
+    cur_visual_col += char_vwidth;
   }
 
+  // flush remaining
+  command_list_draw_text(cmdbuf->cmds, visual_col_start, visual_line,
+                         text + start_byte, text_nbytes - start_byte);
+
+  command_list_reset_color(cmdbuf->cmds);
   command_list_set_show_whitespace(cmdbuf->cmds, false);
 
-  if (linewidth < cmdbuf->width) {
-    command_list_draw_repeated(cmdbuf->cmds, linewidth, visual_line, ' ',
-                               cmdbuf->width - linewidth);
+  if (cur_visual_col < cmdbuf->width) {
+    command_list_draw_repeated(cmdbuf->cmds, cur_visual_col, visual_line, ' ',
+                               cmdbuf->width - cur_visual_col);
   }
 }
 
@@ -960,23 +989,8 @@ void to_relative(struct buffer_view *view, uint32_t line, uint32_t col,
 }
 
 uint32_t visual_dot_col(struct buffer_view *view, uint32_t dot_col) {
-  uint32_t visual_dot_col = dot_col;
   struct text_chunk line = text_get_line(view->buffer->text, view->dot.line);
-  for (uint32_t bytei = 0;
-       bytei <
-       text_col_to_byteindex(view->buffer->text, view->dot.line, view->dot.col);
-       ++bytei) {
-    if (line.text[bytei] == '\t') {
-      visual_dot_col += 3;
-    } else if (utf8_byte_is_unicode_start(line.text[bytei])) {
-      wchar_t wc;
-      if (mbrtowc(&wc, (char *)line.text + bytei, 6, NULL) >= 0) {
-        visual_dot_col += wcwidth(wc) - 1;
-      }
-    }
-  }
-
-  return visual_dot_col;
+  return visual_string_width(line.text, line.nbytes, view->scroll.col, dot_col);
 }
 
 void render_modeline(struct modeline *modeline, struct buffer_view *view,
@@ -1175,7 +1189,10 @@ void buffer_update(struct buffer_view *view, uint32_t window_id, uint32_t width,
   // update the visual cursor position
   to_relative(view, view->dot.line, view->dot.col, &rel_line, &rel_col);
   uint32_t visual_col = visual_dot_col(view, view->dot.col);
-  to_relative(view, view->dot.line, visual_col, &rel_line, &rel_col);
+  // TODO: fix this shit, should not need to add scroll_col back here
+  // only to subtract it in the function
+  to_relative(view, view->dot.line, visual_col + view->scroll.col, &rel_line,
+              &rel_col);
 
   *relline = rel_line < 0 ? 0 : (uint32_t)rel_line + total_margins.top;
   *relcol = rel_col < 0 ? 0 : (uint32_t)rel_col + total_margins.left;

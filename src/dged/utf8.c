@@ -1,6 +1,7 @@
 #include "utf8.h"
 
 #include <stdio.h>
+#include <wchar.h>
 
 bool utf8_byte_is_unicode_start(uint8_t byte) { return (byte & 0xc0) == 0xc0; }
 bool utf8_byte_is_unicode_continuation(uint8_t byte) {
@@ -64,4 +65,20 @@ uint32_t utf8_nbytes(uint8_t *bytes, uint32_t nbytes, uint32_t nchars) {
   }
 
   return bi;
+}
+
+uint32_t utf8_visual_char_width(uint8_t *bytes, uint32_t len) {
+  if (utf8_byte_is_unicode_start(*bytes)) {
+    wchar_t wc;
+    size_t nbytes = 0;
+    if (nbytes = mbrtowc(&wc, (char *)bytes, len, NULL) > 0) {
+      return wcwidth(wc);
+    } else {
+      return 0;
+    }
+  } else if (utf8_byte_is_unicode_continuation(*bytes)) {
+    return 0;
+  } else {
+    return 1;
+  }
 }
