@@ -3,7 +3,6 @@
 #include <stdio.h>
 #include <time.h>
 
-#include "bits/stdint-uintn.h"
 #include "command.h"
 #include "lang.h"
 #include "text.h"
@@ -12,6 +11,24 @@
 
 struct keymap;
 struct command_list;
+
+enum text_property_type {
+  TextProperty_Colors,
+};
+
+struct text_property_colors {
+  bool set_fg;
+  uint32_t fg;
+  bool set_bg;
+  uint32_t bg;
+};
+
+struct text_property {
+  enum text_property_type type;
+  union {
+    struct text_property_colors colors;
+  };
+};
 
 /**
  * Margins where buffer text should not be
@@ -90,6 +107,10 @@ struct buffer_location {
   uint32_t col;
 };
 
+bool buffer_location_is_between(struct buffer_location location,
+                                struct buffer_location start,
+                                struct buffer_location end);
+
 struct match {
   struct buffer_location begin;
   struct buffer_location end;
@@ -125,6 +146,12 @@ void buffer_view_scroll_up(struct buffer_view *view, uint32_t height);
 
 void buffer_view_destroy(struct buffer_view *view);
 
+struct text_property_entry {
+  struct buffer_location start;
+  struct buffer_location end;
+  struct text_property property;
+};
+
 /**
  * A buffer of text that can be modified, read from and written to disk.
  *
@@ -158,6 +185,8 @@ struct buffer {
 
   /** Buffer programming language */
   struct language lang;
+
+  VEC(struct text_property_entry) text_properties;
 };
 
 struct buffer buffer_create(char *name);
@@ -208,6 +237,19 @@ void buffer_copy(struct buffer_view *view);
 void buffer_paste(struct buffer_view *view);
 void buffer_paste_older(struct buffer_view *view);
 void buffer_cut(struct buffer_view *view);
+
+void buffer_clear_text_properties(struct buffer *buffer);
+
+void buffer_add_text_property(struct buffer *buffer,
+                              struct buffer_location start,
+                              struct buffer_location end,
+                              struct text_property property);
+
+void buffer_get_text_properties(struct buffer *buffer,
+                                struct buffer_location location,
+                                struct text_property **properties,
+                                uint32_t max_nproperties,
+                                uint32_t *nproperties);
 
 struct text_chunk buffer_get_line(struct buffer *buffer, uint32_t line);
 

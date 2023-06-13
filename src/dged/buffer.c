@@ -126,9 +126,12 @@ struct buffer create_internal(char *name, char *filename) {
       .text = text_create(10),
       .modified = false,
       .readonly = false,
-      .lang = lang_from_id("fnd"),
+      .lang =
+          filename != NULL ? lang_from_filename(filename) : lang_from_id("fnd"),
       .last_write = {0},
   };
+
+  VEC_INIT(&b.text_properties, 32);
 
   undo_init(&b.undo, 100);
 
@@ -147,6 +150,7 @@ struct buffer buffer_create(char *name) {
 }
 
 void buffer_destroy(struct buffer *buffer) {
+  VEC_DESTROY(&buffer->text_properties);
   text_destroy(buffer->text);
   buffer->text = NULL;
 
@@ -162,6 +166,7 @@ void buffer_destroy(struct buffer *buffer) {
 void buffer_clear(struct buffer_view *view) {
   text_clear(view->buffer->text);
   view->dot.col = view->dot.line = 0;
+  view->scroll.col = view->scroll.line = 0;
 }
 
 void buffer_static_init() {
@@ -512,7 +517,7 @@ void buffer_beginning_of_line(struct buffer_view *view) { view->dot.col = 0; }
 
 void buffer_read_from_file(struct buffer *b) {
   struct stat sb;
-  char *fullname = expanduser(b->filename);
+  char *fullname = to_abspath(b->filename);
   if (stat(fullname, &sb) == 0) {
     FILE *file = fopen(fullname, "r");
     free(fullname);
@@ -546,7 +551,6 @@ void buffer_read_from_file(struct buffer *b) {
     return;
   }
 
-  b->lang = lang_from_filename(b->filename);
   undo_push_boundary(&b->undo, (struct undo_boundary){.save_point = true});
 }
 
@@ -643,7 +647,7 @@ void search_line(struct text_chunk *chunk, void *userdata) {
   uint32_t pattern_nchars = utf8_nchars((uint8_t *)data->pattern, pattern_len);
 
   char *line = malloc(chunk->nbytes + 1);
-  memcpy(line, chunk->text, chunk->nbytes);
+  strncpy(line, chunk->text, chunk->nbytes);
   line[chunk->nbytes] = '\0';
   char *hit = NULL;
   uint32_t byteidx = 0;
@@ -652,7 +656,7 @@ void search_line(struct text_chunk *chunk, void *userdata) {
     uint32_t begin = utf8_nchars(chunk->text, byteidx);
     struct match match = (struct match){
         .begin = {.col = begin, .line = chunk->line},
-        .end = {.col = begin + pattern_nchars, .line = chunk->line},
+        .end = {.col = begin + pattern_nchars - 1, .line = chunk->line},
     };
 
     VEC_PUSH(&data->matches, match);
@@ -660,6 +664,8 @@ void search_line(struct text_chunk *chunk, void *userdata) {
     // proceed to after match
     byteidx += pattern_len;
   }
+
+  free(line);
 }
 
 void buffer_find(struct buffer *buffer, const char *pattern,
@@ -832,6 +838,8 @@ struct cmdbuf {
 
   struct line_render_hook *line_render_hooks;
   uint32_t nlinerender_hooks;
+
+  struct buffer *buffer;
 };
 
 static uint32_t visual_char_width(uint8_t *byte, uint32_t maxlen) {
@@ -854,41 +862,6 @@ static uint32_t visual_string_width(uint8_t *txt, uint32_t len,
 
   return width;
 }
-
-static bool is_in_mark(struct buffer_location mark_begin,
-                       struct buffer_location mark_end,
-                       struct buffer_location pos) {
-  if (mark_begin.line == mark_end.line && mark_begin.col == mark_end.col) {
-    return false;
-  }
-
-  if (pos.line >= mark_begin.line && pos.line <= mark_end.line) {
-    if (pos.line == mark_end.line && pos.col <= mark_end.col &&
-        pos.line == mark_begin.line && pos.col >= mark_begin.col) {
-      // only one line is marked
-      return true;
-    } else if (pos.line == mark_begin.line && pos.line != mark_end.line &&
-               pos.col >= mark_begin.col) {
-      // we are on the first line marked
-      return true;
-    } else if (pos.line == mark_end.line && pos.line != mark_begin.line &&
-               pos.col <= mark_end.col) {
-      // we are on the last line marked
-      return true;
-    } else if (pos.line != mark_begin.line && pos.line != mark_end.line) {
-      // we are on fully marked lines
-      return true;
-    }
-  }
-
-  return false;
-}
-
-// TODO: temporary
-enum property {
-  Prop_None,
-  Prop_Marked,
-};
 
 void render_line(struct text_chunk *line, void *userdata) {
   struct cmdbuf *cmdbuf = (struct cmdbuf *)userdata;
@@ -913,7 +886,9 @@ void render_line(struct text_chunk *line, void *userdata) {
   uint32_t visual_col_start = cmdbuf->left_margin;
   uint32_t cur_visual_col = visual_col_start;
   uint32_t start_byte = 0, text_nbytes = 0;
-  enum property curprop = Prop_None;
+  struct text_property *properties[16] = {0};
+  struct text_property *prev_properties[16] = {0};
+  uint32_t prev_nproperties;
   for (uint32_t cur_byte = start_byte, coli = 0;
        cur_byte < text_nbytes_scroll && cur_visual_col < cmdbuf->width &&
        coli < line->nchars - cmdbuf->scroll.col;
@@ -924,27 +899,55 @@ void render_line(struct text_chunk *line, void *userdata) {
     uint32_t char_vwidth = visual_char_width(text + cur_byte, bytes_remaining);
 
     // calculate character properties
-    enum property prevprop = curprop;
-    curprop = cmdbuf->mark_set &&
-                      is_in_mark(*begin, *end,
-                                 (struct buffer_location){.col = coli,
-                                                          .line = line->line})
-                  ? Prop_Marked
-                  : Prop_None;
+    uint32_t nproperties = 0;
+    buffer_get_text_properties(
+        cmdbuf->buffer,
+        (struct buffer_location){.line = line->line, .col = coli}, properties,
+        16, &nproperties);
 
     // handle changes to properties
-    if (curprop != prevprop) {
+    uint32_t nnew_props = 0;
+    struct text_property *new_props[16] = {0};
+    for (uint32_t propi = 0; propi < nproperties; ++propi) {
+      if (propi >= prev_nproperties ||
+          prev_properties[propi] != properties[propi]) {
+        new_props[nnew_props] = properties[propi];
+        ++nnew_props;
+      }
+    }
+
+    // if we have any new or lost props, flush text up until now
+    if (nnew_props > 0 || nproperties < prev_nproperties) {
       command_list_draw_text(cmdbuf->cmds, visual_col_start, visual_line,
                              text + start_byte, cur_byte - start_byte);
       visual_col_start = cur_visual_col;
       start_byte = cur_byte;
     }
 
-    if (curprop == Prop_Marked && prevprop == Prop_None) {
-      command_list_set_index_color_bg(cmdbuf->cmds, 5);
-    } else if (curprop == Prop_None && curprop != prevprop) {
+    // apply new properties
+    for (uint32_t propi = 0; propi < nnew_props; ++propi) {
+      struct text_property *prop = new_props[propi];
+      switch (prop->type) {
+      case TextProperty_Colors:
+        struct text_property_colors *colors = &prop->colors;
+        if (colors->set_bg) {
+          command_list_set_index_color_bg(cmdbuf->cmds, colors->bg);
+        }
+
+        if (colors->set_fg) {
+          command_list_set_index_color_fg(cmdbuf->cmds, colors->fg);
+        }
+        break;
+      }
+    }
+
+    if (nproperties == 0 && prev_nproperties > 0) {
       command_list_reset_color(cmdbuf->cmds);
     }
+
+    memcpy(prev_properties, properties,
+           nproperties * sizeof(struct text_property *));
+    prev_nproperties = nproperties;
 
     cur_byte += char_nbytes;
     text_nbytes += char_nbytes;
@@ -1044,9 +1047,9 @@ void linenum_render_hook(struct text_chunk *line_data, uint32_t line,
                          struct command_list *commands, void *userdata) {
   struct linenumdata *data = (struct linenumdata *)userdata;
   static char buf[16];
-  command_list_set_index_color_bg(commands, 236);
-  command_list_set_index_color_fg(
-      commands, line_data->line == data->dot_line ? 253 : 244);
+  command_list_set_index_color_bg(commands, 8);
+  command_list_set_index_color_fg(commands,
+                                  line_data->line == data->dot_line ? 15 : 7);
   uint32_t chars =
       snprintf(buf, 16, "%*d", data->longest_nchars + 1, line_data->line + 1);
   command_list_draw_text_copy(commands, 0, line, (uint8_t *)buf, chars);
@@ -1157,6 +1160,20 @@ void buffer_update(struct buffer_view *view, uint32_t window_id, uint32_t width,
 
   struct setting *show_ws = settings_get("editor.show-whitespace");
 
+  if (buffer_region_has_size(view)) {
+    struct region reg = to_region(view->dot, view->mark);
+    buffer_add_text_property(view->buffer, reg.begin, reg.end,
+                             (struct text_property){
+                                 .type = TextProperty_Colors,
+                                 .colors =
+                                     (struct text_property_colors){
+                                         .set_bg = true,
+                                         .bg = 5,
+                                         .set_fg = false,
+                                     },
+                             });
+  }
+
   struct cmdbuf cmdbuf = (struct cmdbuf){
       .cmds = commands,
       .scroll = view->scroll,
@@ -1168,6 +1185,7 @@ void buffer_update(struct buffer_view *view, uint32_t window_id, uint32_t width,
       .mark_set = view->mark_set,
       .region = to_region(view->dot, view->mark),
       .show_ws = show_ws != NULL ? show_ws->value.bool_value : true,
+      .buffer = view->buffer,
   };
   text_for_each_line(view->buffer->text, view->scroll.line, height, render_line,
                      &cmdbuf);
@@ -1179,7 +1197,9 @@ void buffer_update(struct buffer_view *view, uint32_t window_id, uint32_t width,
 
     for (uint32_t hooki = 0; hooki < nlinehooks; ++hooki) {
       struct line_render_hook *hook = &line_hooks[hooki];
-      hook->empty_callback(linei, commands, hook->userdata);
+      if (hook->empty_callback != NULL) {
+        hook->empty_callback(linei, commands, hook->userdata);
+      }
     }
 
     command_list_draw_repeated(commands, total_margins.left, linei, ' ',
@@ -1189,13 +1209,14 @@ void buffer_update(struct buffer_view *view, uint32_t window_id, uint32_t width,
   // update the visual cursor position
   to_relative(view, view->dot.line, view->dot.col, &rel_line, &rel_col);
   uint32_t visual_col = visual_dot_col(view, view->dot.col);
+
   // TODO: fix this shit, should not need to add scroll_col back here
   // only to subtract it in the function
   to_relative(view, view->dot.line, visual_col + view->scroll.col, &rel_line,
               &rel_col);
 
-  *relline = rel_line < 0 ? 0 : (uint32_t)rel_line + total_margins.top;
-  *relcol = rel_col < 0 ? 0 : (uint32_t)rel_col + total_margins.left;
+  *relline = (rel_line < 0 ? 0 : (uint32_t)rel_line) + total_margins.top;
+  *relcol = (rel_col < 0 ? 0 : (uint32_t)rel_col) + total_margins.left;
 }
 
 struct text_chunk buffer_get_line(struct buffer *buffer, uint32_t line) {
@@ -1206,7 +1227,67 @@ void buffer_view_scroll_down(struct buffer_view *view, uint32_t height) {
   buffer_goto(view, view->dot.line + height, view->dot.col);
   scroll(view, height, 0);
 }
+
 void buffer_view_scroll_up(struct buffer_view *view, uint32_t height) {
   buffer_goto(view, view->dot.line - height, view->dot.col);
   scroll(view, -height, 0);
+}
+
+void buffer_clear_text_properties(struct buffer *buffer) {
+  VEC_CLEAR(&buffer->text_properties);
+}
+
+void buffer_add_text_property(struct buffer *buffer,
+                              struct buffer_location start,
+                              struct buffer_location end,
+                              struct text_property property) {
+  struct text_property_entry entry = {
+      .start = start,
+      .end = end,
+      .property = property,
+  };
+  VEC_PUSH(&buffer->text_properties, entry);
+}
+
+bool buffer_location_is_between(struct buffer_location location,
+                                struct buffer_location start,
+                                struct buffer_location end) {
+  if (location.line >= start.line && location.line <= end.line) {
+    if (location.line == end.line && location.col <= end.col &&
+        location.line == start.line && location.col >= start.col) {
+      // only one line
+      return true;
+    } else if (location.line == start.line && location.line != end.line &&
+               location.col >= start.col) {
+      // we are on the first line
+      return true;
+    } else if (location.line == end.line && location.line != start.line &&
+               location.col <= end.col) {
+      // we are on the last line
+      return true;
+    } else if (location.line != end.line && location.line != start.line) {
+      // we are on lines in between
+      return true;
+    }
+  }
+  return false;
+}
+
+void buffer_get_text_properties(struct buffer *buffer,
+                                struct buffer_location location,
+                                struct text_property **properties,
+                                uint32_t max_nproperties,
+                                uint32_t *nproperties) {
+  uint32_t nres = 0;
+  VEC_FOR_EACH(&buffer->text_properties, struct text_property_entry * prop) {
+    if (buffer_location_is_between(location, prop->start, prop->end)) {
+      properties[nres] = &prop->property;
+      ++nres;
+
+      if (nres == max_nproperties) {
+        break;
+      }
+    }
+  }
+  *nproperties = nres;
 }

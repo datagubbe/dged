@@ -36,6 +36,9 @@ static struct windows {
 
 static struct window g_minibuffer_window;
 
+static struct window g_popup_window = {0};
+static bool g_popup_visible = false;
+
 void windows_init(uint32_t height, uint32_t width,
                   struct buffer *initial_buffer, struct buffer *minibuffer) {
   BINTREE_INIT(&g_windows.windows);
@@ -87,6 +90,12 @@ struct window *root_window() {
 struct window *minibuffer_window() {
   return &g_minibuffer_window;
 }
+
+struct window *popup_window() {
+  return &g_popup_window;
+}
+
+bool popup_window_visible() { return g_popup_visible; }
 
 static void window_tree_resize(struct window_node *root, uint32_t height,
                                uint32_t width) {
@@ -145,6 +154,21 @@ void windows_resize(uint32_t height, uint32_t width) {
 }
 
 void windows_update(void *(*frame_alloc)(size_t), uint64_t frame_time) {
+
+  struct window *w = &g_minibuffer_window;
+  w->commands = command_list_create(w->height * w->width, frame_alloc, w->x,
+                                    w->y, w->buffer_view.buffer->name);
+  buffer_update(&w->buffer_view, -1, w->width, w->height, w->commands,
+                frame_time, &w->relline, &w->relcol);
+
+  if (g_popup_visible) {
+    w = &g_popup_window;
+    w->commands = command_list_create(w->height * w->width, frame_alloc, w->x,
+                                      w->y, w->buffer_view.buffer->name);
+    buffer_update(&w->buffer_view, -1, w->width, w->height, w->commands,
+                  frame_time, &w->relline, &w->relcol);
+  }
+
   struct window_node *n = BINTREE_ROOT(&g_windows.windows);
   BINTREE_FIRST(n);
   uint32_t window_id = 0;
@@ -163,11 +187,23 @@ void windows_update(void *(*frame_alloc)(size_t), uint64_t frame_time) {
     BINTREE_NEXT(n);
   }
 
-  struct window *w = &g_minibuffer_window;
-  w->commands = command_list_create(w->height * w->width, frame_alloc, w->x,
-                                    w->y, w->buffer_view.buffer->name);
-  buffer_update(&w->buffer_view, -1, w->width, w->height, w->commands,
-                frame_time, &w->relline, &w->relcol);
+  // clear text props for next frame
+  n = BINTREE_ROOT(&g_windows.windows);
+  BINTREE_FIRST(n);
+
+  while (n != NULL) {
+    struct window *w = &BINTREE_VALUE(n);
+    if (w->type == Window_Buffer) {
+      buffer_clear_text_properties(w->buffer_view.buffer);
+    }
+
+    BINTREE_NEXT(n);
+  }
+
+  buffer_clear_text_properties(g_minibuffer_window.buffer_view.buffer);
+  if (g_popup_visible) {
+    buffer_clear_text_properties(g_popup_window.buffer_view.buffer);
+  }
 }
 
 void windows_render(struct display *display) {
@@ -182,6 +218,9 @@ void windows_render(struct display *display) {
   }
 
   display_render(display, g_minibuffer_window.commands);
+  if (g_popup_visible) {
+    display_render(display, g_popup_window.commands);
+  }
 }
 
 struct window_node *find_window(struct window *window) {
@@ -224,9 +263,16 @@ struct window *windows_get_active() {
 }
 
 void window_set_buffer(struct window *window, struct buffer *buffer) {
-  window->prev_buffer = window->buffer_view.buffer;
-  buffer_view_destroy(&window->buffer_view);
-  window->buffer_view = buffer_view_create(buffer, true, true);
+  window_set_buffer_e(window, buffer, true, true);
+}
+
+void window_set_buffer_e(struct window *window, struct buffer *buffer,
+                         bool modeline, bool line_numbers) {
+  if (buffer != window->buffer_view.buffer) {
+    window->prev_buffer = window->buffer_view.buffer;
+    buffer_view_destroy(&window->buffer_view);
+    window->buffer_view = buffer_view_create(buffer, modeline, line_numbers);
+  }
 }
 
 struct buffer *window_buffer(struct window *window) {
@@ -464,3 +510,14 @@ struct window *windows_focus(uint32_t id) {
 uint32_t window_width(struct window *window) { return window->width; }
 
 uint32_t window_height(struct window *window) { return window->height; }
+
+void windows_show_popup(uint32_t row, uint32_t col, uint32_t width,
+                        uint32_t height) {
+  g_popup_window.x = col;
+  g_popup_window.y = row;
+  g_popup_window.width = width;
+  g_popup_window.height = height;
+  g_popup_visible = true;
+}
+
+void windows_close_popup() { g_popup_visible = false; }

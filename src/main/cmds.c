@@ -1,21 +1,32 @@
+#define _DEFAULT_SOURCE
+#include <dirent.h>
 #include <errno.h>
+#include <libgen.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 
 #include "dged/binding.h"
 #include "dged/buffer.h"
 #include "dged/buffers.h"
 #include "dged/command.h"
+#include "dged/display.h"
 #include "dged/minibuffer.h"
 #include "dged/path.h"
 #include "dged/settings.h"
 
 #include "bindings.h"
+#include "search-replace.h"
+
+static void abort_completion();
 
 int32_t _abort(struct command_ctx ctx, int argc, const char *argv[]) {
+  abort_replace();
+  abort_completion();
   minibuffer_abort_prompt();
   buffer_clear_mark(window_buffer_view(ctx.active_window));
+  reset_minibuffer_keys(minibuffer_buffer());
   minibuffer_echo_timeout(4, "💣 aborted");
   return 0;
 }
@@ -31,11 +42,278 @@ int32_t exit_editor(struct command_ctx ctx, int argc, const char *argv[]) {
   return 0;
 }
 
+struct completion {
+  const char *display;
+  const char *insert;
+  bool complete;
+};
+
+uint32_t g_ncompletions = 0;
+struct completion g_completions[50] = {0};
+
+static void abort_completion() {
+  if (!minibuffer_focused()) {
+    reset_buffer_keys(window_buffer(windows_get_active()));
+  } else {
+    reset_minibuffer_keys(minibuffer_buffer());
+  }
+  windows_close_popup();
+
+  for (uint32_t compi = 0; compi < g_ncompletions; ++compi) {
+    free((void *)g_completions[compi].display);
+    free((void *)g_completions[compi].insert);
+  }
+  g_ncompletions = 0;
+}
+
+int cmp_completions(const void *comp_a, const void *comp_b) {
+  struct completion *a = (struct completion *)comp_a;
+  struct completion *b = (struct completion *)comp_b;
+  return strcmp(a->display, b->display);
+}
+
+static bool is_hidden(const char *filename) {
+  return filename[0] == '.' && filename[1] != '\0' && filename[1] != '.';
+}
+
+static void complete_path(const char *path, struct completion results[],
+                          uint32_t nresults_max, uint32_t *nresults) {
+  uint32_t n = 0;
+  char *p1 = to_abspath(path);
+  size_t len = strlen(p1);
+  char *p2 = strdup(p1);
+
+  if (len == 0) {
+    goto done;
+  }
+
+  if (nresults_max == 0) {
+    goto done;
+  }
+
+  const char *dir = p1;
+  const char *file = "";
+
+  if (dir[len - 1] != '/') {
+    dir = dirname(p1);
+    file = basename(p2);
+  }
+
+  DIR *d = opendir(dir);
+  if (d == NULL) {
+    goto done;
+  }
+
+  errno = 0;
+  while (n < nresults_max) {
+    struct dirent *de = readdir(d);
+    if (de == NULL && errno != 0) {
+      // skip the erroring entry
+      errno = 0;
+      continue;
+    } else if (de == NULL && errno == 0) {
+      break;
+    }
+
+    switch (de->d_type) {
+    case DT_DIR:
+    case DT_REG:
+    case DT_LNK:
+      if (!is_hidden(de->d_name) &&
+          (strncmp(file, de->d_name, strlen(file)) == 0 || strlen(file) == 0)) {
+        const char *disp = strdup(de->d_name);
+        results[n] = (struct completion){
+            .display = disp,
+            .insert = strdup(disp + strlen(file)),
+            .complete = de->d_type == DT_REG,
+        };
+        ++n;
+      }
+      break;
+    }
+  }
+
+  closedir(d);
+
+done:
+  free(p1);
+  free(p2);
+
+  qsort(results, n, sizeof(struct completion), cmp_completions);
+  *nresults = n;
+}
+
+void render_completion_line(struct text_chunk *line_data, uint32_t line,
+                            struct command_list *commands, void *userdata) {
+  command_list_set_show_whitespace(commands, false);
+  command_list_draw_repeated(commands, 0, line, ' ', 1);
+}
+
+struct update_hook_result
+update_completion_buffer(struct buffer_view *view,
+                         struct command_list *commands, uint32_t width,
+                         uint32_t height, uint64_t frame_time, void *userdata) {
+  struct text_chunk line = buffer_get_line(view->buffer, view->dot.line);
+  buffer_add_text_property(
+      view->buffer, (struct buffer_location){.line = view->dot.line, .col = 0},
+      (struct buffer_location){.line = view->dot.line, .col = line.nchars},
+      (struct text_property){.type = TextProperty_Colors,
+                             .colors = (struct text_property_colors){
+                                 .set_bg = false,
+                                 .bg = 0,
+                                 .set_fg = true,
+                                 .fg = 4,
+                             }});
+
+  if (line.allocated) {
+    free(line.text);
+  }
+
+  struct update_hook_result res = {0};
+  res.margins.left = 1;
+  res.margins.right = 1;
+  res.line_render_hook = (struct line_render_hook){
+      .callback = render_completion_line,
+      .empty_callback = NULL,
+      .userdata = NULL,
+  };
+
+  return res;
+}
+
+static int32_t goto_completion(struct command_ctx ctx, int argc,
+                               const char *argv[]) {
+  void (*movement_fn)(struct buffer_view *) =
+      (void (*)(struct buffer_view *))ctx.userdata;
+  struct buffer *b = buffers_find(ctx.buffers, "*completions*");
+
+  // is it in the popup?
+  if (b != NULL && window_buffer(popup_window()) == b) {
+    struct buffer_view *v = window_buffer_view(popup_window());
+    movement_fn(v);
+
+    if (v->dot.line >= text_num_lines(b->text)) {
+      buffer_backward_line(v);
+    }
+  }
+
+  return 0;
+}
+
+static int32_t insert_completion(struct command_ctx ctx, int argc,
+                                 const char *argv[]) {
+  struct buffer *b = buffers_find(ctx.buffers, "*completions*");
+  // is it in the popup?
+  if (b != NULL && window_buffer(popup_window()) == b) {
+    struct buffer_view *cv = window_buffer_view(popup_window());
+
+    if (cv->dot.line < g_ncompletions) {
+      char *ins = (char *)g_completions[cv->dot.line].insert;
+      bool complete = g_completions[cv->dot.line].complete;
+      size_t inslen = strlen(ins);
+      if (minibuffer_focused()) {
+        buffer_add_text(window_buffer_view(minibuffer_window()), ins, inslen);
+      } else {
+        buffer_add_text(window_buffer_view(windows_get_active()), ins, inslen);
+      }
+
+      if (complete) {
+        minibuffer_execute();
+      }
+    }
+  }
+
+  return 0;
+}
+
+COMMAND_FN("next-completion", next_completion, goto_completion,
+           buffer_forward_line);
+COMMAND_FN("prev-completion", prev_completion, goto_completion,
+           buffer_backward_line);
+COMMAND_FN("insert-completion", insert_completion, insert_completion, NULL);
+
+static void on_find_file_input(void *userdata) {
+  struct buffers *buffers = (struct buffers *)userdata;
+  struct text_chunk txt = minibuffer_content();
+
+  struct window *mb = minibuffer_window();
+  struct buffer_location mb_dot = window_absolute_cursor_location(mb);
+
+  struct buffer *b = buffers_find(buffers, "*completions*");
+  if (b == NULL) {
+    b = buffers_add(buffers, buffer_create("*completions*"));
+    buffer_add_update_hook(b, update_completion_buffer, NULL);
+    window_set_buffer_e(popup_window(), b, false, false);
+  }
+
+  struct buffer_view *v = window_buffer_view(popup_window());
+
+  char path[1024];
+  strncpy(path, txt.text, txt.nbytes);
+  path[(txt.nbytes >= 1024 ? 1023 : txt.nbytes)] = '\0';
+
+  for (uint32_t compi = 0; compi < g_ncompletions; ++compi) {
+    free((void *)g_completions[compi].display);
+    free((void *)g_completions[compi].insert);
+  }
+
+  g_ncompletions = 0;
+  complete_path(path, g_completions, 50, &g_ncompletions);
+
+  size_t max_width = 0;
+  struct buffer_location prev_dot = v->dot;
+
+  buffer_clear(v);
+  if (g_ncompletions > 0) {
+    for (uint32_t compi = 0; compi < g_ncompletions; ++compi) {
+      const char *disp = g_completions[compi].display;
+      size_t width = strlen(disp);
+      if (width > max_width) {
+        max_width = width;
+      }
+      buffer_add_text(v, (uint8_t *)disp, width);
+
+      // the extra newline feels weird in navigation
+      if (compi != g_ncompletions - 1) {
+        buffer_add_text(v, (uint8_t *)"\n", 1);
+      }
+    }
+
+    buffer_goto(v, prev_dot.line, prev_dot.col);
+    if (prev_dot.line >= text_num_lines(b->text)) {
+      buffer_backward_line(v);
+    }
+
+    if (!popup_window_visible()) {
+      struct binding bindings[] = {
+          ANONYMOUS_BINDING(Ctrl, 'N', &next_completion_command),
+          ANONYMOUS_BINDING(Ctrl, 'P', &prev_completion_command),
+          ANONYMOUS_BINDING(ENTER, &insert_completion_command),
+      };
+      buffer_bind_keys(minibuffer_buffer(), bindings,
+                       sizeof(bindings) / sizeof(bindings[0]));
+    }
+
+    uint32_t width = max_width > 2 ? max_width + 2 : 4,
+             height = g_ncompletions > 10 ? 10 : g_ncompletions;
+    windows_show_popup(mb_dot.line - height, mb_dot.col, width, height);
+  } else {
+    windows_close_popup();
+  }
+
+  if (txt.allocated) {
+    free(txt.text);
+  }
+}
+
 int32_t find_file(struct command_ctx ctx, int argc, const char *argv[]) {
   const char *pth = NULL;
   if (argc == 0) {
-    return minibuffer_prompt(ctx, "find file: ");
+    return minibuffer_prompt_interactive(ctx, on_find_file_input, ctx.buffers,
+                                         "find file: ");
   }
+
+  abort_completion();
 
   pth = argv[0];
   struct stat sb = {0};
@@ -132,124 +410,6 @@ int32_t switch_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
                          ctx.active_window, ctx.buffers, argc, argv);
 }
 
-static char *g_last_search = NULL;
-
-int64_t matchdist(struct match *match, struct buffer_location loc) {
-  struct buffer_location begin = match->begin;
-
-  int64_t linedist = (int64_t)begin.line - (int64_t)loc.line;
-  int64_t coldist = (int64_t)begin.col - (int64_t)loc.col;
-
-  return linedist * linedist + coldist * coldist;
-}
-
-int buffer_loc_cmp(struct buffer_location loc1, struct buffer_location loc2) {
-  if (loc1.line < loc2.line) {
-    return -1;
-  } else if (loc1.line > loc2.line) {
-    return 1;
-  } else {
-    if (loc1.col < loc2.col) {
-      return -1;
-    } else if (loc1.col > loc2.col) {
-      return 1;
-    } else {
-      return 0;
-    }
-  }
-}
-
-const char *search_prompt(bool reverse) {
-  const char *txt = "search (down): ";
-  if (reverse) {
-    txt = "search (up): ";
-  }
-
-  return txt;
-}
-
-void do_search(struct buffer_view *view, const char *pattern, bool reverse) {
-  struct match *matches = NULL;
-  uint32_t nmatches = 0;
-
-  g_last_search = strdup(pattern);
-
-  struct buffer_view *buffer_view = window_buffer_view(windows_get_active());
-  buffer_find(buffer_view->buffer, pattern, &matches, &nmatches);
-
-  // find the "nearest" match
-  if (nmatches > 0) {
-    struct match *closest = reverse ? &matches[nmatches - 1] : &matches[0];
-    int64_t closest_dist = INT64_MAX;
-    for (uint32_t matchi = 0; matchi < nmatches; ++matchi) {
-      struct match *m = &matches[matchi];
-      int res = buffer_loc_cmp(m->begin, view->dot);
-      int64_t dist = matchdist(m, view->dot);
-      if (((res < 0 && reverse) || (res > 0 && !reverse)) &&
-          dist < closest_dist) {
-        closest_dist = dist;
-        closest = m;
-      }
-    }
-    buffer_goto(buffer_view, closest->begin.line, closest->begin.col);
-  }
-}
-
-int32_t search_interactive(struct command_ctx ctx, int argc,
-                           const char *argv[]) {
-  const char *pattern = NULL;
-  if (minibuffer_content().nbytes == 0) {
-    // recall the last search, if any
-    if (g_last_search != NULL) {
-      struct buffer_view *view = window_buffer_view(minibuffer_window());
-      buffer_clear(view);
-      buffer_add_text(view, (uint8_t *)g_last_search, strlen(g_last_search));
-      pattern = g_last_search;
-    }
-  } else {
-    struct text_chunk content = minibuffer_content();
-    char *p = malloc(content.nbytes + 1);
-    memcpy(p, content.text, content.nbytes);
-    p[content.nbytes] = '\0';
-    pattern = p;
-  }
-
-  minibuffer_set_prompt(search_prompt(*(bool *)ctx.userdata));
-
-  if (pattern != NULL) {
-    // ctx.active_window would be the minibuffer window
-    do_search(window_buffer_view(windows_get_active()), pattern,
-              *(bool *)ctx.userdata);
-  }
-  return 0;
-}
-
-static bool search_dir_backward = true;
-static bool search_dir_forward = false;
-
-COMMAND_FN("search-forward", search_forward, search_interactive,
-           &search_dir_forward);
-COMMAND_FN("search-backward", search_backward, search_interactive,
-           &search_dir_backward);
-
-int32_t find(struct command_ctx ctx, int argc, const char *argv[]) {
-  bool reverse = strcmp((char *)ctx.userdata, "backward") == 0;
-  if (argc == 0) {
-    struct binding bindings[] = {
-        ANONYMOUS_BINDING(Ctrl, 'S', &search_forward_command),
-        ANONYMOUS_BINDING(Ctrl, 'R', &search_backward_command),
-    };
-    buffer_bind_keys(minibuffer_buffer(), bindings,
-                     sizeof(bindings) / sizeof(bindings[0]));
-    return minibuffer_prompt(ctx, search_prompt(reverse));
-  }
-
-  reset_minibuffer_keys(minibuffer_buffer());
-  do_search(window_buffer_view(ctx.active_window), argv[0], reverse);
-
-  return 0;
-}
-
 int32_t timers(struct command_ctx ctx, int argc, const char *argv[]) {
   struct buffer *b = buffers_add(ctx.buffers, buffer_create("timers"));
   buffer_set_readonly(b, true);
@@ -289,6 +449,7 @@ int32_t buflist_visit_cmd(struct command_ctx ctx, int argc,
     uint32_t len = end - (char *)text.text;
     char *bufname = (char *)malloc(len + 1);
     strncpy(bufname, text.text, len);
+    bufname[len] = '\0';
 
     struct buffer *target = buffers_find(ctx.buffers, bufname);
     free(bufname);
@@ -364,14 +525,14 @@ void register_global_commands(struct commands *commands,
       {.name = "run-command-interactive", .fn = run_interactive},
       {.name = "switch-buffer", .fn = switch_buffer},
       {.name = "abort", .fn = _abort},
-      {.name = "find-next", .fn = find, .userdata = "forward"},
-      {.name = "find-prev", .fn = find, .userdata = "backward"},
       {.name = "timers", .fn = timers},
       {.name = "buffer-list", .fn = buffer_list},
       {.name = "exit", .fn = exit_editor, .userdata = terminate_cb}};
 
   register_commands(commands, global_commands,
                     sizeof(global_commands) / sizeof(global_commands[0]));
+
+  register_search_replace_commands(commands);
 }
 
 #define BUFFER_WRAPCMD_POS(fn)                                                 \

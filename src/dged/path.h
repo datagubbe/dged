@@ -29,10 +29,12 @@ static char *expanduser(const char *path) {
 }
 
 static char *to_abspath(const char *path) {
+  char *exp = expanduser(path);
   char *p = realpath(path, NULL);
   if (p != NULL) {
+    free(exp);
     return p;
   } else {
-    return strdup(path);
+    return exp;
   }
 }

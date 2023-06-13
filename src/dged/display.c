@@ -3,6 +3,7 @@
 
 #include "buffer.h"
 
+#include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -73,6 +74,8 @@ struct command_list {
   void *(*allocator)(size_t);
 
   char name[16];
+
+  struct command_list *next_list;
 };
 
 struct winsize getsize() {
@@ -169,19 +172,21 @@ void display_clear(struct display *display) {
   putbytes(bytes, 3, false);
 }
 
-struct command_list *command_list_create(uint32_t capacity,
+struct command_list *command_list_create(uint32_t initial_capacity,
                                          void *(*allocator)(size_t),
                                          uint32_t xoffset, uint32_t yoffset,
                                          const char *name) {
   struct command_list *command_list = allocator(sizeof(struct command_list));
 
-  command_list->capacity = capacity;
+  command_list->capacity = initial_capacity;
   command_list->ncmds = 0;
   command_list->xoffset = xoffset;
   command_list->yoffset = yoffset;
+  command_list->next_list = NULL;
   strncpy(command_list->name, name, 15);
 
-  command_list->cmds = allocator(sizeof(struct render_command) * capacity);
+  command_list->cmds =
+      allocator(sizeof(struct render_command) * initial_capacity);
   command_list->allocator = allocator;
 
   return command_list;
@@ -189,33 +194,41 @@ struct command_list *command_list_create(uint32_t capacity,
 
 struct render_command *add_command(struct command_list *list,
                                    enum render_cmd_type tp) {
-  if (list->ncmds == list->capacity) {
-    /* TODO: better. Currently a bit tricky to provide dynamic scaling of this
-     *  since it is initially allocated with the frame allocator that does not
-     * support realloc.
-     */
-    return NULL;
+  struct command_list *l = list;
+  struct command_list *n = l->next_list;
+
+  // scan through lists for one with capacity
+  while (l->ncmds == l->capacity && n != NULL) {
+    l = n;
+    n = l->next_list;
   }
 
-  struct render_command *cmd = &list->cmds[list->ncmds];
+  if (l->ncmds == l->capacity && n == NULL) {
+    l->next_list = command_list_create(l->capacity, l->allocator, l->xoffset,
+                                       l->yoffset, l->name);
+    l = l->next_list;
+  }
+
+  struct render_command *cmd = &l->cmds[l->ncmds];
   cmd->type = tp;
   switch (tp) {
   case RenderCommand_DrawText:
-    cmd->draw_txt = list->allocator(sizeof(struct draw_text_cmd));
+    cmd->draw_txt = l->allocator(sizeof(struct draw_text_cmd));
     break;
   case RenderCommand_Repeat:
-    cmd->repeat = list->allocator(sizeof(struct repeat_cmd));
+    cmd->repeat = l->allocator(sizeof(struct repeat_cmd));
     break;
   case RenderCommand_PushFormat:
-    cmd->push_fmt = list->allocator(sizeof(struct push_fmt_cmd));
+    cmd->push_fmt = l->allocator(sizeof(struct push_fmt_cmd));
     break;
   case RenderCommand_SetShowWhitespace:
-    cmd->show_ws = list->allocator(sizeof(struct show_ws_cmd));
+    cmd->show_ws = l->allocator(sizeof(struct show_ws_cmd));
     break;
   case RenderCommand_ClearFormat:
     break;
   }
-  ++list->ncmds;
+
+  ++l->ncmds;
   return cmd;
 }
 
@@ -306,58 +319,62 @@ void display_render(struct display *display,
   uint32_t fmt_stack_len = 3;
   bool show_whitespace_state = false;
 
-  for (uint64_t cmdi = 0; cmdi < cl->ncmds; ++cmdi) {
-    struct render_command *cmd = &cl->cmds[cmdi];
-    switch (cmd->type) {
-    case RenderCommand_DrawText: {
-      struct draw_text_cmd *txt_cmd = cmd->draw_txt;
-      display_move_cursor(display, txt_cmd->row + cl->yoffset,
-                          txt_cmd->col + cl->xoffset);
-      putbytes(fmt_stack, fmt_stack_len, false);
-      putbyte('m');
-      putbytes(txt_cmd->data, txt_cmd->len, show_whitespace_state);
-      break;
-    }
+  while (cl != NULL) {
 
-    case RenderCommand_Repeat: {
-      struct repeat_cmd *repeat_cmd = cmd->repeat;
-      display_move_cursor(display, repeat_cmd->row + cl->yoffset,
-                          repeat_cmd->col + cl->xoffset);
-      putbytes(fmt_stack, fmt_stack_len, false);
-      putbyte('m');
-      if (show_whitespace_state) {
-        for (uint32_t i = 0; i < repeat_cmd->nrepeat; ++i) {
-          putbyte_ws(repeat_cmd->c, show_whitespace_state);
-        }
-      } else {
-        char *buf = malloc(repeat_cmd->nrepeat + 1);
-        memset(buf, repeat_cmd->c, repeat_cmd->nrepeat);
-        buf[repeat_cmd->nrepeat] = '\0';
-        fputs(buf, stdout);
-        free(buf);
+    for (uint64_t cmdi = 0; cmdi < cl->ncmds; ++cmdi) {
+      struct render_command *cmd = &cl->cmds[cmdi];
+      switch (cmd->type) {
+      case RenderCommand_DrawText: {
+        struct draw_text_cmd *txt_cmd = cmd->draw_txt;
+        display_move_cursor(display, txt_cmd->row + cl->yoffset,
+                            txt_cmd->col + cl->xoffset);
+        putbytes(fmt_stack, fmt_stack_len, false);
+        putbyte('m');
+        putbytes(txt_cmd->data, txt_cmd->len, show_whitespace_state);
+        break;
       }
-      break;
+
+      case RenderCommand_Repeat: {
+        struct repeat_cmd *repeat_cmd = cmd->repeat;
+        display_move_cursor(display, repeat_cmd->row + cl->yoffset,
+                            repeat_cmd->col + cl->xoffset);
+        putbytes(fmt_stack, fmt_stack_len, false);
+        putbyte('m');
+        if (show_whitespace_state) {
+          for (uint32_t i = 0; i < repeat_cmd->nrepeat; ++i) {
+            putbyte_ws(repeat_cmd->c, show_whitespace_state);
+          }
+        } else {
+          char *buf = malloc(repeat_cmd->nrepeat + 1);
+          memset(buf, repeat_cmd->c, repeat_cmd->nrepeat);
+          buf[repeat_cmd->nrepeat] = '\0';
+          fputs(buf, stdout);
+          free(buf);
+        }
+        break;
+      }
+
+      case RenderCommand_PushFormat: {
+        struct push_fmt_cmd *fmt_cmd = cmd->push_fmt;
+
+        fmt_stack[fmt_stack_len] = ';';
+        ++fmt_stack_len;
+
+        memcpy(fmt_stack + fmt_stack_len, fmt_cmd->fmt, fmt_cmd->len);
+        fmt_stack_len += fmt_cmd->len;
+        break;
+      }
+
+      case RenderCommand_ClearFormat:
+        fmt_stack_len = 3;
+        break;
+
+      case RenderCommand_SetShowWhitespace:
+        show_whitespace_state = cmd->show_ws->show;
+        break;
+      }
     }
-
-    case RenderCommand_PushFormat: {
-      struct push_fmt_cmd *fmt_cmd = cmd->push_fmt;
-
-      fmt_stack[fmt_stack_len] = ';';
-      ++fmt_stack_len;
-
-      memcpy(fmt_stack + fmt_stack_len, fmt_cmd->fmt, fmt_cmd->len);
-      fmt_stack_len += fmt_cmd->len;
-      break;
-    }
-
-    case RenderCommand_ClearFormat:
-      fmt_stack_len = 3;
-      break;
-
-    case RenderCommand_SetShowWhitespace:
-      show_whitespace_state = cmd->show_ws->show;
-      break;
-    }
+    cl = cl->next_list;
   }
 }
 

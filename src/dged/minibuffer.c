@@ -18,7 +18,8 @@ static struct minibuffer {
   bool prompt_active;
   bool clear;
 
-  void (*update_callback)();
+  void (*update_callback)(void *);
+  void *update_callback_userdata;
 
 } g_minibuffer = {0};
 
@@ -88,7 +89,7 @@ struct update_hook_result update(struct buffer_view *view,
   }
 
   if (mb->update_callback != NULL) {
-    mb->update_callback();
+    mb->update_callback(mb->update_callback_userdata);
   }
 
   return res;
@@ -153,7 +154,8 @@ void minibuffer_set_prompt_internal(const char *fmt, va_list args) {
 }
 
 int32_t minibuffer_prompt_internal(struct command_ctx command_ctx,
-                                   void (*update_callback)(), const char *fmt,
+                                   void (*update_callback)(void *),
+                                   void *userdata, const char *fmt,
                                    va_list args) {
   if (g_minibuffer.buffer == NULL) {
     return 1;
@@ -169,6 +171,7 @@ int32_t minibuffer_prompt_internal(struct command_ctx command_ctx,
 
   if (update_callback != NULL) {
     g_minibuffer.update_callback = update_callback;
+    g_minibuffer.update_callback_userdata = userdata;
   }
 
   return 0;
@@ -178,19 +181,19 @@ int32_t minibuffer_prompt(struct command_ctx command_ctx, const char *fmt,
                           ...) {
   va_list args;
   va_start(args, fmt);
-  int32_t r = minibuffer_prompt_internal(command_ctx, NULL, fmt, args);
+  int32_t r = minibuffer_prompt_internal(command_ctx, NULL, NULL, fmt, args);
   va_end(args);
 
   return r;
 }
 
 int32_t minibuffer_prompt_interactive(struct command_ctx command_ctx,
-                                      void (*update_callback)(),
-                                      const char *fmt, ...) {
+                                      void (*update_callback)(void *),
+                                      void *userdata, const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  int32_t r =
-      minibuffer_prompt_internal(command_ctx, update_callback, fmt, args);
+  int32_t r = minibuffer_prompt_internal(command_ctx, update_callback, userdata,
+                                         fmt, args);
   va_end(args);
 
   return r;

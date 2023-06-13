@@ -22,6 +22,8 @@ void windows_render(struct display *display);
 
 struct window *root_window();
 struct window *minibuffer_window();
+struct window *popup_window();
+bool popup_window_visible();
 
 void windows_set_active(struct window *window);
 struct window *windows_focus(uint32_t id);
@@ -30,6 +32,8 @@ struct window *windows_focus_next();
 struct window *window_find_by_buffer(struct buffer *b);
 
 void window_set_buffer(struct window *window, struct buffer *buffer);
+void window_set_buffer_e(struct window *window, struct buffer *buffer,
+                         bool modeline, bool line_numbers);
 struct buffer *window_buffer(struct window *window);
 struct buffer_view *window_buffer_view(struct window *window);
 struct buffer *window_prev_buffer(struct window *window);
@@ -47,3 +51,7 @@ void window_hsplit(struct window *window, struct window **new_window_a,
                    struct window **new_window_b);
 void window_vsplit(struct window *window, struct window **new_window_a,
                    struct window **new_window_b);
+
+void windows_show_popup(uint32_t row, uint32_t col, uint32_t width,
+                        uint32_t height);
+void windows_close_popup();
