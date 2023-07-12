@@ -9,6 +9,7 @@
 
 #include "dged/binding.h"
 #include "dged/buffer.h"
+#include "dged/buffer_view.h"
 #include "dged/buffers.h"
 #include "dged/command.h"
 #include "dged/display.h"
@@ -25,7 +26,7 @@ int32_t _abort(struct command_ctx ctx, int argc, const char *argv[]) {
   abort_replace();
   abort_completion();
   minibuffer_abort_prompt();
-  buffer_clear_mark(window_buffer_view(ctx.active_window));
+  buffer_view_clear_mark(window_buffer_view(ctx.active_window));
   reset_minibuffer_keys(minibuffer_buffer());
   minibuffer_echo_timeout(4, "💣 aborted");
   return 0;
@@ -52,11 +53,7 @@ uint32_t g_ncompletions = 0;
 struct completion g_completions[50] = {0};
 
 static void abort_completion() {
-  if (!minibuffer_focused()) {
-    reset_buffer_keys(window_buffer(windows_get_active()));
-  } else {
-    reset_minibuffer_keys(minibuffer_buffer());
-  }
+  reset_minibuffer_keys(minibuffer_buffer());
   windows_close_popup();
 
   for (uint32_t compi = 0; compi < g_ncompletions; ++compi) {
@@ -83,6 +80,8 @@ static void complete_path(const char *path, struct completion results[],
   size_t len = strlen(p1);
   char *p2 = strdup(p1);
 
+  size_t inlen = strlen(path);
+
   if (len == 0) {
     goto done;
   }
@@ -94,7 +93,9 @@ static void complete_path(const char *path, struct completion results[],
   const char *dir = p1;
   const char *file = "";
 
-  if (dir[len - 1] != '/') {
+  // check the input path here since
+  // to_abspath removes trailing slashes
+  if (path[inlen - 1] != '/') {
     dir = dirname(p1);
     file = basename(p2);
   }
@@ -143,20 +144,13 @@ done:
   *nresults = n;
 }
 
-void render_completion_line(struct text_chunk *line_data, uint32_t line,
-                            struct command_list *commands, void *userdata) {
-  command_list_set_show_whitespace(commands, false);
-  command_list_draw_repeated(commands, 0, line, ' ', 1);
-}
-
-struct update_hook_result
-update_completion_buffer(struct buffer_view *view,
-                         struct command_list *commands, uint32_t width,
-                         uint32_t height, uint64_t frame_time, void *userdata) {
-  struct text_chunk line = buffer_get_line(view->buffer, view->dot.line);
+void update_completion_buffer(struct buffer *buffer, uint32_t width,
+                              uint32_t height, void *userdata) {
+  struct buffer_view *view = (struct buffer_view *)userdata;
+  struct text_chunk line = buffer_line(buffer, view->dot.line);
   buffer_add_text_property(
-      view->buffer, (struct buffer_location){.line = view->dot.line, .col = 0},
-      (struct buffer_location){.line = view->dot.line, .col = line.nchars},
+      view->buffer, (struct location){.line = view->dot.line, .col = 0},
+      (struct location){.line = view->dot.line, .col = line.nchars},
       (struct text_property){.type = TextProperty_Colors,
                              .colors = (struct text_property_colors){
                                  .set_bg = false,
@@ -168,17 +162,6 @@ update_completion_buffer(struct buffer_view *view,
   if (line.allocated) {
     free(line.text);
   }
-
-  struct update_hook_result res = {0};
-  res.margins.left = 1;
-  res.margins.right = 1;
-  res.line_render_hook = (struct line_render_hook){
-      .callback = render_completion_line,
-      .empty_callback = NULL,
-      .userdata = NULL,
-  };
-
-  return res;
 }
 
 static int32_t goto_completion(struct command_ctx ctx, int argc,
@@ -193,7 +176,7 @@ static int32_t goto_completion(struct command_ctx ctx, int argc,
     movement_fn(v);
 
     if (v->dot.line >= text_num_lines(b->text)) {
-      buffer_backward_line(v);
+      buffer_view_backward_line(v);
     }
   }
 
@@ -211,15 +194,13 @@ static int32_t insert_completion(struct command_ctx ctx, int argc,
       char *ins = (char *)g_completions[cv->dot.line].insert;
       bool complete = g_completions[cv->dot.line].complete;
       size_t inslen = strlen(ins);
-      if (minibuffer_focused()) {
-        buffer_add_text(window_buffer_view(minibuffer_window()), ins, inslen);
-      } else {
-        buffer_add_text(window_buffer_view(windows_get_active()), ins, inslen);
-      }
+      buffer_view_add(window_buffer_view(windows_get_active()), ins, inslen);
 
-      if (complete) {
+      if (minibuffer_focused() && complete) {
         minibuffer_execute();
       }
+
+      abort_completion();
     }
   }
 
@@ -227,9 +208,9 @@ static int32_t insert_completion(struct command_ctx ctx, int argc,
 }
 
 COMMAND_FN("next-completion", next_completion, goto_completion,
-           buffer_forward_line);
+           buffer_view_forward_line);
 COMMAND_FN("prev-completion", prev_completion, goto_completion,
-           buffer_backward_line);
+           buffer_view_backward_line);
 COMMAND_FN("insert-completion", insert_completion, insert_completion, NULL);
 
 static void on_find_file_input(void *userdata) {
@@ -237,12 +218,14 @@ static void on_find_file_input(void *userdata) {
   struct text_chunk txt = minibuffer_content();
 
   struct window *mb = minibuffer_window();
-  struct buffer_location mb_dot = window_absolute_cursor_location(mb);
+  struct location mb_dot = window_buffer_view(mb)->dot;
+  struct window_position mbpos = window_position(mb);
 
   struct buffer *b = buffers_find(buffers, "*completions*");
   if (b == NULL) {
     b = buffers_add(buffers, buffer_create("*completions*"));
-    buffer_add_update_hook(b, update_completion_buffer, NULL);
+    buffer_add_update_hook(b, update_completion_buffer,
+                           (void *)window_buffer_view(popup_window()));
     window_set_buffer_e(popup_window(), b, false, false);
   }
 
@@ -261,9 +244,10 @@ static void on_find_file_input(void *userdata) {
   complete_path(path, g_completions, 50, &g_ncompletions);
 
   size_t max_width = 0;
-  struct buffer_location prev_dot = v->dot;
+  struct location prev_dot = v->dot;
 
-  buffer_clear(v);
+  buffer_clear(v->buffer);
+  buffer_view_goto(v, (struct location){.line = 0, .col = 0});
   if (g_ncompletions > 0) {
     for (uint32_t compi = 0; compi < g_ncompletions; ++compi) {
       const char *disp = g_completions[compi].display;
@@ -271,17 +255,18 @@ static void on_find_file_input(void *userdata) {
       if (width > max_width) {
         max_width = width;
       }
-      buffer_add_text(v, (uint8_t *)disp, width);
+      buffer_view_add(v, (uint8_t *)disp, width);
 
       // the extra newline feels weird in navigation
       if (compi != g_ncompletions - 1) {
-        buffer_add_text(v, (uint8_t *)"\n", 1);
+        buffer_view_add(v, (uint8_t *)"\n", 1);
       }
     }
 
-    buffer_goto(v, prev_dot.line, prev_dot.col);
+    buffer_view_goto(
+        v, (struct location){.line = prev_dot.line, .col = prev_dot.col});
     if (prev_dot.line >= text_num_lines(b->text)) {
-      buffer_backward_line(v);
+      buffer_view_backward_line(v);
     }
 
     if (!popup_window_visible()) {
@@ -294,11 +279,12 @@ static void on_find_file_input(void *userdata) {
                        sizeof(bindings) / sizeof(bindings[0]));
     }
 
-    uint32_t width = max_width > 2 ? max_width + 2 : 4,
+    uint32_t width = max_width > 2 ? max_width : 4,
              height = g_ncompletions > 10 ? 10 : g_ncompletions;
-    windows_show_popup(mb_dot.line - height, mb_dot.col, width, height);
+    windows_show_popup(mbpos.y + mb_dot.line - height, mbpos.x + mb_dot.col,
+                       width, height);
   } else {
-    windows_close_popup();
+    abort_completion();
   }
 
   if (txt.allocated) {
@@ -312,8 +298,6 @@ int32_t find_file(struct command_ctx ctx, int argc, const char *argv[]) {
     return minibuffer_prompt_interactive(ctx, on_find_file_input, ctx.buffers,
                                          "find file: ");
   }
-
-  abort_completion();
 
   pth = argv[0];
   struct stat sb = {0};
@@ -351,7 +335,8 @@ int32_t write_file(struct command_ctx ctx, int argc, const char *argv[]) {
   }
 
   pth = argv[0];
-  buffer_write_to(window_buffer(ctx.active_window), pth);
+  buffer_set_filename(window_buffer(ctx.active_window), pth);
+  buffer_to_file(window_buffer(ctx.active_window));
 
   return 0;
 }
@@ -432,7 +417,7 @@ void buffer_to_list_line(struct buffer *buffer, void *userdata) {
                buffer->filename != NULL ? buffer->filename : "<no-file>");
 
   if (written > 0) {
-    buffer_add_text(listbuf, (uint8_t *)buf, written);
+    buffer_view_add(listbuf, (uint8_t *)buf, written);
   }
 }
 
@@ -441,7 +426,7 @@ int32_t buflist_visit_cmd(struct command_ctx ctx, int argc,
   struct window *w = ctx.active_window;
 
   struct buffer_view *bv = window_buffer_view(w);
-  struct text_chunk text = buffer_get_line(bv->buffer, bv->dot.line);
+  struct text_chunk text = buffer_line(bv->buffer, bv->dot.line);
 
   char *end = (char *)memchr(text.text, ' ', text.nbytes);
 
@@ -468,9 +453,9 @@ int32_t buflist_close_cmd(struct command_ctx ctx, int argc,
 
 void buflist_refresh(struct buffers *buffers, struct buffer_view *target) {
   buffer_set_readonly(target->buffer, false);
-  buffer_clear(target);
+  buffer_clear(target->buffer);
   buffers_for_each(buffers, buffer_to_list_line, target);
-  buffer_goto_beginning(target);
+  buffer_view_goto_beginning(target);
   buffer_set_readonly(target->buffer, true);
 }
 
@@ -535,102 +520,102 @@ void register_global_commands(struct commands *commands,
   register_search_replace_commands(commands);
 }
 
-#define BUFFER_WRAPCMD_POS(fn)                                                 \
+#define BUFFER_VIEW_WRAPCMD(fn)                                                \
   static int32_t fn##_cmd(struct command_ctx ctx, int argc,                    \
                           const char *argv[]) {                                \
-    fn(window_buffer_view(ctx.active_window));                                 \
+    buffer_view_##fn(window_buffer_view(ctx.active_window));                   \
     return 0;                                                                  \
   }
 
 #define BUFFER_WRAPCMD(fn)                                                     \
   static int32_t fn##_cmd(struct command_ctx ctx, int argc,                    \
                           const char *argv[]) {                                \
-    fn(window_buffer(ctx.active_window));                                      \
+    buffer_##fn(window_buffer(ctx.active_window));                             \
     return 0;                                                                  \
   }
 
-BUFFER_WRAPCMD_POS(buffer_kill_line);
-BUFFER_WRAPCMD_POS(buffer_forward_delete_char);
-BUFFER_WRAPCMD_POS(buffer_backward_delete_char);
-BUFFER_WRAPCMD_POS(buffer_forward_delete_word);
-BUFFER_WRAPCMD_POS(buffer_backward_delete_word);
-BUFFER_WRAPCMD_POS(buffer_backward_char);
-BUFFER_WRAPCMD_POS(buffer_backward_word);
-BUFFER_WRAPCMD_POS(buffer_forward_char);
-BUFFER_WRAPCMD_POS(buffer_forward_word);
-BUFFER_WRAPCMD_POS(buffer_backward_line);
-BUFFER_WRAPCMD_POS(buffer_forward_line);
-BUFFER_WRAPCMD_POS(buffer_end_of_line);
-BUFFER_WRAPCMD_POS(buffer_beginning_of_line);
-BUFFER_WRAPCMD_POS(buffer_newline);
-BUFFER_WRAPCMD_POS(buffer_indent);
-BUFFER_WRAPCMD(buffer_to_file);
-BUFFER_WRAPCMD(buffer_reload);
-BUFFER_WRAPCMD_POS(buffer_set_mark);
-BUFFER_WRAPCMD_POS(buffer_clear_mark);
-BUFFER_WRAPCMD_POS(buffer_copy);
-BUFFER_WRAPCMD_POS(buffer_cut);
-BUFFER_WRAPCMD_POS(buffer_paste);
-BUFFER_WRAPCMD_POS(buffer_paste_older);
-BUFFER_WRAPCMD_POS(buffer_goto_beginning);
-BUFFER_WRAPCMD_POS(buffer_goto_end);
-BUFFER_WRAPCMD_POS(buffer_undo);
+BUFFER_WRAPCMD(to_file);
+BUFFER_WRAPCMD(reload);
+BUFFER_VIEW_WRAPCMD(kill_line);
+BUFFER_VIEW_WRAPCMD(forward_delete_char);
+BUFFER_VIEW_WRAPCMD(backward_delete_char);
+BUFFER_VIEW_WRAPCMD(forward_delete_word);
+BUFFER_VIEW_WRAPCMD(backward_delete_word);
+BUFFER_VIEW_WRAPCMD(backward_char);
+BUFFER_VIEW_WRAPCMD(backward_word);
+BUFFER_VIEW_WRAPCMD(forward_char);
+BUFFER_VIEW_WRAPCMD(forward_word);
+BUFFER_VIEW_WRAPCMD(backward_line);
+BUFFER_VIEW_WRAPCMD(forward_line);
+BUFFER_VIEW_WRAPCMD(goto_end_of_line);
+BUFFER_VIEW_WRAPCMD(goto_beginning_of_line);
+BUFFER_VIEW_WRAPCMD(newline);
+BUFFER_VIEW_WRAPCMD(indent);
+BUFFER_VIEW_WRAPCMD(set_mark);
+BUFFER_VIEW_WRAPCMD(clear_mark);
+BUFFER_VIEW_WRAPCMD(copy);
+BUFFER_VIEW_WRAPCMD(cut);
+BUFFER_VIEW_WRAPCMD(paste);
+BUFFER_VIEW_WRAPCMD(paste_older);
+BUFFER_VIEW_WRAPCMD(goto_beginning);
+BUFFER_VIEW_WRAPCMD(goto_end);
+BUFFER_VIEW_WRAPCMD(undo);
 
-static int32_t buffer_view_scroll_up_cmd(struct command_ctx ctx, int argc,
-                                         const char *argv[]) {
-  buffer_view_scroll_up(window_buffer_view(ctx.active_window),
-                        window_height(ctx.active_window));
+static int32_t scroll_up_cmd(struct command_ctx ctx, int argc,
+                             const char *argv[]) {
+  buffer_view_backward_nlines(window_buffer_view(ctx.active_window),
+                              window_height(ctx.active_window) - 1);
   return 0;
 };
 
-static int32_t buffer_view_scroll_down_cmd(struct command_ctx ctx, int argc,
-                                           const char *argv[]) {
-  buffer_view_scroll_down(window_buffer_view(ctx.active_window),
-                          window_height(ctx.active_window));
+static int32_t scroll_down_cmd(struct command_ctx ctx, int argc,
+                               const char *argv[]) {
+  buffer_view_forward_nlines(window_buffer_view(ctx.active_window),
+                             window_height(ctx.active_window) - 1);
   return 0;
 };
 
-static int32_t buffer_goto_line(struct command_ctx ctx, int argc,
-                                const char *argv[]) {
+static int32_t goto_line(struct command_ctx ctx, int argc, const char *argv[]) {
   if (argc == 0) {
     return minibuffer_prompt(ctx, "line: ");
   }
 
   uint32_t line = atoi(argv[0]);
-  buffer_goto(window_buffer_view(ctx.active_window), line - 1, 0);
+  buffer_view_goto(window_buffer_view(ctx.active_window),
+                   (struct location){.line = line, .col = 0});
 }
 
 void register_buffer_commands(struct commands *commands) {
   static struct command buffer_commands[] = {
-      {.name = "kill-line", .fn = buffer_kill_line_cmd},
-      {.name = "delete-word", .fn = buffer_forward_delete_word_cmd},
-      {.name = "backward-delete-word", .fn = buffer_backward_delete_word_cmd},
-      {.name = "delete-char", .fn = buffer_forward_delete_char_cmd},
-      {.name = "backward-delete-char", .fn = buffer_backward_delete_char_cmd},
-      {.name = "backward-char", .fn = buffer_backward_char_cmd},
-      {.name = "backward-word", .fn = buffer_backward_word_cmd},
-      {.name = "forward-char", .fn = buffer_forward_char_cmd},
-      {.name = "forward-word", .fn = buffer_forward_word_cmd},
-      {.name = "backward-line", .fn = buffer_backward_line_cmd},
-      {.name = "forward-line", .fn = buffer_forward_line_cmd},
-      {.name = "end-of-line", .fn = buffer_end_of_line_cmd},
-      {.name = "beginning-of-line", .fn = buffer_beginning_of_line_cmd},
-      {.name = "newline", .fn = buffer_newline_cmd},
-      {.name = "indent", .fn = buffer_indent_cmd},
-      {.name = "buffer-write-to-file", .fn = buffer_to_file_cmd},
-      {.name = "set-mark", .fn = buffer_set_mark_cmd},
-      {.name = "clear-mark", .fn = buffer_clear_mark_cmd},
-      {.name = "copy", .fn = buffer_copy_cmd},
-      {.name = "cut", .fn = buffer_cut_cmd},
-      {.name = "paste", .fn = buffer_paste_cmd},
-      {.name = "paste-older", .fn = buffer_paste_older_cmd},
-      {.name = "goto-beginning", .fn = buffer_goto_beginning_cmd},
-      {.name = "goto-end", .fn = buffer_goto_end_cmd},
-      {.name = "undo", .fn = buffer_undo_cmd},
-      {.name = "scroll-down", .fn = buffer_view_scroll_down_cmd},
-      {.name = "scroll-up", .fn = buffer_view_scroll_up_cmd},
-      {.name = "reload", .fn = buffer_reload_cmd},
-      {.name = "goto-line", .fn = buffer_goto_line},
+      {.name = "kill-line", .fn = kill_line_cmd},
+      {.name = "delete-word", .fn = forward_delete_word_cmd},
+      {.name = "backward-delete-word", .fn = backward_delete_word_cmd},
+      {.name = "delete-char", .fn = forward_delete_char_cmd},
+      {.name = "backward-delete-char", .fn = backward_delete_char_cmd},
+      {.name = "backward-char", .fn = backward_char_cmd},
+      {.name = "backward-word", .fn = backward_word_cmd},
+      {.name = "forward-char", .fn = forward_char_cmd},
+      {.name = "forward-word", .fn = forward_word_cmd},
+      {.name = "backward-line", .fn = backward_line_cmd},
+      {.name = "forward-line", .fn = forward_line_cmd},
+      {.name = "end-of-line", .fn = goto_end_of_line_cmd},
+      {.name = "beginning-of-line", .fn = goto_beginning_of_line_cmd},
+      {.name = "newline", .fn = newline_cmd},
+      {.name = "indent", .fn = indent_cmd},
+      {.name = "buffer-write-to-file", .fn = to_file_cmd},
+      {.name = "set-mark", .fn = set_mark_cmd},
+      {.name = "clear-mark", .fn = clear_mark_cmd},
+      {.name = "copy", .fn = copy_cmd},
+      {.name = "cut", .fn = cut_cmd},
+      {.name = "paste", .fn = paste_cmd},
+      {.name = "paste-older", .fn = paste_older_cmd},
+      {.name = "goto-beginning", .fn = goto_beginning_cmd},
+      {.name = "goto-end", .fn = goto_end_cmd},
+      {.name = "undo", .fn = undo_cmd},
+      {.name = "scroll-down", .fn = scroll_down_cmd},
+      {.name = "scroll-up", .fn = scroll_up_cmd},
+      {.name = "reload", .fn = reload_cmd},
+      {.name = "goto-line", .fn = goto_line},
   };
 
   register_commands(commands, buffer_commands,

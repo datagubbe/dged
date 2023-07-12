@@ -5,45 +5,16 @@
 #include "assert.h"
 #include "test.h"
 
-void test_move() {
+void test_add() {
   struct buffer b = buffer_create("test-buffer");
-  struct buffer_view v = buffer_view_create(&b, false, false);
-  ASSERT(v.dot.col == 0 && v.dot.line == 0,
-         "Expected dot to be at buffer start");
+  ASSERT(buffer_num_lines(&b) == 0, "Expected buffer to have zero lines");
 
-  // make sure we cannot move now
-  buffer_backward_char(&v);
-  buffer_backward_line(&v);
-  ASSERT(v.dot.col == 0 && v.dot.line == 0,
-         "Expected to not be able to move backward in empty buffer");
+  const char *txt = "we are adding some text";
+  struct location loc = buffer_add(&b, (struct location){.line = 1, .col = 0},
+                                   (uint8_t *)txt, strlen(txt));
 
-  buffer_forward_char(&v);
-  buffer_forward_line(&v);
-  ASSERT(v.dot.col == 0 && v.dot.line == 0,
-         "Expected to not be able to move forward in empty buffer");
-
-  // add some text and try again
-  const char *txt = "testing movement";
-  int lineindex = buffer_add_text(&v, (uint8_t *)txt, strlen(txt));
-  ASSERT(lineindex + 1 == 1, "Expected buffer to have one line");
-
-  buffer_beginning_of_line(&v);
-  buffer_forward_char(&v);
-  ASSERT(v.dot.col == 1 && v.dot.line == 0,
-         "Expected to be able to move forward by one char");
-
-  // now we have two lines
-  const char *txt2 = "\n";
-  int lineindex2 = buffer_add_text(&v, (uint8_t *)txt2, strlen(txt2));
-  ASSERT(lineindex2 + 1 == 2, "Expected buffer to have two lines");
-  buffer_backward_line(&v);
-  buffer_beginning_of_line(&v);
-  buffer_backward_char(&v);
-  ASSERT(
-      v.dot.col == 0 && v.dot.line == 0,
-      "Expected to not be able to move backwards when at beginning of buffer");
-
-  buffer_destroy(&b);
+  ASSERT(loc.line == 1 && loc.col == strlen(txt),
+         "Expected buffer to have one line with characters");
 }
 
-void run_buffer_tests() { run_test(test_move); }
+void run_buffer_tests() { run_test(test_add); }

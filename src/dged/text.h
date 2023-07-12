@@ -1,10 +1,13 @@
+#ifndef _TEXT_H
+#define _TEXT_H
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
-// opaque so it is easier to change representation to gap, rope etc.
-struct text;
+#include "location.h"
 
+struct text;
 struct render_command;
 
 struct text *text_create(uint32_t initial_capacity);
@@ -52,3 +55,32 @@ struct text_chunk text_get_region(struct text *text, uint32_t start_line,
                                   uint32_t end_col);
 
 bool text_line_contains_unicode(struct text *text, uint32_t line);
+
+enum text_property_type {
+  TextProperty_Colors,
+};
+
+struct text_property_colors {
+  bool set_fg;
+  uint32_t fg;
+  bool set_bg;
+  uint32_t bg;
+};
+
+struct text_property {
+  enum text_property_type type;
+  union {
+    struct text_property_colors colors;
+  };
+};
+
+void text_add_property(struct text *text, struct location start,
+                       struct location end, struct text_property property);
+
+void text_get_properties(struct text *text, struct location location,
+                         struct text_property **properties,
+                         uint32_t max_nproperties, uint32_t *nproperties);
+
+void text_clear_properties(struct text *text);
+
+#endif

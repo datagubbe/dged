@@ -8,6 +8,7 @@
 #include "display.h"
 #include "signal.h"
 #include "utf8.h"
+#include "vec.h"
 
 enum flags {
   LineChanged = 1 << 0,
@@ -20,11 +21,18 @@ struct line {
   uint32_t nchars;
 };
 
+struct text_property_entry {
+  struct location start;
+  struct location end;
+  struct text_property property;
+};
+
 struct text {
   // raw bytes without any null terminators
   struct line *lines;
   uint32_t nlines;
   uint32_t capacity;
+  VEC(struct text_property_entry) properties;
 };
 
 struct text *text_create(uint32_t initial_capacity) {
@@ -32,6 +40,8 @@ struct text *text_create(uint32_t initial_capacity) {
   txt->lines = calloc(initial_capacity, sizeof(struct line));
   txt->capacity = initial_capacity;
   txt->nlines = 0;
+
+  VEC_INIT(&txt->properties, 32);
 
   return txt;
 }
@@ -60,6 +70,7 @@ void text_clear(struct text *text) {
   }
 
   text->nlines = 0;
+  text_clear_properties(text);
 }
 
 // given `char_idx` as a character index, return the byte index
@@ -494,3 +505,32 @@ struct text_chunk text_get_region(struct text *text, uint32_t start_line,
 bool text_line_contains_unicode(struct text *text, uint32_t line) {
   return text->lines[line].nbytes != text->lines[line].nchars;
 }
+
+void text_add_property(struct text *text, struct location start,
+                       struct location end, struct text_property property) {
+  struct text_property_entry entry = {
+      .start = start,
+      .end = end,
+      .property = property,
+  };
+  VEC_PUSH(&text->properties, entry);
+}
+
+void text_get_properties(struct text *text, struct location location,
+                         struct text_property **properties,
+                         uint32_t max_nproperties, uint32_t *nproperties) {
+  uint32_t nres = 0;
+  VEC_FOR_EACH(&text->properties, struct text_property_entry * prop) {
+    if (location_is_between(location, prop->start, prop->end)) {
+      properties[nres] = &prop->property;
+      ++nres;
+
+      if (nres == max_nproperties) {
+        break;
+      }
+    }
+  }
+  *nproperties = nres;
+}
+
+void text_clear_properties(struct text *text) { VEC_CLEAR(&text->properties); }

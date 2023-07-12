@@ -5,6 +5,7 @@
 
 struct buffer;
 struct command_ctx;
+struct command_list;
 struct keymap;
 
 /**
@@ -63,6 +64,7 @@ int32_t minibuffer_prompt_interactive(struct command_ctx command_ctx,
                                       void *userdata, const char *fmt, ...);
 
 void minibuffer_set_prompt(const char *fmt, ...);
+uint32_t minibuffer_draw_prompt(struct command_list *commands);
 
 /**
  * Evaluate the current contents of the minibuffer
@@ -106,3 +108,5 @@ bool minibuffer_displaying();
  * @returns True if the minibuffer is currently focused, receiving user input.
  */
 bool minibuffer_focused();
+
+struct window *minibuffer_target_window();

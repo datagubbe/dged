@@ -4,6 +4,7 @@
 
 #include "dged/allocator.h"
 #include "dged/buffer.h"
+#include "dged/buffer_view.h"
 #include "dged/command.h"
 #include "dged/display.h"
 #include "dged/minibuffer.h"
@@ -32,11 +33,10 @@ void destroy() {
 }
 
 void test_minibuffer_echo() {
-  uint32_t relline, relcol;
   struct buffer_view view = buffer_view_create(&b, false, false);
 
   // TODO: how to clear this?
-  struct frame_allocator alloc = frame_allocator_create(1024);
+  struct frame_allocator alloc = frame_allocator_create(1024 * 1024);
   g_alloc = &alloc;
 
   struct command_list *list =
@@ -50,13 +50,23 @@ void test_minibuffer_echo() {
   ASSERT(minibuffer_displaying(), "Minibuffer should now have text to display");
 
   minibuffer_clear();
-  buffer_update(&view, -1, 100, 1, list, 0, &relline, &relcol);
+  struct buffer_view_update_params p = {
+      .commands = list,
+      .frame_alloc = alloc_fn,
+      .window_id = -1,
+      .frame_time = 0,
+      .width = 100,
+      .height = 1,
+      .window_x = 0,
+      .window_y = 25,
+  };
+  buffer_view_update(&view, &p);
   ASSERT(!minibuffer_displaying(),
          "Minibuffer should have nothing to display after clearing");
 
   minibuffer_echo_timeout(0, "You will not see me");
 
-  buffer_update(&view, -1, 100, 1, list, 0, &relline, &relcol);
+  buffer_view_update(&view, &p);
   ASSERT(!minibuffer_displaying(),
          "A zero timeout echo should be cleared after first update");
 

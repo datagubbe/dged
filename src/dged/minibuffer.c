@@ -17,17 +17,24 @@ static struct minibuffer {
   struct command_ctx prompt_command_ctx;
   bool prompt_active;
   bool clear;
+  struct window *prev_window;
 
   void (*update_callback)(void *);
   void *update_callback_userdata;
 
 } g_minibuffer = {0};
 
-void draw_prompt(struct command_list *commands, void *userdata) {
+uint32_t minibuffer_draw_prompt(struct command_list *commands) {
+  if (!g_minibuffer.prompt_active) {
+    return 0;
+  }
+
   uint32_t len = strlen(g_minibuffer.prompt);
   command_list_set_index_color_fg(commands, 4);
   command_list_draw_text(commands, 0, 0, (uint8_t *)g_minibuffer.prompt, len);
   command_list_reset_color(commands);
+
+  return len;
 }
 
 int32_t minibuffer_execute() {
@@ -69,30 +76,20 @@ int32_t minibuffer_execute() {
   }
 }
 
-struct update_hook_result update(struct buffer_view *view,
-                                 struct command_list *commands, uint32_t width,
-                                 uint32_t height, uint64_t frame_time,
-                                 void *userdata) {
+void update(struct buffer *buffer, uint32_t width, uint32_t height,
+            void *userdata) {
   struct timespec current;
   struct minibuffer *mb = (struct minibuffer *)userdata;
   clock_gettime(CLOCK_MONOTONIC, &current);
   if ((!mb->prompt_active && current.tv_sec >= mb->expires.tv_sec) ||
       mb->clear) {
-    buffer_clear(view);
+    buffer_clear(buffer);
     mb->clear = false;
-  }
-
-  struct update_hook_result res = {0};
-  if (mb->prompt_active) {
-    res.margins.left = strlen(mb->prompt);
-    draw_prompt(commands, NULL);
   }
 
   if (mb->update_callback != NULL) {
     mb->update_callback(mb->update_callback_userdata);
   }
-
-  return res;
 }
 
 void minibuffer_init(struct buffer *buffer) {
@@ -128,7 +125,7 @@ void minibuffer_destroy() {
 }
 
 struct text_chunk minibuffer_content() {
-  return buffer_get_line(g_minibuffer.buffer, 0);
+  return buffer_line(g_minibuffer.buffer, 0);
 }
 
 struct buffer *minibuffer_buffer() {
@@ -174,6 +171,11 @@ int32_t minibuffer_prompt_internal(struct command_ctx command_ctx,
     g_minibuffer.update_callback_userdata = userdata;
   }
 
+  if (windows_get_active() != minibuffer_window()) {
+    g_minibuffer.prev_window = windows_get_active();
+    windows_set_active(minibuffer_window());
+  }
+
   return 0;
 }
 
@@ -210,6 +212,10 @@ void minibuffer_abort_prompt() {
   minibuffer_clear();
   g_minibuffer.update_callback = NULL;
   g_minibuffer.prompt_active = false;
+
+  if (g_minibuffer.prev_window != NULL) {
+    windows_set_active(g_minibuffer.prev_window);
+  }
 }
 
 bool minibuffer_empty() { return !minibuffer_displaying(); }
@@ -224,3 +230,7 @@ void minibuffer_clear() {
 }
 
 bool minibuffer_focused() { return g_minibuffer.prompt_active; }
+
+struct window *minibuffer_target_window() {
+  return g_minibuffer.prev_window;
+}

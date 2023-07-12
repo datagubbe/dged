@@ -1,6 +1,7 @@
 #include "binding.h"
 #include "btree.h"
 #include "buffer.h"
+#include "buffer_view.h"
 #include "command.h"
 #include "display.h"
 #include "minibuffer.h"
@@ -30,7 +31,7 @@ BINTREE_ENTRY_TYPE(window_node, struct window);
 
 static struct windows {
   BINTREE(window_node) windows;
-  struct window_node *active;
+  struct window *active;
   struct keymap keymap;
 } g_windows;
 
@@ -61,7 +62,7 @@ void windows_init(uint32_t height, uint32_t width,
       .y = 0,
   };
   BINTREE_SET_ROOT(&g_windows.windows, root_window);
-  g_windows.active = BINTREE_ROOT(&g_windows.windows);
+  g_windows.active = &BINTREE_VALUE(BINTREE_ROOT(&g_windows.windows));
 }
 
 static void window_tree_clear_sub(struct window_node *root_node) {
@@ -156,17 +157,130 @@ void windows_resize(uint32_t height, uint32_t width) {
 void windows_update(void *(*frame_alloc)(size_t), uint64_t frame_time) {
 
   struct window *w = &g_minibuffer_window;
-  w->commands = command_list_create(w->height * w->width, frame_alloc, w->x,
-                                    w->y, w->buffer_view.buffer->name);
-  buffer_update(&w->buffer_view, -1, w->width, w->height, w->commands,
-                frame_time, &w->relline, &w->relcol);
+  w->x = 0;
+  w->commands = command_list_create(10, frame_alloc, w->x, w->y, "mb-prompt");
+
+  // draw the prompt here to make it off-limits for the buffer/buffer view
+  uint32_t prompt_len = minibuffer_draw_prompt(w->commands);
+  w->x += prompt_len;
+  uint32_t width = prompt_len < w->width ? w->width - prompt_len : 1;
+
+  struct command_list *inner_commands = command_list_create(
+      w->height * width, frame_alloc, w->x, w->y, "bufview-mb");
+
+  struct buffer_view_update_params p = {
+      .commands = inner_commands,
+      .window_id = -1,
+      .frame_time = frame_time,
+      .width = width,
+      .height = w->height,
+      .window_x = w->x,
+      .window_y = w->y,
+      .frame_alloc = frame_alloc,
+  };
+  buffer_view_update(&w->buffer_view, &p);
+  command_list_draw_command_list(w->commands, inner_commands);
 
   if (g_popup_visible) {
     w = &g_popup_window;
-    w->commands = command_list_create(w->height * w->width, frame_alloc, w->x,
-                                      w->y, w->buffer_view.buffer->name);
-    buffer_update(&w->buffer_view, -1, w->width, w->height, w->commands,
-                  frame_time, &w->relline, &w->relcol);
+
+    const uint32_t hpadding = 1;
+    const uint32_t border_width = 1;
+    const uint32_t shadow_width = 1;
+
+    bool draw_padding = false, draw_borders = false;
+
+    // first, make sure window fits
+    struct window *rw = root_window();
+    uint32_t w_x = w->x;
+    uint32_t w_y = w->y;
+    uint32_t width = w_x + w->width > rw->width ? rw->width - w_x : w->width;
+    uint32_t height =
+        w_y + w->height > rw->height ? rw->height - w_y : w->height;
+
+    // is there space for padding?
+    if (w_x > 1 && w_x + width + hpadding <= rw->width) {
+      draw_padding = true;
+
+      --w_x;
+      width += hpadding * 2;
+    }
+
+    // is there space for borders?
+    if (w_y > 1 && w_y + height <= rw->height && w_x > 1 &&
+        w_x + width + border_width <= rw->width) {
+      draw_borders = true;
+
+      w_x -= border_width;
+      // shift text upward
+      w_y -= border_width * 2;
+      height += border_width * 2;
+      width += border_width * 2;
+    }
+
+    w->commands = command_list_create(height * width, frame_alloc, w_x, w_y,
+                                      "popup-decor");
+    uint32_t x = 0, y = 0;
+    if (draw_borders) {
+      // top
+      command_list_draw_repeated(w->commands, x, y, 0x8c94e2, 1);
+      command_list_draw_repeated(w->commands, x + 1, y, 0x8094e2,
+                                 width - (border_width * 2));
+      command_list_draw_repeated(w->commands, x + width - 1, y, 0x9094e2, 1);
+
+      // sides
+      for (uint32_t line = y + 1; line < (height + y - border_width); ++line) {
+        command_list_draw_repeated(w->commands, x, line, 0x8294e2,
+                                   border_width);
+        command_list_draw_repeated(w->commands, x + width - border_width, line,
+                                   0x8294e2, border_width);
+      }
+
+      // bottom
+      command_list_draw_repeated(w->commands, x, y + height - border_width,
+                                 0x9494e2, 1);
+      command_list_draw_repeated(w->commands, x + 1, y + height - border_width,
+                                 0x8094e2, width - (border_width * 2));
+      command_list_draw_repeated(w->commands, x + width - 1,
+                                 y + height - border_width, 0x9894e2, 1);
+
+      x += border_width;
+      y += border_width;
+    }
+
+    if (draw_padding) {
+      for (uint32_t line = y; line < w->height + y; ++line) {
+        command_list_draw_repeated(w->commands, x, line, ' ', hpadding);
+        command_list_draw_repeated(w->commands, w->width + x + 1, line, ' ',
+                                   hpadding);
+      }
+      x += border_width;
+    }
+
+    // shadow
+    /*command_list_set_index_color_bg(w->commands, 236);
+    command_list_draw_repeated(w->commands, 1, w->height + vmargins, ' ',
+    w->width + margins * 2); for (uint32_t line = 1; line < w->height; ++line) {
+      command_list_draw_repeated(w->commands, w->width + margins * 2, line, ' ',
+    shadow_width);
+    }*/
+
+    struct command_list *inner = command_list_create(
+        w->height * w->width, frame_alloc, w_x + x, w_y + y, "bufview-popup");
+
+    struct buffer_view_update_params p = {
+        .commands = inner,
+        .window_id = -1,
+        .frame_time = frame_time,
+        .width = w->width,
+        .height = w->height,
+        .window_x = w_x + x,
+        .window_y = w_y + y,
+        .frame_alloc = frame_alloc,
+    };
+
+    buffer_view_update(&w->buffer_view, &p);
+    command_list_draw_command_list(w->commands, inner);
   }
 
   struct window_node *n = BINTREE_ROOT(&g_windows.windows);
@@ -175,34 +289,27 @@ void windows_update(void *(*frame_alloc)(size_t), uint64_t frame_time) {
   while (n != NULL) {
     struct window *w = &BINTREE_VALUE(n);
     if (w->type == Window_Buffer) {
+      char name[16];
+      snprintf(name, 16, "bufview-%s", w->buffer_view.buffer->name);
       w->commands = command_list_create(w->height * w->width, frame_alloc, w->x,
-                                        w->y, w->buffer_view.buffer->name);
+                                        w->y, name);
 
-      buffer_update(&w->buffer_view, window_id, w->width, w->height,
-                    w->commands, frame_time, &w->relline, &w->relcol);
+      struct buffer_view_update_params p = {
+          .commands = w->commands,
+          .window_id = window_id,
+          .frame_time = frame_time,
+          .width = w->width,
+          .height = w->height,
+          .window_x = w->x,
+          .window_y = w->y,
+          .frame_alloc = frame_alloc,
+      };
 
+      buffer_view_update(&w->buffer_view, &p);
       ++window_id;
     }
 
     BINTREE_NEXT(n);
-  }
-
-  // clear text props for next frame
-  n = BINTREE_ROOT(&g_windows.windows);
-  BINTREE_FIRST(n);
-
-  while (n != NULL) {
-    struct window *w = &BINTREE_VALUE(n);
-    if (w->type == Window_Buffer) {
-      buffer_clear_text_properties(w->buffer_view.buffer);
-    }
-
-    BINTREE_NEXT(n);
-  }
-
-  buffer_clear_text_properties(g_minibuffer_window.buffer_view.buffer);
-  if (g_popup_visible) {
-    buffer_clear_text_properties(g_popup_window.buffer_view.buffer);
   }
 }
 
@@ -238,13 +345,22 @@ struct window_node *find_window(struct window *window) {
 }
 
 void windows_set_active(struct window *window) {
+  if (window == minibuffer_window()) {
+    g_windows.active = minibuffer_window();
+    return;
+  }
+
   struct window_node *n = find_window(window);
   if (n != NULL) {
-    g_windows.active = n;
+    g_windows.active = &BINTREE_VALUE(n);
   }
 }
 
 struct window *window_find_by_buffer(struct buffer *b) {
+  if (b == window_buffer(minibuffer_window())) {
+    return minibuffer_window();
+  }
+
   struct window_node *n = BINTREE_ROOT(&g_windows.windows);
   BINTREE_FIRST(n);
   while (n != NULL) {
@@ -259,7 +375,7 @@ struct window *window_find_by_buffer(struct buffer *b) {
 }
 
 struct window *windows_get_active() {
-  return &BINTREE_VALUE(g_windows.active);
+  return g_windows.active;
 }
 
 void window_set_buffer(struct window *window, struct buffer *buffer) {
@@ -289,19 +405,6 @@ struct buffer *window_prev_buffer(struct window *window) {
 
 bool window_has_prev_buffer(struct window *window) {
   return window->prev_buffer != NULL;
-}
-
-struct buffer_location window_cursor_location(struct window *window) {
-  return (struct buffer_location){
-      .col = window->relcol,
-      .line = window->relline,
-  };
-}
-struct buffer_location window_absolute_cursor_location(struct window *window) {
-  return (struct buffer_location){
-      .col = window->x + window->relcol,
-      .line = window->y + window->relline,
-  };
 }
 
 void window_close(struct window *window) {
@@ -397,8 +500,9 @@ void window_hsplit(struct window *window, struct window **new_window_a,
       new_window.type = Window_Buffer;
       new_window.buffer_view =
           buffer_view_create(w.buffer_view.buffer, true, true);
-      buffer_goto(&new_window.buffer_view, w.buffer_view.dot.line,
-                  w.buffer_view.dot.col);
+      buffer_view_goto(&new_window.buffer_view,
+                       (struct location){.line = w.buffer_view.dot.line,
+                                         .col = w.buffer_view.dot.col});
       new_window.prev_buffer = w.prev_buffer;
       new_window.x = w.x;
       new_window.y = w.y + w.height;
@@ -439,8 +543,10 @@ void window_vsplit(struct window *window, struct window **new_window_a,
       new_window.type = Window_Buffer;
       new_window.buffer_view =
           buffer_view_create(w.buffer_view.buffer, true, true);
-      buffer_goto(&new_window.buffer_view, w.buffer_view.dot.line,
-                  w.buffer_view.dot.col);
+      buffer_view_goto(&new_window.buffer_view,
+                       (struct location){.line = w.buffer_view.dot.line,
+                                         .col = w.buffer_view.dot.col});
+
       new_window.prev_buffer = w.prev_buffer;
       new_window.x = w.x + w.width;
       new_window.y = w.y;
@@ -507,9 +613,13 @@ struct window *windows_focus(uint32_t id) {
   return NULL;
 }
 
-uint32_t window_width(struct window *window) { return window->width; }
+uint32_t window_width(const struct window *window) { return window->width; }
 
-uint32_t window_height(struct window *window) { return window->height; }
+uint32_t window_height(const struct window *window) { return window->height; }
+
+struct window_position window_position(const struct window *window) {
+  return (struct window_position){.x = window->x, .y = window->y};
+}
 
 void windows_show_popup(uint32_t row, uint32_t col, uint32_t width,
                         uint32_t height) {

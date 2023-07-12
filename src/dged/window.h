@@ -1,3 +1,6 @@
+#ifndef _WINDOW_H
+#define _WINDOW_H
+
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -11,6 +14,11 @@ struct buffer;
 
 struct window;
 struct windows;
+
+struct window_position {
+  uint32_t x;
+  uint32_t y;
+};
 
 void windows_init(uint32_t height, uint32_t width,
                   struct buffer *initial_buffer, struct buffer *minibuffer);
@@ -38,10 +46,9 @@ struct buffer *window_buffer(struct window *window);
 struct buffer_view *window_buffer_view(struct window *window);
 struct buffer *window_prev_buffer(struct window *window);
 bool window_has_prev_buffer(struct window *window);
-struct buffer_location window_cursor_location(struct window *window);
-struct buffer_location window_absolute_cursor_location(struct window *window);
-uint32_t window_width(struct window *window);
-uint32_t window_height(struct window *window);
+uint32_t window_width(const struct window *window);
+uint32_t window_height(const struct window *window);
+struct window_position window_position(const struct window *window);
 
 void window_close(struct window *window);
 void window_close_others(struct window *window);
@@ -55,3 +62,5 @@ void window_vsplit(struct window *window, struct window **new_window_a,
 void windows_show_popup(uint32_t row, uint32_t col, uint32_t width,
                         uint32_t height);
 void windows_close_popup();
+
+#endif

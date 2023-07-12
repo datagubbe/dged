@@ -11,6 +11,7 @@
 #include "dged/allocator.h"
 #include "dged/binding.h"
 #include "dged/buffer.h"
+#include "dged/buffer_view.h"
 #include "dged/buffers.h"
 #include "dged/display.h"
 #include "dged/lang.h"
@@ -127,7 +128,7 @@ int main(int argc, char *argv[]) {
                                      {"help", no_argument, NULL, 'h'},
                                      {NULL, 0, NULL, 0}};
 
-  char *filename = NULL;
+  const char *filename = NULL;
   uint32_t jumpline = 1;
   bool goto_end = false;
   char ch;
@@ -239,9 +240,13 @@ int main(int argc, char *argv[]) {
                &minibuffer);
   struct window *active = windows_get_active();
   if (goto_end) {
-    buffer_goto_end(window_buffer_view(active));
+    buffer_view_goto_end(window_buffer_view(active));
   } else {
-    buffer_goto(window_buffer_view(active), jumpline > 0 ? jumpline - 1 : 0, 0);
+    struct location to = {
+        .line = jumpline > 0 ? jumpline - 1 : 0,
+        .col = 0,
+    };
+    buffer_view_goto(window_buffer_view(active), to);
   }
 
   DECLARE_TIMER(buffer);
@@ -253,7 +258,6 @@ int main(int argc, char *argv[]) {
   static uint32_t nkeychars = 0;
 
   while (running) {
-
     if (display_resized) {
       windows_resize(display_height(display), display_width(display));
       display_resized = false;
@@ -265,9 +269,6 @@ int main(int argc, char *argv[]) {
     TIMED_SCOPE_END(buffer);
 
     struct window *active_window = windows_get_active();
-    if (minibuffer_focused()) {
-      active_window = minibuffer_window();
-    }
 
     /* Update the screen by flushing command lists collected from updating the
      * buffers.
@@ -275,14 +276,15 @@ int main(int argc, char *argv[]) {
     TIMED_SCOPE_BEGIN(display);
     display_begin_render(display);
     windows_render(display);
-    struct buffer_location cursor =
-        window_absolute_cursor_location(active_window);
-    display_move_cursor(display, cursor.line, cursor.col);
+    struct buffer_view *view = window_buffer_view(active_window);
+    struct location cursor = buffer_view_dot_to_relative(view);
+    struct window_position winpos = window_position(active_window);
+    display_move_cursor(display, winpos.y + cursor.line, winpos.x + cursor.col);
     display_end_render(display);
     TIMED_SCOPE_END(display);
 
     /* This blocks for events, so if nothing has happened we block here and let
-     * the CPU do something more useful than updating this narcissistic editor.
+     * the CPU do something more useful than updating this editor for no reason.
      * This is also the reason that there is no timed scope around this, it
      * simply makes no sense.
      */
@@ -343,7 +345,7 @@ int main(int argc, char *argv[]) {
         }
         }
       } else if (k->mod == 0) {
-        buffer_add_text(window_buffer_view(active_window),
+        buffer_view_add(window_buffer_view(active_window),
                         &kbd_upd.raw[k->start], k->end - k->start);
       } else {
         char keyname[16];

@@ -205,8 +205,11 @@ void command_list_draw_text_copy(struct command_list *list, uint32_t col,
  * @param list Command list to record draw command in.
  * @param col Column to start text at.
  * @param row Row to start text at.
- * @param c Byte to repeat.
+ * @param c Character to repeat.
  * @param nrepeat Number of times to repeat byte.
  */
 void command_list_draw_repeated(struct command_list *list, uint32_t col,
-                                uint32_t row, uint8_t c, uint32_t nrepeat);
+                                uint32_t row, int32_t c, uint32_t nrepeat);
+
+void command_list_draw_command_list(struct command_list *list,
+                                    struct command_list *to_draw);
