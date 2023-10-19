@@ -33,7 +33,13 @@ uint64_t matchdist(struct region *match, struct location loc) {
   struct location begin = match->begin;
 
   int64_t linedist = (int64_t)begin.line - (int64_t)loc.line;
-  int64_t coldist = (int64_t)begin.col - (int64_t)loc.col;
+
+  // if the match is on a different line, score it by how far
+  // into the line it is, otherwise check the distance from location
+  int64_t coldist = begin.col;
+  if (linedist == 0) {
+    int64_t coldist = (int64_t)begin.col - (int64_t)loc.col;
+  }
 
   // arbitrary row scaling, best effort to avoid counting line length
   return (linedist * linedist) * 1e6 + coldist * coldist;
@@ -323,6 +329,7 @@ COMMAND_FN("search-backward", search_backward, search_interactive,
 int32_t find(struct command_ctx ctx, int argc, const char *argv[]) {
   bool reverse = *(bool *)ctx.userdata;
   if (argc == 0) {
+    g_last_search_interactive = false;
     struct binding bindings[] = {
         ANONYMOUS_BINDING(Ctrl, 'S', &search_forward_command),
         ANONYMOUS_BINDING(Ctrl, 'R', &search_backward_command),

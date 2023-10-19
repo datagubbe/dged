@@ -186,7 +186,6 @@ void windows_update(void *(*frame_alloc)(size_t), uint64_t frame_time) {
 
     const uint32_t hpadding = 1;
     const uint32_t border_width = 1;
-    const uint32_t shadow_width = 1;
 
     bool draw_padding = false, draw_borders = false;
 
@@ -256,14 +255,6 @@ void windows_update(void *(*frame_alloc)(size_t), uint64_t frame_time) {
       }
       x += border_width;
     }
-
-    // shadow
-    /*command_list_set_index_color_bg(w->commands, 236);
-    command_list_draw_repeated(w->commands, 1, w->height + vmargins, ' ',
-    w->width + margins * 2); for (uint32_t line = 1; line < w->height; ++line) {
-      command_list_draw_repeated(w->commands, w->width + margins * 2, line, ' ',
-    shadow_width);
-    }*/
 
     struct command_list *inner = command_list_create(
         w->height * w->width, frame_alloc, w_x + x, w_y + y, "bufview-popup");
