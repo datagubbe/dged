@@ -275,9 +275,8 @@ void do_search(struct buffer_view *view, const char *pattern, bool reverse) {
 
   // find the "nearest" match
   if (m.found) {
-    buffer_view_goto(view,
-                     (struct location){.line = m.closest.begin.line,
-                                       .col = m.closest.begin.col});
+    buffer_view_goto(view, (struct location){.line = m.closest.begin.line,
+                                             .col = m.closest.begin.col});
   } else {
     minibuffer_echo_timeout(4, "%s not found", pattern);
   }
@@ -291,7 +290,8 @@ int32_t search_interactive(struct command_ctx ctx, int argc,
     // recall the last search, if any
     if (g_last_search != NULL) {
       struct buffer_view *view = window_buffer_view(minibuffer_window());
-      buffer_set_text(view->buffer, (uint8_t *)g_last_search, strlen(g_last_search));
+      buffer_set_text(view->buffer, (uint8_t *)g_last_search,
+                      strlen(g_last_search));
       pattern = g_last_search;
     }
   } else {
@@ -302,7 +302,7 @@ int32_t search_interactive(struct command_ctx ctx, int argc,
     pattern = p;
   }
 
-  minibuffer_set_prompt(search_prompt(*(bool*)ctx.userdata));
+  minibuffer_set_prompt(search_prompt(*(bool *)ctx.userdata));
 
   if (pattern != NULL) {
     do_search(window_buffer_view(minibuffer_target_window()), pattern,

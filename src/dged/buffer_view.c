@@ -348,6 +348,11 @@ void buffer_view_update(struct buffer_view *view,
   uint32_t height = params->height;
   uint32_t width = params->width;
 
+  /* Make sure the dot is always inside buffer limits.
+   * It can be outside for example if the text is changed elsewhere. */
+  view->dot = buffer_clamp(view->buffer, (int64_t)view->dot.line,
+                           (int64_t)view->dot.col);
+
   // render modeline
   uint32_t modeline_height = 0;
   if (view->modeline != NULL) {
@@ -358,6 +363,16 @@ void buffer_view_update(struct buffer_view *view,
 
   height -= modeline_height;
 
+  // update scroll position if needed
+  if (view->dot.line >= view->scroll.line + height ||
+      view->dot.line < view->scroll.line) {
+    // put dot in the middle, height-wise
+    view->scroll.line =
+        buffer_clamp(view->buffer, (int64_t)view->dot.line - params->height / 2,
+                     0)
+            .line;
+  }
+
   // render line numbers
   uint32_t linum_width = 0;
   if (view->line_numbers) {
@@ -367,20 +382,10 @@ void buffer_view_update(struct buffer_view *view,
   width -= linum_width;
   view->fringe_width = linum_width;
 
-  /* Make sure the dot is always inside buffer limits.
-   * It can be outside for example if the text is changed elsewhere. */
-  view->dot = buffer_clamp(view->buffer, (int64_t)view->dot.line,
-                           (int64_t)view->dot.col);
-
-  // update scroll position if needed
-  if (view->dot.line >= view->scroll.line + height || view->dot.line < view->scroll.line) {
-    // put dot in the middle, height-wise
-    view->scroll.line = buffer_clamp(view->buffer, (int64_t)view->dot.line - params->height / 2,
-                     0).line;
-  }
-
-  if (view->dot.col >= view->scroll.col + width || view->dot.col < view->scroll.col) {
-    view->scroll.col = buffer_clamp(view->buffer, view->dot.line, view->dot.col).col;
+  if (view->dot.col >= view->scroll.col + width ||
+      view->dot.col < view->scroll.col) {
+    view->scroll.col =
+        buffer_clamp(view->buffer, view->dot.line, view->dot.col).col;
   }
 
   // color region
@@ -411,6 +416,15 @@ void buffer_view_update(struct buffer_view *view,
       .height = height,
   };
   buffer_update(view->buffer, &bufparams);
+
+  /* Make sure the dot is always inside buffer limits.
+   * Updating the buffer above could have removed text.
+   * TODO: this is not really correct, since it may have caused
+   * changes that would need a re-eval of scroll and redraw.
+   * Hooks should prob not get width and height and be ran before rendering.
+   */
+  view->dot = buffer_clamp(view->buffer, (int64_t)view->dot.line,
+                           (int64_t)view->dot.col);
 
   // draw buffer commands nested inside this command list
   command_list_draw_command_list(params->commands, buf_cmds);

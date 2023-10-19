@@ -753,9 +753,10 @@ void render_line(struct text_chunk *line, void *userdata) {
 
     // calculate character properties
     uint32_t nproperties = 0;
-    text_get_properties(cmdbuf->buffer->text,
-                        (struct location){.line = line->line, .col = coli + cmdbuf->origin.col},
-                        properties, 16, &nproperties);
+    text_get_properties(
+        cmdbuf->buffer->text,
+        (struct location){.line = line->line, .col = coli + cmdbuf->origin.col},
+        properties, 16, &nproperties);
 
     // handle changes to properties
     uint32_t nnew_props = 0;
