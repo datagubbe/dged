@@ -580,9 +580,17 @@ static int32_t goto_line(struct command_ctx ctx, int argc, const char *argv[]) {
     return minibuffer_prompt(ctx, "line: ");
   }
 
-  uint32_t line = atoi(argv[0]);
-  buffer_view_goto(window_buffer_view(ctx.active_window),
-                   (struct location){.line = line, .col = 0});
+  struct buffer_view *v = window_buffer_view(ctx.active_window);
+
+  int32_t line = atoi(argv[0]);
+  if (line < 0) {
+    uint32_t nlines = buffer_num_lines(v->buffer);
+    line = -line;
+    line = line >= nlines ? 0 : nlines - line;
+  } else if (line > 0) {
+    line = line - 1;
+  }
+  buffer_view_goto(v, (struct location){.line = line, .col = 0});
 }
 
 void register_buffer_commands(struct commands *commands) {
