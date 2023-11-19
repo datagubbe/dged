@@ -36,7 +36,7 @@ CFLAGS += -Werror -g -std=c99 -I $(.CURDIR)/src -I $(.CURDIR)/src/main
 UNAME_S != uname -s | tr '[:upper:]' '[:lower:]'
 .sinclude "$(UNAME_S).mk"
 
-DEPS = $(DGED_SOURCES:.c=.d) $(TEST_SOURCES:.c=.d)
+DEPS = $(SOURCES:.c=.d) $(MAIN_SOURCES:.c=.d) $(TEST_SOURCES:.c=.d)
 
 OBJS = $(SOURCES:.c=.o)
 PLATFORM_OBJS = $(PLATFORM_SOURCES:.c=.o)
