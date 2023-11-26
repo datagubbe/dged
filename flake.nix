@@ -11,6 +11,7 @@
       in
       {
         packages.default = pkgs.callPackage ./dged.nix { };
+        packages.clang = pkgs.callPackage ./dged.nix { stdenv = pkgs.clangStdenv; };
       }
     );
 }

@@ -115,6 +115,7 @@ bool parser_next_token(struct parser *state, struct token *token_out) {
   memset(token_out, 0, sizeof(struct token));
 
   while (state->reader.getbytes(1, &byte, state->reader.userdata) > 0) {
+    bool multiline = false;
     switch (classify(byte)) {
     case Byte_Alphanumeric: // unquoted key / value
       if (!parse_value) {
@@ -223,7 +224,7 @@ bool parser_next_token(struct parser *state, struct token *token_out) {
         return true;
 
       case '"': // quoted key or string value
-        bool multiline = false;
+        multiline = false;
         if (parse_value) {
           token_out->type = Token_StringValue;
         } else {

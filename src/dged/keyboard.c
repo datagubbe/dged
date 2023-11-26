@@ -163,4 +163,6 @@ uint32_t key_name(struct key *key, char *buf, size_t capacity) {
   }
 
   snprintf(buf, capacity, "%s%c", mod, tolower(key->key));
+
+  return 0;
 }

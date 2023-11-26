@@ -59,10 +59,6 @@ void minibuffer_echo_timeout(uint32_t timeout, const char *fmt, ...);
  */
 int32_t minibuffer_prompt(struct command_ctx command_ctx, const char *fmt, ...);
 
-int32_t minibuffer_prompt_interactive(struct command_ctx command_ctx,
-                                      void (*update_callback)(void *),
-                                      void *userdata, const char *fmt, ...);
-
 void minibuffer_set_prompt(const char *fmt, ...);
 uint32_t minibuffer_draw_prompt(struct command_list *commands);
 

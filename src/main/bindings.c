@@ -3,16 +3,19 @@
 #include "dged/minibuffer.h"
 #include "dged/vec.h"
 
+#include "bindings.h"
+
 static struct keymap g_global_keymap, g_ctrlx_map, g_windows_keymap,
     g_buffer_default_keymap;
 
 struct buffer_keymap {
+  buffer_keymap_id id;
   struct buffer *buffer;
-  bool active;
   struct keymap keymap;
 };
 
 static VEC(struct buffer_keymap) g_buffer_keymaps;
+static buffer_keymap_id g_current_keymap_id;
 
 void set_default_buffer_bindings(struct keymap *keymap) {
   struct binding buffer_bindings[] = {
@@ -46,6 +49,7 @@ void set_default_buffer_bindings(struct keymap *keymap) {
 
       BINDING(ENTER, "newline"),
       BINDING(TAB, "indent"),
+      BINDING(Spec, 'Z', "insert-tab"),
 
       BINDING(Ctrl, 'K', "kill-line"),
       BINDING(DELETE, "delete-char"),
@@ -68,7 +72,18 @@ void set_default_buffer_bindings(struct keymap *keymap) {
                    sizeof(buffer_bindings) / sizeof(buffer_bindings[0]));
 }
 
-struct keymap *register_bindings() {
+int32_t execute(struct command_ctx ctx, int argc, const char *argv[]) {
+  // TODO: this should be more lib-like
+  return minibuffer_execute();
+}
+
+static struct command execute_minibuffer_command = {
+    .fn = execute,
+    .name = "minibuffer-execute",
+    .userdata = NULL,
+};
+
+void init_bindings() {
   g_global_keymap = keymap_create("global", 32);
   g_ctrlx_map = keymap_create("c-x", 32);
   g_windows_keymap = keymap_create("c-x w", 32);
@@ -122,93 +137,79 @@ struct keymap *register_bindings() {
                    sizeof(ctrlx_bindings) / sizeof(ctrlx_bindings[0]));
 
   VEC_INIT(&g_buffer_keymaps, 32);
+  g_current_keymap_id = 0;
 
-  return &g_global_keymap;
-}
-
-struct keymap *buffer_default_bindings() {
-  return &g_buffer_default_keymap;
-}
-
-int32_t execute(struct command_ctx ctx, int argc, const char *argv[]) {
-  // TODO: this should be more lib-like
-  return minibuffer_execute();
-}
-
-static struct command execute_minibuffer_command = {
-    .fn = execute,
-    .name = "minibuffer-execute",
-    .userdata = NULL,
-};
-
-void buffer_bind_keys(struct buffer *buffer, struct binding *bindings,
-                      uint32_t nbindings) {
-  struct buffer_keymap *target = NULL;
-  VEC_FOR_EACH(&g_buffer_keymaps, struct buffer_keymap * km) {
-    if (buffer == km->buffer) {
-      target = km;
-    }
-  }
-
-  if (target == NULL) {
-    struct buffer_keymap new = (struct buffer_keymap){
-        .buffer = buffer,
-        .active = false,
-    };
-    VEC_PUSH(&g_buffer_keymaps, new);
-    target = VEC_BACK(&g_buffer_keymaps);
-  }
-
-  if (!target->active) {
-    target->keymap = keymap_create("buffer-overlay-keys", 32);
-    target->active = true;
-    set_default_buffer_bindings(&target->keymap);
-  }
-
-  keymap_bind_keys(&target->keymap, bindings, nbindings);
-}
-
-// TODO: do something better
-void reset_buffer_keys(struct buffer *buffer) {
-  VEC_FOR_EACH(&g_buffer_keymaps, struct buffer_keymap * km) {
-    if (buffer == km->buffer) {
-      keymap_destroy(&km->keymap);
-      km->active = false;
-    }
-  }
-}
-
-struct keymap *buffer_keymap(struct buffer *buffer) {
-  VEC_FOR_EACH(&g_buffer_keymaps, struct buffer_keymap * km) {
-    if (buffer == km->buffer && km->active) {
-      return &km->keymap;
-    }
-  }
-
-  return &g_buffer_default_keymap;
-}
-
-void reset_minibuffer_keys(struct buffer *minibuffer) {
-  reset_buffer_keys(minibuffer);
-  struct binding bindings[] = {
+  /* Minibuffer binds.
+   * This map is actually never removed so forget about the id.
+   */
+  struct binding minibuffer_binds[] = {
       ANONYMOUS_BINDING(ENTER, &execute_minibuffer_command),
   };
-
-  buffer_bind_keys(minibuffer, bindings,
-                   sizeof(bindings) / sizeof(bindings[0]));
+  struct keymap minibuffer_map = keymap_create("minibuffer", 8);
+  keymap_bind_keys(&minibuffer_map, minibuffer_binds,
+                   sizeof(minibuffer_binds) / sizeof(minibuffer_binds[0]));
+  buffer_add_keymap(minibuffer_buffer(), minibuffer_map);
 }
 
-void destroy_keymaps() {
+buffer_keymap_id buffer_add_keymap(struct buffer *buffer,
+                                   struct keymap keymap) {
+  buffer_keymap_id id = ++g_current_keymap_id;
+  VEC_PUSH(&g_buffer_keymaps, ((struct buffer_keymap){
+                                  .id = id,
+                                  .buffer = buffer,
+                                  .keymap = keymap,
+                              }));
+
+  return id;
+}
+
+void buffer_remove_keymap(buffer_keymap_id id) {
+  VEC_FOR_EACH_INDEXED(&g_buffer_keymaps, struct buffer_keymap * km, i) {
+    if (km->id == id) {
+      VEC_SWAP(&g_buffer_keymaps, i, VEC_SIZE(&g_buffer_keymaps) - 1);
+      VEC_POP(&g_buffer_keymaps, struct buffer_keymap removed);
+      keymap_destroy(&removed.keymap);
+    }
+  }
+}
+
+uint32_t buffer_keymaps(struct buffer *buffer, struct keymap *keymaps[],
+                        uint32_t max_nkeymaps) {
+  uint32_t nkeymaps = 0;
+
+  // global keybinds
+  if (nkeymaps < max_nkeymaps) {
+    keymaps[nkeymaps] = &g_global_keymap;
+    ++nkeymaps;
+  }
+
+  // buffer keybinds
+  if (nkeymaps < max_nkeymaps) {
+    keymaps[nkeymaps] = &g_buffer_default_keymap;
+    ++nkeymaps;
+  }
+
+  // keybinds specific to this buffer
+  if (nkeymaps < max_nkeymaps) {
+    VEC_FOR_EACH(&g_buffer_keymaps, struct buffer_keymap * km) {
+      if (buffer == km->buffer && nkeymaps < max_nkeymaps) {
+        keymaps[nkeymaps] = &km->keymap;
+        ++nkeymaps;
+      }
+    }
+  }
+
+  return nkeymaps;
+}
+
+void destroy_bindings() {
   keymap_destroy(&g_windows_keymap);
   keymap_destroy(&g_global_keymap);
   keymap_destroy(&g_ctrlx_map);
   keymap_destroy(&g_buffer_default_keymap);
 
   VEC_FOR_EACH(&g_buffer_keymaps, struct buffer_keymap * km) {
-    if (km->active) {
-      keymap_destroy(&km->keymap);
-      km->active = false;
-    }
+    keymap_destroy(&km->keymap);
   }
 
   VEC_DESTROY(&g_buffer_keymaps);

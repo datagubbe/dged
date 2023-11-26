@@ -116,6 +116,9 @@ static int32_t parse_toml(struct parser *state, char **errmsgs[]) {
   VEC_INIT(&errs, 16);
 
   struct token t = {0};
+  int64_t i = 0;
+  bool b = false;
+  char *v = NULL, *err = NULL;
   while (parser_next_token(state, &t)) {
     switch (t.type) {
     case Token_Table:
@@ -145,26 +148,26 @@ static int32_t parse_toml(struct parser *state, char **errmsgs[]) {
       curkey = calloc(len, 1);
       if (curtbl != NULL) {
         strcpy(curkey, curtbl);
-        strncat(curkey, ".", 1);
+        curkey[strlen(curtbl)] = '.';
       }
 
       strncat(curkey, (char *)t.data, t.len);
       break;
 
     case Token_IntValue:
-      int64_t i = *((int64_t *)t.data);
+      i = *((int64_t *)t.data);
       settings_upsert(curkey, (struct setting_value){.type = Setting_Number,
                                                      .number_value = i});
       break;
 
     case Token_BoolValue:
-      bool b = *((bool *)t.data);
+      b = *((bool *)t.data);
       settings_upsert(curkey, (struct setting_value){.type = Setting_Bool,
                                                      .bool_value = b});
       break;
 
     case Token_StringValue:
-      char *v = calloc(t.len + 1, 1);
+      v = calloc(t.len + 1, 1);
       strncpy(v, (char *)t.data, t.len);
       settings_upsert(curkey, (struct setting_value){.type = Setting_String,
                                                      .string_value = v});
@@ -172,10 +175,13 @@ static int32_t parse_toml(struct parser *state, char **errmsgs[]) {
       break;
 
     case Token_Error:
-      char *err = malloc(t.len + 128);
+      err = malloc(t.len + 128);
       snprintf(err, t.len + 128, "error (%d:%d): %.*s\n", t.row, t.col, t.len,
                (char *)t.data);
       VEC_PUSH(&errs, err);
+      break;
+
+    case Token_Comment:
       break;
     }
   }

@@ -80,6 +80,7 @@ void buffer_view_clear_mark(struct buffer_view *view);
 void buffer_view_set_mark_at(struct buffer_view *view, struct location mark);
 
 struct location buffer_view_dot_to_relative(struct buffer_view *view);
+struct location buffer_view_dot_to_visual(struct buffer_view *view);
 
 void buffer_view_undo(struct buffer_view *view);
 

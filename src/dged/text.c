@@ -47,6 +47,8 @@ struct text *text_create(uint32_t initial_capacity) {
 }
 
 void text_destroy(struct text *text) {
+  VEC_DESTROY(&text->properties);
+
   for (uint32_t li = 0; li < text->nlines; ++li) {
     free(text->lines[li].data);
     text->lines[li].data = NULL;

@@ -23,12 +23,14 @@ void init() {
   }
 
   minibuffer_init(&b);
+  windows_init(100, 100, &b, &b);
 }
 
 void destroy() {
   if (b.name != NULL) {
     buffer_destroy(&b);
     settings_destroy();
+    windows_destroy();
   }
 }
 

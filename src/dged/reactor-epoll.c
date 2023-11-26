@@ -109,7 +109,7 @@ bool reactor_next_file_event(struct reactor *reactor, struct file_event *out) {
     struct inotify_event *ev = (struct inotify_event *)buf;
     // TODO: change when adding more of these
     out->mask = FileWritten;
-    if (ev->mask & IN_IGNORED != 0) {
+    if ((ev->mask & IN_IGNORED) != 0) {
       out->mask |= LastEvent;
     }
     out->id = (uint32_t)ev->wd;

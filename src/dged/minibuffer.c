@@ -1,6 +1,7 @@
 #include "minibuffer.h"
 #include "binding.h"
 #include "buffer.h"
+#include "buffer_view.h"
 #include "command.h"
 #include "display.h"
 
@@ -18,9 +19,6 @@ static struct minibuffer {
   bool prompt_active;
   bool clear;
   struct window *prev_window;
-
-  void (*update_callback)(void *);
-  void *update_callback_userdata;
 
 } g_minibuffer = {0};
 
@@ -76,8 +74,7 @@ int32_t minibuffer_execute() {
   }
 }
 
-void update(struct buffer *buffer, uint32_t width, uint32_t height,
-            void *userdata) {
+void update(struct buffer *buffer, void *userdata) {
   struct timespec current;
   struct minibuffer *mb = (struct minibuffer *)userdata;
   clock_gettime(CLOCK_MONOTONIC, &current);
@@ -85,10 +82,6 @@ void update(struct buffer *buffer, uint32_t width, uint32_t height,
       mb->clear) {
     buffer_clear(buffer);
     mb->clear = false;
-  }
-
-  if (mb->update_callback != NULL) {
-    mb->update_callback(mb->update_callback_userdata);
   }
 }
 
@@ -150,13 +143,14 @@ void minibuffer_set_prompt_internal(const char *fmt, va_list args) {
   vsnprintf(g_minibuffer.prompt, sizeof(g_minibuffer.prompt), fmt, args);
 }
 
-int32_t minibuffer_prompt_internal(struct command_ctx command_ctx,
-                                   void (*update_callback)(void *),
-                                   void *userdata, const char *fmt,
-                                   va_list args) {
+int32_t minibuffer_prompt(struct command_ctx command_ctx, const char *fmt,
+                          ...) {
   if (g_minibuffer.buffer == NULL) {
     return 1;
   }
+
+  va_list args;
+  va_start(args, fmt);
 
   minibuffer_clear();
   g_minibuffer.prompt_active = true;
@@ -166,39 +160,13 @@ int32_t minibuffer_prompt_internal(struct command_ctx command_ctx,
 
   minibuffer_set_prompt_internal(fmt, args);
 
-  if (update_callback != NULL) {
-    g_minibuffer.update_callback = update_callback;
-    g_minibuffer.update_callback_userdata = userdata;
-  }
-
   if (windows_get_active() != minibuffer_window()) {
     g_minibuffer.prev_window = windows_get_active();
     windows_set_active(minibuffer_window());
   }
+  va_end(args);
 
   return 0;
-}
-
-int32_t minibuffer_prompt(struct command_ctx command_ctx, const char *fmt,
-                          ...) {
-  va_list args;
-  va_start(args, fmt);
-  int32_t r = minibuffer_prompt_internal(command_ctx, NULL, NULL, fmt, args);
-  va_end(args);
-
-  return r;
-}
-
-int32_t minibuffer_prompt_interactive(struct command_ctx command_ctx,
-                                      void (*update_callback)(void *),
-                                      void *userdata, const char *fmt, ...) {
-  va_list args;
-  va_start(args, fmt);
-  int32_t r = minibuffer_prompt_internal(command_ctx, update_callback, userdata,
-                                         fmt, args);
-  va_end(args);
-
-  return r;
 }
 
 void minibuffer_set_prompt(const char *fmt, ...) {
@@ -210,7 +178,6 @@ void minibuffer_set_prompt(const char *fmt, ...) {
 
 void minibuffer_abort_prompt() {
   minibuffer_clear();
-  g_minibuffer.update_callback = NULL;
   g_minibuffer.prompt_active = false;
 
   if (g_minibuffer.prev_window != NULL) {

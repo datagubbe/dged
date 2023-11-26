@@ -4,12 +4,12 @@ struct keymap;
 struct buffer;
 struct binding;
 
-struct keymap *register_bindings();
+void init_bindings();
 
-void buffer_bind_keys(struct buffer *buffer, struct binding *bindings,
-                      uint32_t nbindings);
-void reset_buffer_keys(struct buffer *buffer);
-void reset_minibuffer_keys(struct buffer *minibuffer);
-struct keymap *buffer_keymap(struct buffer *buffer);
+typedef uint64_t buffer_keymap_id;
+buffer_keymap_id buffer_add_keymap(struct buffer *buffer, struct keymap keymap);
+void buffer_remove_keymap(buffer_keymap_id id);
+uint32_t buffer_keymaps(struct buffer *buffer, struct keymap *keymaps[],
+                        uint32_t max_nkeymaps);
 
-void destroy_keymaps();
+void destroy_bindings();

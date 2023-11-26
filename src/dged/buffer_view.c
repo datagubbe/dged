@@ -3,6 +3,7 @@
 #include "buffer.h"
 #include "buffer_view.h"
 #include "display.h"
+#include "utf8.h"
 
 struct modeline {
   uint8_t *buffer;
@@ -240,6 +241,24 @@ struct location buffer_view_dot_to_relative(struct buffer_view *view) {
   };
 }
 
+struct location buffer_view_dot_to_visual(struct buffer_view *view) {
+  // calculate visual column index for dot column
+  struct text_chunk c = buffer_line(view->buffer, view->dot.line);
+  uint32_t width = visual_string_width(c.text, c.nbytes, 0, view->dot.col);
+  if (view->scroll.col > 0) {
+    width -= visual_string_width(c.text, c.nbytes, 0, view->scroll.col);
+  }
+
+  struct location l = buffer_view_dot_to_relative(view);
+  l.col = width + view->fringe_width;
+
+  if (c.allocated) {
+    free(c.text);
+  }
+
+  return l;
+}
+
 void buffer_view_undo(struct buffer_view *view) {
   view->dot = buffer_undo(view->buffer, view->dot);
 }
@@ -345,6 +364,9 @@ static void render_modeline(struct modeline *modeline, struct buffer_view *view,
 void buffer_view_update(struct buffer_view *view,
                         struct buffer_view_update_params *params) {
 
+  struct buffer_update_params update_params = {};
+  buffer_update(view->buffer, &update_params);
+
   uint32_t height = params->height;
   uint32_t width = params->width;
 
@@ -409,22 +431,13 @@ void buffer_view_update(struct buffer_view *view,
   struct command_list *buf_cmds = command_list_create(
       width * height, params->frame_alloc, params->window_x + linum_width,
       params->window_y, view->buffer->name);
-  struct buffer_update_params bufparams = {
+  struct buffer_render_params render_params = {
       .commands = buf_cmds,
       .origin = view->scroll,
       .width = width,
       .height = height,
   };
-  buffer_update(view->buffer, &bufparams);
-
-  /* Make sure the dot is always inside buffer limits.
-   * Updating the buffer above could have removed text.
-   * TODO: this is not really correct, since it may have caused
-   * changes that would need a re-eval of scroll and redraw.
-   * Hooks should prob not get width and height and be ran before rendering.
-   */
-  view->dot = buffer_clamp(view->buffer, (int64_t)view->dot.line,
-                           (int64_t)view->dot.col);
+  buffer_render(view->buffer, &render_params);
 
   // draw buffer commands nested inside this command list
   command_list_draw_command_list(params->commands, buf_cmds);

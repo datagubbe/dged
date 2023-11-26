@@ -17,10 +17,11 @@ static struct replace {
   struct region *matches;
   uint32_t nmatches;
   uint32_t current_match;
+  buffer_keymap_id keymap_id;
 } g_current_replace = {0};
 
 void abort_replace() {
-  reset_minibuffer_keys(minibuffer_buffer());
+  buffer_remove_keymap(g_current_replace.keymap_id);
   free(g_current_replace.matches);
   free(g_current_replace.replace);
   g_current_replace.matches = NULL;
@@ -84,7 +85,8 @@ static int32_t replace_next(struct command_ctx ctx, int argc,
                                                          .col = m->begin.col});
   buffer_view_goto(buffer_view, (struct location){.line = m->end.line,
                                                   .col = m->end.col + 1});
-  buffer_view_add(buffer_view, state->replace, strlen(state->replace));
+  buffer_view_add(buffer_view, (uint8_t *)state->replace,
+                  strlen(state->replace));
 
   ++state->current_match;
 
@@ -193,14 +195,16 @@ static int32_t replace(struct command_ctx ctx, int argc, const char *argv[]) {
       ANONYMOUS_BINDING(None, 'n', &skip_next_command),
       ANONYMOUS_BINDING(Ctrl, 'M', &replace_next_command),
   };
-  buffer_bind_keys(minibuffer_buffer(), bindings,
-                   sizeof(bindings) / sizeof(bindings[0]));
+  struct keymap km = keymap_create("replace", 8);
+  keymap_bind_keys(&km, bindings, sizeof(bindings) / sizeof(bindings[0]));
+  g_current_replace.keymap_id = buffer_add_keymap(minibuffer_buffer(), km);
 
   return minibuffer_prompt(ctx, "replace? [yn] ");
 }
 
 static char *g_last_search = NULL;
 static bool g_last_search_interactive = false;
+static buffer_keymap_id g_search_keymap;
 
 const char *search_prompt(bool reverse) {
   const char *txt = "search (down): ";
@@ -303,7 +307,7 @@ int32_t search_interactive(struct command_ctx ctx, int argc,
   } else {
     struct text_chunk content = minibuffer_content();
     char *p = malloc(content.nbytes + 1);
-    strncpy(p, content.text, content.nbytes);
+    strncpy(p, (const char *)content.text, content.nbytes);
     p[content.nbytes] = '\0';
     pattern = p;
   }
@@ -334,12 +338,13 @@ int32_t find(struct command_ctx ctx, int argc, const char *argv[]) {
         ANONYMOUS_BINDING(Ctrl, 'S', &search_forward_command),
         ANONYMOUS_BINDING(Ctrl, 'R', &search_backward_command),
     };
-    buffer_bind_keys(minibuffer_buffer(), bindings,
-                     sizeof(bindings) / sizeof(bindings[0]));
+    struct keymap m = keymap_create("search", 8);
+    keymap_bind_keys(&m, bindings, sizeof(bindings) / sizeof(bindings[0]));
+    g_search_keymap = buffer_add_keymap(minibuffer_buffer(), m);
     return minibuffer_prompt(ctx, search_prompt(reverse));
   }
 
-  reset_minibuffer_keys(minibuffer_buffer());
+  buffer_remove_keymap(g_search_keymap);
   if (g_last_search_interactive) {
     g_last_search_interactive = false;
     return 0;
@@ -347,7 +352,7 @@ int32_t find(struct command_ctx ctx, int argc, const char *argv[]) {
 
   struct text_chunk content = minibuffer_content();
   char *pattern = malloc(content.nbytes + 1);
-  strncpy(pattern, content.text, content.nbytes);
+  strncpy(pattern, (const char *)content.text, content.nbytes);
   pattern[content.nbytes] = '\0';
 
   do_search(window_buffer_view(ctx.active_window), pattern, reverse);

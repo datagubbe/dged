@@ -178,6 +178,7 @@ void windows_update(void *(*frame_alloc)(size_t), uint64_t frame_time) {
       .window_y = w->y,
       .frame_alloc = frame_alloc,
   };
+
   buffer_view_update(&w->buffer_view, &p);
   command_list_draw_command_list(w->commands, inner_commands);
 

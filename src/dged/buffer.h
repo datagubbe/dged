@@ -14,29 +14,7 @@
 #include "window.h"
 
 struct command_list;
-
-/** Buffer update hook callback function */
-typedef void (*update_hook_cb)(struct buffer *buffer, uint32_t width,
-                               uint32_t height, void *userdata);
-
-/**
- * A buffer update hook.
- *
- * Can be used to implement custom behavior on top of a buffer. Used for
- * minibuffer.
- */
-struct update_hook {
-  /** Callback function */
-  update_hook_cb callback;
-
-  /** Optional userdata to pass to the callback function unmodified */
-  void *userdata;
-};
-
-struct update_hook_entry {
-  uint32_t id;
-  struct update_hook hook;
-};
+struct hooks;
 
 /**
  * A buffer of text that can be modified, read from and written to disk.
@@ -55,11 +33,11 @@ struct buffer {
   /** Time when buffer was last written to disk */
   struct timespec last_write;
 
+  /** Hooks for this buffer */
+  struct hooks *hooks;
+
   /** Text data structure */
   struct text *text;
-
-  /** Buffer update hooks */
-  VEC(struct update_hook_entry) update_hooks;
 
   /** Buffer undo stack */
   struct undo_stack undo;
@@ -396,6 +374,16 @@ struct location buffer_paste_older(struct buffer *buffer, struct location at);
  */
 struct text_chunk buffer_line(struct buffer *buffer, uint32_t line);
 
+/**
+ * Get a region of text from the buffer.
+ *
+ * @param buffer The buffer to get text from.
+ * @param region A region representing the buffer area to get text from.
+ *
+ * @returns A text chunk describing the region.
+ */
+struct text_chunk buffer_region(struct buffer *buffer, struct region region);
+
 void buffer_add_text_property(struct buffer *buffer, struct location start,
                               struct location end,
                               struct text_property property);
@@ -406,6 +394,12 @@ void buffer_get_text_properties(struct buffer *buffer, struct location location,
                                 uint32_t *nproperties);
 
 void buffer_clear_text_properties(struct buffer *buffer);
+
+/** Callback when removing hooks to clean up userdata */
+typedef void (*remove_hook_cb)(void *userdata);
+
+/** Buffer update hook callback function */
+typedef void (*update_hook_cb)(struct buffer *buffer, void *userdata);
 
 /**
  * Add a buffer update hook.
@@ -418,23 +412,51 @@ void buffer_clear_text_properties(struct buffer *buffer);
 uint32_t buffer_add_update_hook(struct buffer *buffer, update_hook_cb hook,
                                 void *userdata);
 
+void buffer_remove_update_hook(struct buffer *buffer, uint32_t hook_id,
+                               remove_hook_cb callback);
+
+/** Buffer insert hook callback function */
+typedef void (*insert_hook_cb)(struct buffer *buffer, struct region inserted,
+                               void *userdata);
+
+uint32_t buffer_add_insert_hook(struct buffer *buffer, insert_hook_cb callback,
+                                void *userdata);
+void buffer_remove_insert_hook(struct buffer *buffer, uint32_t hook_id,
+                               remove_hook_cb callback);
+
+/** Buffer delete hook callback function */
+typedef void (*delete_hook_cb)(struct buffer *buffer, struct region removed,
+                               void *userdata);
+
+uint32_t buffer_add_delete_hook(struct buffer *buffer, delete_hook_cb callback,
+                                void *userdata);
+void buffer_remove_delete_hook(struct buffer *buffer, uint32_t hook_id,
+                               remove_hook_cb callback);
+
 /** Buffer create hook callback function */
 typedef void (*create_hook_cb)(struct buffer *buffer, void *userdata);
 
 /**
  * Add a buffer create hook.
  *
- * @param [in] hook Create hook callback.
+ * @param [in] callback Create hook callback.
  * @param [in] userdata Pointer to data that is passed unmodified to the update
  * hook.
  * @returns The hook id.
  */
-uint32_t buffer_add_create_hook(create_hook_cb hook, void *userdata);
+uint32_t buffer_add_create_hook(create_hook_cb callback, void *userdata);
+
+void buffer_remove_create_hook(uint32_t hook_id, remove_hook_cb callback);
 
 /**
  * Parameters for updating a buffer.
  */
-struct buffer_update_params {
+struct buffer_update_params {};
+
+/**
+ * Parameters for rendering a buffer.
+ */
+struct buffer_render_params {
 
   /** Command list to add rendering commands for the buffer */
   struct command_list *commands;
@@ -458,5 +480,16 @@ struct buffer_update_params {
  * buffer.
  */
 void buffer_update(struct buffer *buffer, struct buffer_update_params *params);
+
+/**
+ * Render a buffer.
+ * @param [in] buffer The buffer to render.
+ * @param [inout] params The parameters for the rendering.
+ */
+void buffer_render(struct buffer *buffer, struct buffer_render_params *params);
+
+// TODO: move this to where it makes sense
+uint32_t visual_string_width(uint8_t *txt, uint32_t len, uint32_t start_col,
+                             uint32_t end_col);
 
 #endif

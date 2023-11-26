@@ -5,6 +5,7 @@
 
 #define VEC(entry)                                                             \
   struct {                                                                     \
+    entry *temp;                                                               \
     entry *entries;                                                            \
     uint32_t nentries;                                                         \
     uint32_t capacity;                                                         \
@@ -12,10 +13,12 @@
 
 #define VEC_INIT(vec, initial_capacity)                                        \
   (vec)->entries = malloc(sizeof((vec)->entries[0]) * initial_capacity);       \
+  (vec)->temp = calloc(1, sizeof((vec)->entries[0]));                          \
   (vec)->capacity = initial_capacity;                                          \
   (vec)->nentries = 0;
 
 #define VEC_DESTROY(vec)                                                       \
+  free((vec)->temp);                                                           \
   free((vec)->entries);                                                        \
   (vec)->entries = NULL;                                                       \
   (vec)->capacity = 0;                                                         \
@@ -35,6 +38,20 @@
                                                                                \
   (vec)->entries[(vec)->nentries] = entry;                                     \
   ++(vec)->nentries;
+
+#define VEC_POP(vec, var)                                                      \
+  var = (vec)->entries[(vec)->nentries - 1];                                   \
+  if ((vec)->nentries > 0) {                                                   \
+    --(vec)->nentries;                                                         \
+  }
+
+#define VEC_SWAP(vec, idx1, idx2)                                              \
+  if (idx1 < (vec)->nentries && idx2 < (vec)->nentries && idx1 >= 0 &&         \
+      idx2 >= 0) {                                                             \
+    *((vec)->temp) = (vec)->entries[idx1];                                     \
+    (vec)->entries[idx1] = (vec)->entries[idx2];                               \
+    (vec)->entries[idx2] = *((vec)->temp);                                     \
+  }
 
 #define VEC_APPEND(vec, var)                                                   \
   if ((vec)->nentries + 1 >= (vec)->capacity) {                                \

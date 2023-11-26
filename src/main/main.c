@@ -22,6 +22,7 @@
 
 #include "bindings.h"
 #include "cmds.h"
+#include "completion.h"
 
 static struct frame_allocator frame_allocator;
 
@@ -103,7 +104,7 @@ void update_file_watches(struct reactor *reactor) {
     // find the buffer we need to reload
     VEC_FOR_EACH(&g_watched_files, struct watched_file * w) {
       if (w->watch_id == ev.id) {
-        if (ev.mask & LastEvent != 0) {
+        if ((ev.mask & LastEvent) != 0) {
           w->watch_id = -1;
           continue;
         }
@@ -206,15 +207,7 @@ int main(int argc, char *argv[]) {
   display_clear(display);
   signal(SIGWINCH, resized);
 
-  register_global_commands(&commands, terminate);
-  register_buffer_commands(&commands);
-  register_window_commands(&commands);
-  register_settings_commands(&commands);
-
   struct keyboard kbd = keyboard_create(reactor);
-
-  struct keymap *current_keymap = NULL;
-  struct keymap *global_keymap = register_bindings();
 
   VEC_INIT(&g_watched_files, 32);
 
@@ -234,7 +227,6 @@ int main(int argc, char *argv[]) {
   struct buffer *ib = buffers_add(&buflist, initial_buffer);
   struct buffer minibuffer = buffer_create("minibuffer");
   minibuffer_init(&minibuffer);
-  reset_minibuffer_keys(&minibuffer);
 
   windows_init(display_height(display), display_width(display), ib,
                &minibuffer);
@@ -248,6 +240,16 @@ int main(int argc, char *argv[]) {
     };
     buffer_view_goto(window_buffer_view(active), to);
   }
+
+  register_global_commands(&commands, terminate);
+  register_buffer_commands(&commands);
+  register_window_commands(&commands);
+  register_settings_commands(&commands);
+
+  struct keymap *current_keymap = NULL;
+  init_bindings();
+
+  init_completion(&buflist);
 
   DECLARE_TIMER(buffer);
   DECLARE_TIMER(display);
@@ -277,7 +279,7 @@ int main(int argc, char *argv[]) {
     display_begin_render(display);
     windows_render(display);
     struct buffer_view *view = window_buffer_view(active_window);
-    struct location cursor = buffer_view_dot_to_relative(view);
+    struct location cursor = buffer_view_dot_to_visual(view);
     struct window_position winpos = window_position(active_window);
     display_move_cursor(display, winpos.y + cursor.line, winpos.x + cursor.col);
     display_end_render(display);
@@ -302,11 +304,14 @@ int main(int argc, char *argv[]) {
       if (current_keymap != NULL) {
         res = lookup_key(current_keymap, 1, k, &commands);
       } else {
-        // check the global keymap first, then the buffer one
-        res = lookup_key(global_keymap, 1, k, &commands);
-        if (!res.found) {
-          res = lookup_key(buffer_keymap(window_buffer(active_window)), 1, k,
-                           &commands);
+        struct keymap *buffer_maps[128];
+        uint32_t nkeymaps =
+            buffer_keymaps(window_buffer(active_window), buffer_maps, 128);
+        for (uint32_t kmi = nkeymaps; kmi > 0; --kmi) {
+          res = lookup_key(buffer_maps[kmi - 1], 1, k, &commands);
+          if (res.found) {
+            break;
+          }
         }
       }
 
@@ -372,13 +377,14 @@ int main(int argc, char *argv[]) {
     frame_allocator_clear(&frame_allocator);
   }
 
+  destroy_completion();
   windows_destroy();
   minibuffer_destroy();
   buffer_destroy(&minibuffer);
   buffers_destroy(&buflist);
   display_clear(display);
   display_destroy(display);
-  destroy_keymaps();
+  destroy_bindings();
   command_registry_destroy(&commands);
   reactor_destroy(reactor);
   frame_allocator_destroy(&frame_allocator);
