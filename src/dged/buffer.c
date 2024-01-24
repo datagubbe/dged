@@ -356,11 +356,10 @@ void buffer_reload(struct buffer *buffer) {
     return;
   }
 
-  if (sb.st_mtim.tv_sec != buffer->last_write.tv_sec) {
+  if (sb.st_mtim.tv_sec != buffer->last_write.tv_sec ||
+      sb.st_mtim.tv_nsec != buffer->last_write.tv_nsec) {
     text_clear(buffer->text);
     buffer_read_from_file(buffer);
-  } else {
-    minibuffer_echo_timeout(2, "buffer %s not changed", buffer->filename);
   }
 }
 
@@ -488,8 +487,19 @@ struct location buffer_next_line(struct buffer *buffer, struct location dot) {
 
 struct location buffer_clamp(struct buffer *buffer, int64_t line, int64_t col) {
   struct location location = {.line = 0, .col = 0};
+  if (buffer_is_empty(buffer)) {
+    return location;
+  }
+
   movev(buffer, line, &location);
   moveh(buffer, col, &location);
+
+  // when clamping we want to stay inside
+  // the actual bounds
+  if (location.line >= buffer_num_lines(buffer)) {
+    location.line = buffer_num_lines(buffer) - 1;
+    location.col = buffer_num_chars(buffer, location.line);
+  }
 
   return location;
 }

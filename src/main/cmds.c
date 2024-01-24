@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <libgen.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -226,6 +227,36 @@ int32_t buffer_list(struct command_ctx ctx, int argc, const char *argv[]) {
 
 static void find_file_comp_inserted() { minibuffer_execute(); }
 
+static int32_t open_file(struct buffers *buffers, struct window *active_window,
+                         const char *pth) {
+  struct stat sb = {0};
+  if (stat(pth, &sb) < 0 && errno != ENOENT) {
+    minibuffer_echo("stat on %s failed: %s", pth, strerror(errno));
+    return 1;
+  }
+
+  if (S_ISDIR(sb.st_mode) && errno != ENOENT) {
+    minibuffer_echo("TODO: implement dired!");
+    return 1;
+  }
+
+  const char *filename = to_abspath(pth);
+  struct buffer *b = buffers_find_by_filename(buffers, filename);
+  free((char *)filename);
+
+  if (b == NULL) {
+    b = buffers_add(buffers, buffer_from_file((char *)pth));
+  } else {
+    buffer_reload(b);
+  }
+
+  window_set_buffer(active_window, b);
+  minibuffer_echo_timeout(4, "buffer \"%s\" loaded",
+                          window_buffer(active_window)->name);
+
+  return 0;
+}
+
 int32_t find_file(struct command_ctx ctx, int argc, const char *argv[]) {
   const char *pth = NULL;
   if (argc == 0) {
@@ -239,32 +270,45 @@ int32_t find_file(struct command_ctx ctx, int argc, const char *argv[]) {
 
   disable_completion(minibuffer_buffer());
 
-  pth = argv[0];
-  struct stat sb = {0};
-  if (stat(pth, &sb) < 0 && errno != ENOENT) {
-    minibuffer_echo("stat on %s failed: %s", pth, strerror(errno));
+  open_file(ctx.buffers, ctx.active_window, argv[0]);
+  return 0;
+}
+
+COMMAND_FN("find-file-internal", find_file, find_file, NULL);
+int32_t find_file_relative(struct command_ctx ctx, int argc,
+                           const char *argv[]) {
+  struct buffer *b = window_buffer(ctx.active_window);
+  if (b->filename == NULL) {
+    minibuffer_echo_timeout(4, "buffer %s is not backed by a file", b->name);
     return 1;
   }
 
-  if (S_ISDIR(sb.st_mode) && errno != ENOENT) {
-    minibuffer_echo("TODO: implement dired!");
-    return 1;
+  char *filename = strdup(b->filename);
+  char *dir = dirname(filename);
+  if (argc == 0) {
+    struct completion_provider providers[] = {path_provider()};
+    enable_completion(minibuffer_buffer(),
+                      ((struct completion_trigger){
+                          .kind = CompletionTrigger_Input, .nchars = 0}),
+                      providers, 1, find_file_comp_inserted);
+
+    ctx.self = &find_file_command;
+    minibuffer_prompt_initial(ctx, dir, "find file: ");
+    free(filename);
+    return 0;
   }
 
-  const char *filename = to_abspath(pth);
-  struct buffer *b = buffers_find_by_filename(ctx.buffers, filename);
-  free((char *)filename);
+  disable_completion(minibuffer_buffer());
+  size_t dirlen = strlen(dir);
+  size_t plen = strlen(argv[0]);
+  char *pth = (char *)malloc(dirlen + plen + 2);
+  memcpy(pth, dir, dirlen);
+  pth[dirlen] = '/';
+  memcpy(pth + dirlen + 1, argv[0], plen);
+  pth[dirlen + plen + 1] = '\0';
+  open_file(ctx.buffers, ctx.active_window, pth);
 
-  if (b == NULL) {
-    b = buffers_add(ctx.buffers, buffer_from_file((char *)pth));
-  } else {
-    buffer_reload(b);
-  }
-
-  window_set_buffer(ctx.active_window, b);
-  minibuffer_echo_timeout(4, "buffer \"%s\" loaded",
-                          window_buffer(ctx.active_window)->name);
-
+  free(filename);
   return 0;
 }
 
@@ -272,6 +316,7 @@ void register_global_commands(struct commands *commands,
                               void (*terminate_cb)()) {
   struct command global_commands[] = {
       {.name = "find-file", .fn = find_file},
+      {.name = "find-file-relative", .fn = find_file_relative},
       {.name = "write-file", .fn = write_file},
       {.name = "run-command-interactive", .fn = run_interactive},
       {.name = "switch-buffer", .fn = switch_buffer},

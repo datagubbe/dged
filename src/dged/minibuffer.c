@@ -91,7 +91,10 @@ void minibuffer_init(struct buffer *buffer) {
   }
 
   g_minibuffer.buffer = buffer;
+  g_minibuffer.expires.tv_sec = 0;
+  g_minibuffer.expires.tv_nsec = 0;
   g_minibuffer.clear = false;
+  g_minibuffer.prompt_active = false;
   buffer_add_update_hook(g_minibuffer.buffer, update, &g_minibuffer);
 }
 
@@ -100,6 +103,10 @@ void echo(uint32_t timeout, const char *fmt, va_list args) {
     return;
   }
 
+  clock_gettime(CLOCK_MONOTONIC, &g_minibuffer.expires);
+  g_minibuffer.expires.tv_sec += timeout;
+  g_minibuffer.clear = false;
+
   char buff[2048];
   size_t nbytes = vsnprintf(buff, 2048, fmt, args);
 
@@ -107,10 +114,6 @@ void echo(uint32_t timeout, const char *fmt, va_list args) {
   // of overflow
   buffer_set_text(g_minibuffer.buffer, (uint8_t *)buff,
                   nbytes > 2048 ? 2048 : nbytes);
-  g_minibuffer.clear = false;
-
-  clock_gettime(CLOCK_MONOTONIC, &g_minibuffer.expires);
-  g_minibuffer.expires.tv_sec += timeout;
 }
 
 void minibuffer_destroy() {
@@ -143,27 +146,59 @@ void minibuffer_set_prompt_internal(const char *fmt, va_list args) {
   vsnprintf(g_minibuffer.prompt, sizeof(g_minibuffer.prompt), fmt, args);
 }
 
+static void minibuffer_setup(struct command_ctx command_ctx,
+                             const char *initial) {
+  g_minibuffer.prompt_active = true;
+
+  command_ctx_free(&g_minibuffer.prompt_command_ctx);
+  g_minibuffer.prompt_command_ctx = command_ctx;
+
+  if (windows_get_active() != minibuffer_window()) {
+    g_minibuffer.prev_window = windows_get_active();
+    windows_set_active(minibuffer_window());
+  }
+
+  if (initial != NULL) {
+    buffer_set_text(g_minibuffer.buffer, (uint8_t *)initial, strlen(initial));
+
+    // there might be an earlier clear request but
+    // we have sort of taken care of that here
+    g_minibuffer.clear = false;
+
+    // TODO: what to do with these
+    buffer_view_goto_end_of_line(window_buffer_view(minibuffer_window()));
+  } else {
+    minibuffer_clear();
+  }
+}
+
+int32_t minibuffer_prompt_initial(struct command_ctx command_ctx,
+                                  const char *initial, const char *fmt, ...) {
+  if (g_minibuffer.buffer == NULL) {
+    return 1;
+  }
+
+  minibuffer_setup(command_ctx, initial);
+
+  va_list args;
+  va_start(args, fmt);
+  minibuffer_set_prompt_internal(fmt, args);
+  va_end(args);
+
+  return 0;
+}
+
 int32_t minibuffer_prompt(struct command_ctx command_ctx, const char *fmt,
                           ...) {
   if (g_minibuffer.buffer == NULL) {
     return 1;
   }
 
+  minibuffer_setup(command_ctx, NULL);
+
   va_list args;
   va_start(args, fmt);
-
-  minibuffer_clear();
-  g_minibuffer.prompt_active = true;
-
-  command_ctx_free(&g_minibuffer.prompt_command_ctx);
-  g_minibuffer.prompt_command_ctx = command_ctx;
-
   minibuffer_set_prompt_internal(fmt, args);
-
-  if (windows_get_active() != minibuffer_window()) {
-    g_minibuffer.prev_window = windows_get_active();
-    windows_set_active(minibuffer_window());
-  }
   va_end(args);
 
   return 0;
@@ -193,6 +228,7 @@ bool minibuffer_displaying() {
 
 void minibuffer_clear() {
   g_minibuffer.expires.tv_sec = 0;
+  g_minibuffer.expires.tv_nsec = 0;
   g_minibuffer.clear = true;
 }
 

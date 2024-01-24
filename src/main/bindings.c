@@ -98,6 +98,7 @@ void init_bindings() {
       BINDING(Ctrl, 'C', "exit"),
       BINDING(Ctrl, 'S', "buffer-write-to-file"),
       BINDING(Ctrl, 'F', "find-file"),
+      BINDING(Ctrl, 'G', "find-file-relative"),
       BINDING(Ctrl, 'W', "write-file"),
       BINDING(None, 'b', "switch-buffer"),
       BINDING(Ctrl, 'B', "buffer-list"),

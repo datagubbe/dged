@@ -78,7 +78,7 @@ void buffer_view_add(struct buffer_view *view, uint8_t *txt, uint32_t nbytes) {
 }
 
 void buffer_view_goto_beginning(struct buffer_view *view) {
-  view->dot = (struct location){.line = 1, .col = 0};
+  view->dot = (struct location){.line = 0, .col = 0};
 }
 
 void buffer_view_goto_end(struct buffer_view *view) {
