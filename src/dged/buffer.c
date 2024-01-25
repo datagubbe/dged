@@ -133,6 +133,7 @@ static struct buffer create_internal(const char *name, char *filename) {
       .text = text_create(10),
       .modified = false,
       .readonly = false,
+      .lazy_row_add = true,
       .lang =
           filename != NULL ? lang_from_filename(filename) : lang_from_id("fnd"),
       .last_write = {0},
@@ -570,14 +571,18 @@ struct location buffer_clamp(struct buffer *buffer, int64_t line, int64_t col) {
     return location;
   }
 
-  movev(buffer, line, &location);
-  moveh(buffer, col, &location);
-
-  // when clamping we want to stay inside
-  // the actual bounds
-  if (location.line >= buffer_num_lines(buffer)) {
-    location.line = buffer_num_lines(buffer) - 1;
-    location.col = buffer_num_chars(buffer, location.line);
+  if (line > buffer_num_lines(buffer)) {
+    if (buffer->lazy_row_add) {
+      location.line = buffer_num_lines(buffer);
+      location.col = 0;
+    } else {
+      location.line = buffer_num_lines(buffer) - 1;
+      location.col = buffer_num_chars(buffer, location.line);
+    }
+  } else {
+    location.line = line;
+    uint32_t nchars = buffer_num_chars(buffer, location.col);
+    location.col = col > nchars ? nchars : col;
   }
 
   return location;

@@ -50,6 +50,9 @@ struct buffer {
 
   /** Can this buffer be changed */
   bool readonly;
+
+  /** Can rows be added lazily to this buffer */
+  bool lazy_row_add;
 };
 
 void buffer_static_init();

@@ -226,6 +226,7 @@ int main(int argc, char *argv[]) {
 
   struct buffer *ib = buffers_add(&buflist, initial_buffer);
   struct buffer minibuffer = buffer_create("minibuffer");
+  minibuffer.lazy_row_add = false;
   minibuffer_init(&minibuffer);
 
   windows_init(display_height(display), display_width(display), ib,
