@@ -366,10 +366,13 @@ void buffer_to_file(struct buffer *buffer) {
   }
 
   uint32_t nlines = text_num_lines(buffer->text);
-  struct text_chunk lastline = text_get_line(buffer->text, nlines - 1);
-  uint32_t nlines_to_write = lastline.nbytes == 0 ? nlines - 1 : nlines;
+  uint32_t nlines_to_write = nlines;
+  if (nlines > 0) {
+    struct text_chunk lastline = text_get_line(buffer->text, nlines - 1);
+    nlines_to_write = lastline.nbytes == 0 ? nlines - 1 : nlines;
+    text_for_each_line(buffer->text, 0, nlines_to_write, write_line, file);
+  }
 
-  text_for_each_line(buffer->text, 0, nlines_to_write, write_line, file);
   minibuffer_echo_timeout(4, "wrote %d lines to %s", nlines_to_write,
                           buffer->filename);
   fclose(file);
