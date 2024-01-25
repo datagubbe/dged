@@ -229,6 +229,11 @@ static void find_file_comp_inserted() { minibuffer_execute(); }
 
 static int32_t open_file(struct buffers *buffers, struct window *active_window,
                          const char *pth) {
+
+  if (active_window == minibuffer_window()) {
+    return 1;
+  }
+
   struct stat sb = {0};
   if (stat(pth, &sb) < 0 && errno != ENOENT) {
     minibuffer_echo("stat on %s failed: %s", pth, strerror(errno));
@@ -387,6 +392,11 @@ static int32_t scroll_down_cmd(struct command_ctx ctx, int argc,
 };
 
 static int32_t goto_line(struct command_ctx ctx, int argc, const char *argv[]) {
+  // don't want to goto line in minibuffer
+  if (ctx.active_window == minibuffer_window()) {
+    return 0;
+  }
+
   if (argc == 0) {
     return minibuffer_prompt(ctx, "line: ");
   }

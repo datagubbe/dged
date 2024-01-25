@@ -242,25 +242,65 @@ static void write_line(struct text_chunk *chunk, void *userdata) {
   fputc('\n', file);
 }
 
-static struct location find_next(struct buffer *buffer, struct location from,
-                                 uint8_t chars[], uint32_t nchars,
-                                 int direction) {
-  struct text_chunk line = text_get_line(buffer->text, from.line);
-  int64_t bytei = text_col_to_byteindex(buffer->text, from.line, from.col);
-  while (bytei < line.nbytes && bytei > 0 &&
-         (line.text[bytei] == ' ' || line.text[bytei] == '.')) {
-    bytei += direction;
+static bool is_word_break(uint8_t c) {
+  return c == ' ' || c == '.' || c == '(' || c == ')';
+}
+
+static bool is_word_char(uint8_t c) { return !is_word_break(c); }
+
+struct match_result {
+  struct location at;
+  bool found;
+};
+
+static struct match_result find_next_in_line(struct buffer *buffer,
+                                             struct location start,
+                                             bool (*predicate)(uint8_t c)) {
+  struct text_chunk line = text_get_line(buffer->text, start.line);
+  bool found = false;
+
+  if (line.nbytes == 0) {
+    return (struct match_result){.at = start, .found = false};
   }
 
-  for (; bytei < line.nbytes && bytei > 0; bytei += direction) {
-    uint8_t b = line.text[bytei];
-    if (b == ' ' || b == '.') {
+  uint32_t bytei = text_col_to_byteindex(buffer->text, start.line, start.col);
+  while (bytei < line.nbytes) {
+    if (predicate(line.text[bytei])) {
+      found = true;
       break;
     }
+    ++bytei;
   }
 
-  uint32_t target_col = text_byteindex_to_col(buffer->text, from.line, bytei);
-  return (struct location){.line = from.line, .col = target_col};
+  uint32_t target_col = text_byteindex_to_col(buffer->text, start.line, bytei);
+  return (struct match_result){
+      .at = (struct location){.line = start.line, .col = target_col},
+      .found = found};
+}
+
+static struct match_result find_prev_in_line(struct buffer *buffer,
+                                             struct location start,
+                                             bool (*predicate)(uint8_t c)) {
+  struct text_chunk line = text_get_line(buffer->text, start.line);
+  bool found = false;
+
+  if (line.nbytes == 0) {
+    return (struct match_result){.at = start, .found = false};
+  }
+
+  uint32_t bytei = text_col_to_byteindex(buffer->text, start.line, start.col);
+  while (bytei > 0) {
+    if (predicate(line.text[bytei])) {
+      found = true;
+      break;
+    }
+    --bytei;
+  }
+
+  uint32_t target_col = text_byteindex_to_col(buffer->text, start.line, bytei);
+  return (struct match_result){
+      .at = (struct location){.line = start.line, .col = target_col},
+      .found = found};
 }
 
 static struct text_chunk *copy_region(struct buffer *buffer,
@@ -458,9 +498,36 @@ struct location buffer_previous_char(struct buffer *buffer,
 
 struct location buffer_previous_word(struct buffer *buffer,
                                      struct location dot) {
-  moveh(buffer, -1, &dot);
-  uint8_t chars[] = {' ', '.'};
-  return find_next(buffer, dot, chars, 2, -1);
+
+  struct match_result res = find_prev_in_line(buffer, dot, is_word_break);
+  if (!res.found && res.at.col == dot.col) {
+    moveh(buffer, -1, &res.at);
+    return res.at;
+  }
+
+  // check if we got here from the middle of a word or not
+  uint32_t traveled = dot.col - res.at.col;
+
+  // if not, skip over another word
+  if (traveled <= 1) {
+    res = find_prev_in_line(buffer, res.at, is_word_char);
+    if (!res.found) {
+      moveh(buffer, -1, &res.at);
+      return res.at;
+    }
+
+    // at this point, we are at the end of the previous word
+    res = find_prev_in_line(buffer, res.at, is_word_break);
+    if (!res.found) {
+      return res.at;
+    } else {
+      moveh(buffer, 1, &res.at);
+    }
+  } else {
+    moveh(buffer, 1, &res.at);
+  }
+
+  return res.at;
 }
 
 struct location buffer_previous_line(struct buffer *buffer,
@@ -475,9 +542,18 @@ struct location buffer_next_char(struct buffer *buffer, struct location dot) {
 }
 
 struct location buffer_next_word(struct buffer *buffer, struct location dot) {
-  moveh(buffer, 1, &dot);
-  uint8_t chars[] = {' ', '.'};
-  return find_next(buffer, dot, chars, 2, 1);
+  struct match_result res = find_next_in_line(buffer, dot, is_word_break);
+  if (!res.found) {
+    moveh(buffer, 1, &res.at);
+    return res.at;
+  }
+
+  res = find_next_in_line(buffer, res.at, is_word_char);
+  if (!res.found) {
+    moveh(buffer, 1, &res.at);
+  }
+
+  return res.at;
 }
 
 struct location buffer_next_line(struct buffer *buffer, struct location dot) {

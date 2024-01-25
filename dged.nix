@@ -6,6 +6,7 @@
 , bear
 , lib
 , doxygen
+, valgrind
 }:
 stdenv.mkDerivation {
   name = "dged";
@@ -19,6 +20,7 @@ stdenv.mkDerivation {
     clang-tools
     bear
     doxygen
+    valgrind
   ];
 
   buildPhase = ''
