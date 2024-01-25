@@ -290,6 +290,7 @@ int32_t find_file_relative(struct command_ctx ctx, int argc,
 
   char *filename = strdup(b->filename);
   char *dir = dirname(filename);
+  size_t dirlen = strlen(dir);
   if (argc == 0) {
     struct completion_provider providers[] = {path_provider()};
     enable_completion(minibuffer_buffer(),
@@ -298,13 +299,18 @@ int32_t find_file_relative(struct command_ctx ctx, int argc,
                       providers, 1, find_file_comp_inserted);
 
     ctx.self = &find_file_command;
-    minibuffer_prompt_initial(ctx, dir, "find file: ");
+
+    char *dir_with_slash = (char *)malloc(dirlen + 2);
+    memcpy(dir_with_slash, dir, dirlen);
+    dir_with_slash[dirlen] = '/';
+    dir_with_slash[dirlen + 1] = '\0';
+    minibuffer_prompt_initial(ctx, dir_with_slash, "find file: ");
     free(filename);
+    free(dir_with_slash);
     return 0;
   }
 
   disable_completion(minibuffer_buffer());
-  size_t dirlen = strlen(dir);
   size_t plen = strlen(argv[0]);
   char *pth = (char *)malloc(dirlen + plen + 2);
   memcpy(pth, dir, dirlen);
