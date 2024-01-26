@@ -581,7 +581,7 @@ struct location buffer_clamp(struct buffer *buffer, int64_t line, int64_t col) {
     }
   } else {
     location.line = line;
-    uint32_t nchars = buffer_num_chars(buffer, location.col);
+    uint32_t nchars = buffer_num_chars(buffer, location.line);
     location.col = col > nchars ? nchars : col;
   }
 
