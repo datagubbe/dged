@@ -20,6 +20,10 @@
 #include "dged/reactor.h"
 #include "dged/settings.h"
 
+#ifdef SYNTAX_ENABLE
+#include "dged/syntax.h"
+#endif
+
 #include "bindings.h"
 #include "cmds.h"
 #include "completion.h"
@@ -213,11 +217,20 @@ int main(int argc, char *argv[]) {
 
   struct buffers buflist = {0};
   buffers_init(&buflist, 32);
+  struct buffer minibuffer = buffer_create("minibuffer");
+  minibuffer.lazy_row_add = false;
+  minibuffer_init(&minibuffer, &buflist);
+
   buffers_add_add_hook(&buflist, watch_file, (void *)reactor);
+#ifdef SYNTAX_ENABLE
+  syntax_init();
+#endif
+
   struct buffer initial_buffer = buffer_create("welcome");
   if (filename != NULL) {
     buffer_destroy(&initial_buffer);
     initial_buffer = buffer_from_file(filename);
+    free((void *)filename);
   } else {
     const char *welcome_txt = "Welcome to the editor for datagubbar 👴\n";
     buffer_set_text(&initial_buffer, (uint8_t *)welcome_txt,
@@ -225,9 +238,6 @@ int main(int argc, char *argv[]) {
   }
 
   struct buffer *ib = buffers_add(&buflist, initial_buffer);
-  struct buffer minibuffer = buffer_create("minibuffer");
-  minibuffer.lazy_row_add = false;
-  minibuffer_init(&minibuffer);
 
   windows_init(display_height(display), display_width(display), ib,
                &minibuffer);
@@ -383,6 +393,11 @@ int main(int argc, char *argv[]) {
   minibuffer_destroy();
   buffer_destroy(&minibuffer);
   buffers_destroy(&buflist);
+
+#ifdef SYNTAX_ENABLE
+  syntax_teardown();
+#endif
+
   display_clear(display);
   display_destroy(display);
   destroy_bindings();

@@ -203,6 +203,7 @@ static void update_completions(struct buffer *buffer,
 }
 
 static void on_buffer_delete(struct buffer *buffer, struct region deleted,
+                             uint32_t start_idx, uint32_t end_idx,
                              void *userdata) {
   struct active_completion_ctx *ctx = (struct active_completion_ctx *)userdata;
 
@@ -212,6 +213,7 @@ static void on_buffer_delete(struct buffer *buffer, struct region deleted,
 }
 
 static void on_buffer_insert(struct buffer *buffer, struct region inserted,
+                             uint32_t start_idx, uint32_t end_idx,
                              void *userdata) {
   struct active_completion_ctx *ctx = (struct active_completion_ctx *)userdata;
 

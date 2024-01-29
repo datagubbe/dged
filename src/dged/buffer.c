@@ -73,27 +73,39 @@ static struct kill_ring {
   }
 
 typedef VEC(struct create_hook) create_hook_vec;
+typedef VEC(struct destroy_hook) destroy_hook_vec;
 typedef VEC(struct insert_hook) insert_hook_vec;
 typedef VEC(struct update_hook) update_hook_vec;
+typedef VEC(struct reload_hook) reload_hook_vec;
 typedef VEC(struct delete_hook) delete_hook_vec;
+typedef VEC(struct render_hook) render_hook_vec;
 
 DECLARE_HOOK(create, create_hook_cb, create_hook_vec);
+DECLARE_HOOK(destroy, destroy_hook_cb, destroy_hook_vec);
 DECLARE_HOOK(insert, insert_hook_cb, insert_hook_vec);
 DECLARE_HOOK(update, update_hook_cb, update_hook_vec);
+DECLARE_HOOK(reload, reload_hook_cb, reload_hook_vec);
+DECLARE_HOOK(render, render_hook_cb, render_hook_vec);
 DECLARE_HOOK(delete, delete_hook_cb, delete_hook_vec);
 
 static create_hook_vec g_create_hooks;
 uint32_t g_create_hook_id;
 
 struct hooks {
-  create_hook_vec create_hooks;
-  uint32_t create_hook_id;
+  destroy_hook_vec destroy_hooks;
+  uint32_t destroy_hook_id;
 
   insert_hook_vec insert_hooks;
   uint32_t insert_hook_id;
 
   update_hook_vec update_hooks;
   uint32_t update_hook_id;
+
+  reload_hook_vec reload_hooks;
+  uint32_t reload_hook_id;
+
+  render_hook_vec render_hooks;
+  uint32_t render_hook_id;
 
   delete_hook_vec delete_hooks;
   uint32_t delete_hook_id;
@@ -108,7 +120,16 @@ void buffer_remove_create_hook(uint32_t hook_id, remove_hook_cb callback) {
   remove_create_hook(&g_create_hooks, hook_id, callback);
 }
 
+uint32_t buffer_add_destroy_hook(struct buffer *buffer,
+                                 destroy_hook_cb callback, void *userdata) {
+  return insert_destroy_hook(&buffer->hooks->destroy_hooks,
+                             &buffer->hooks->destroy_hook_id, callback,
+                             userdata);
+}
+
 void buffer_static_init() {
+  VEC_INIT(&g_create_hooks, 8);
+
   settings_register_setting(
       "editor.tab-width",
       (struct setting_value){.type = Setting_Number, .number_value = 4});
@@ -119,6 +140,7 @@ void buffer_static_init() {
 }
 
 void buffer_static_teardown() {
+  VEC_DESTROY(&g_create_hooks);
   for (uint32_t i = 0; i < KILL_RING_SZ; ++i) {
     if (g_kill_ring.buffer[i].allocated) {
       free(g_kill_ring.buffer[i].text);
@@ -142,7 +164,10 @@ static struct buffer create_internal(const char *name, char *filename) {
   b.hooks = calloc(1, sizeof(struct hooks));
   VEC_INIT(&b.hooks->insert_hooks, 8);
   VEC_INIT(&b.hooks->update_hooks, 8);
+  VEC_INIT(&b.hooks->reload_hooks, 8);
+  VEC_INIT(&b.hooks->render_hooks, 8);
   VEC_INIT(&b.hooks->delete_hooks, 8);
+  VEC_INIT(&b.hooks->destroy_hooks, 8);
 
   undo_init(&b.undo, 100);
 
@@ -404,10 +429,17 @@ void buffer_reload(struct buffer *buffer) {
       sb.st_mtim.tv_nsec != buffer->last_write.tv_nsec) {
     text_clear(buffer->text);
     buffer_read_from_file(buffer);
+    VEC_FOR_EACH(&buffer->hooks->reload_hooks, struct reload_hook * h) {
+      h->callback(buffer, h->userdata);
+    }
   }
 }
 
 void buffer_destroy(struct buffer *buffer) {
+  VEC_FOR_EACH(&buffer->hooks->destroy_hooks, struct destroy_hook * h) {
+    h->callback(buffer, h->userdata);
+  }
+
   text_destroy(buffer->text);
   buffer->text = NULL;
 
@@ -418,7 +450,10 @@ void buffer_destroy(struct buffer *buffer) {
   buffer->filename = NULL;
 
   VEC_DESTROY(&buffer->hooks->update_hooks);
+  VEC_DESTROY(&buffer->hooks->render_hooks);
+  VEC_DESTROY(&buffer->hooks->reload_hooks);
   VEC_DESTROY(&buffer->hooks->insert_hooks);
+  VEC_DESTROY(&buffer->hooks->destroy_hooks);
   VEC_DESTROY(&buffer->hooks->delete_hooks);
   free(buffer->hooks);
 
@@ -460,8 +495,12 @@ struct location buffer_add(struct buffer *buffer, struct location at,
                        (struct undo_boundary){.save_point = false});
   }
 
+  uint32_t begin_idx = text_global_idx(buffer->text, initial.line, initial.col);
+  uint32_t end_idx = text_global_idx(buffer->text, final.line, final.col);
+
   VEC_FOR_EACH(&buffer->hooks->insert_hooks, struct insert_hook * h) {
-    h->callback(buffer, region_new(initial, final), h->userdata);
+    h->callback(buffer, region_new(initial, final), begin_idx, end_idx,
+                h->userdata);
   }
 
   buffer->modified = true;
@@ -592,7 +631,7 @@ struct location buffer_clamp(struct buffer *buffer, int64_t line, int64_t col) {
 
 struct location buffer_end(struct buffer *buffer) {
   uint32_t nlines = buffer_num_lines(buffer);
-  return (struct location){nlines, buffer_num_chars(buffer, nlines)};
+  return (struct location){.line = nlines, .col = 0};
 }
 
 uint32_t buffer_num_lines(struct buffer *buffer) {
@@ -764,12 +803,17 @@ struct location buffer_delete(struct buffer *buffer, struct region region) {
   undo_push_boundary(&buffer->undo,
                      (struct undo_boundary){.save_point = false});
 
+  uint32_t begin_idx =
+      text_global_idx(buffer->text, region.begin.line, region.begin.col);
+  uint32_t end_idx =
+      text_global_idx(buffer->text, region.end.line, region.end.col);
+
   text_delete(buffer->text, region.begin.line, region.begin.col,
               region.end.line, region.end.col);
   buffer->modified = true;
 
   VEC_FOR_EACH(&buffer->hooks->delete_hooks, struct delete_hook * h) {
-    h->callback(buffer, region, h->userdata);
+    h->callback(buffer, region, begin_idx, end_idx, h->userdata);
   }
 
   return region.begin;
@@ -856,6 +900,28 @@ uint32_t buffer_add_update_hook(struct buffer *buffer, update_hook_cb hook,
 void buffer_remove_update_hook(struct buffer *buffer, uint32_t hook_id,
                                remove_hook_cb callback) {
   remove_update_hook(&buffer->hooks->update_hooks, hook_id, callback);
+}
+
+uint32_t buffer_add_render_hook(struct buffer *buffer, render_hook_cb hook,
+                                void *userdata) {
+  return insert_render_hook(&buffer->hooks->render_hooks,
+                            &buffer->hooks->render_hook_id, hook, userdata);
+}
+
+void buffer_remove_render_hook(struct buffer *buffer, uint32_t hook_id,
+                               remove_hook_cb callback) {
+  remove_render_hook(&buffer->hooks->render_hooks, hook_id, callback);
+}
+
+uint32_t buffer_add_reload_hook(struct buffer *buffer, reload_hook_cb hook,
+                                void *userdata) {
+  return insert_reload_hook(&buffer->hooks->reload_hooks,
+                            &buffer->hooks->reload_hook_id, hook, userdata);
+}
+
+void buffer_remove_reload_hook(struct buffer *buffer, uint32_t hook_id,
+                               remove_hook_cb callback) {
+  remove_reload_hook(&buffer->hooks->reload_hooks, hook_id, callback);
 }
 
 struct cmdbuf {
@@ -997,6 +1063,11 @@ void buffer_update(struct buffer *buffer, struct buffer_update_params *params) {
 void buffer_render(struct buffer *buffer, struct buffer_render_params *params) {
   if (params->width == 0 || params->height == 0) {
     return;
+  }
+
+  VEC_FOR_EACH(&buffer->hooks->render_hooks, struct render_hook * h) {
+    h->callback(buffer, h->userdata, params->origin, params->width,
+                params->height);
   }
 
   struct setting *show_ws = settings_get("editor.show-whitespace");

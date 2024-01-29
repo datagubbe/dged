@@ -49,7 +49,8 @@ void languages_init(bool register_default) {
     define_lang("C++", "cxx", ".*\\.(cpp|cxx|cc|c++|hh|h)", 2, "clangd");
     define_lang("Rust", "rs", ".*\\.rs", 4, "rust-analyzer");
     define_lang("Nix", "nix", ".*\\.nix", 4, "rnix-lsp");
-    define_lang("Makefile", "make", ".*(Makefile|\\.mk)", 4, NULL);
+    define_lang("Make", "make", ".*(Makefile|\\.mk)", 4, NULL);
+    define_lang("Python", "python", ".*\\.py", 4, NULL);
   }
 }
 

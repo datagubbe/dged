@@ -34,6 +34,7 @@ uint32_t text_line_size(struct text *text, uint32_t lineidx);
 uint32_t text_col_to_byteindex(struct text *text, uint32_t line, uint32_t col);
 uint32_t text_byteindex_to_col(struct text *text, uint32_t line,
                                uint32_t byteindex);
+uint32_t text_global_idx(struct text *text, uint32_t line, uint32_t col);
 
 struct text_chunk {
   uint8_t *text;

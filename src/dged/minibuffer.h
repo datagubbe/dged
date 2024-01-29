@@ -4,6 +4,7 @@
 #include <time.h>
 
 struct buffer;
+struct buffers;
 struct command_ctx;
 struct command_list;
 struct keymap;
@@ -15,7 +16,7 @@ struct keymap;
  * nothing if called more than once.
  * @param buffer underlying buffer to use for text IO in the minibuffer.
  */
-void minibuffer_init(struct buffer *buffer);
+void minibuffer_init(struct buffer *buffer, struct buffers *buffers);
 
 /**
  * Destroy the minibuffer
@@ -27,6 +28,8 @@ void minibuffer_destroy();
 struct text_chunk minibuffer_content();
 
 struct buffer *minibuffer_buffer();
+
+void message(const char *fmt, ...);
 
 /**
  * Echo a message to the minibuffer.

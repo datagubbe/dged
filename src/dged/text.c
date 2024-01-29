@@ -101,6 +101,26 @@ uint32_t text_byteindex_to_col(struct text *text, uint32_t line,
   return byteidx_to_charidx(&text->lines[line], byteindex);
 }
 
+uint32_t text_global_idx(struct text *text, uint32_t line, uint32_t col) {
+  uint32_t byteoff = 0;
+  uint32_t nlines = text_num_lines(text);
+  for (uint32_t l = 0; l < line && l < nlines; ++l) {
+    byteoff += text_line_size(text, l) + 1;
+  }
+
+  uint32_t l = line < nlines ? line : nlines - 1;
+  uint32_t nchars = text_line_length(text, l);
+  uint32_t c = col < nchars ? col : nchars;
+  byteoff += text_col_to_byteindex(text, l, c);
+
+  if (col > nchars) {
+    // account for newline
+    ++byteoff;
+  }
+
+  return byteoff;
+}
+
 void append_empty_lines(struct text *text, uint32_t numlines) {
 
   if (text->nlines + numlines >= text->capacity) {

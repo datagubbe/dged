@@ -5,12 +5,14 @@
 #include "dged/allocator.h"
 #include "dged/buffer.h"
 #include "dged/buffer_view.h"
+#include "dged/buffers.h"
 #include "dged/command.h"
 #include "dged/display.h"
 #include "dged/minibuffer.h"
 #include "dged/settings.h"
 
 static struct buffer b = {0};
+static struct buffers bufs = {0};
 
 static struct frame_allocator *g_alloc = NULL;
 
@@ -20,9 +22,10 @@ void init() {
   if (b.name == NULL) {
     settings_init(10);
     b = buffer_create("minibuffer");
+    buffers_init(&bufs, 10);
   }
 
-  minibuffer_init(&b);
+  minibuffer_init(&b, &bufs);
   windows_init(100, 100, &b, &b);
 }
 

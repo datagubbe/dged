@@ -418,8 +418,26 @@ uint32_t buffer_add_update_hook(struct buffer *buffer, update_hook_cb hook,
 void buffer_remove_update_hook(struct buffer *buffer, uint32_t hook_id,
                                remove_hook_cb callback);
 
+/** Buffer render hook callback function */
+typedef void (*render_hook_cb)(struct buffer *buffer, void *userdata,
+                               struct location origin, uint32_t width,
+                               uint32_t height);
+
+uint32_t buffer_add_render_hook(struct buffer *buffer, render_hook_cb hook,
+                                void *userdata);
+void buffer_remove_render_hook(struct buffer *buffer, uint32_t hook_id,
+                               remove_hook_cb callback);
+
+/** Buffer reload hook callback function */
+typedef void (*reload_hook_cb)(struct buffer *buffer, void *userdata);
+uint32_t buffer_add_reload_hook(struct buffer *buffer, reload_hook_cb hook,
+                                void *userdata);
+void buffer_remove_reload_hook(struct buffer *buffer, uint32_t hook_id,
+                               remove_hook_cb callback);
+
 /** Buffer insert hook callback function */
 typedef void (*insert_hook_cb)(struct buffer *buffer, struct region inserted,
+                               uint32_t begin_idx, uint32_t end_idx,
                                void *userdata);
 
 uint32_t buffer_add_insert_hook(struct buffer *buffer, insert_hook_cb callback,
@@ -429,12 +447,18 @@ void buffer_remove_insert_hook(struct buffer *buffer, uint32_t hook_id,
 
 /** Buffer delete hook callback function */
 typedef void (*delete_hook_cb)(struct buffer *buffer, struct region removed,
+                               uint32_t begin_idx, uint32_t end_idx,
                                void *userdata);
 
 uint32_t buffer_add_delete_hook(struct buffer *buffer, delete_hook_cb callback,
                                 void *userdata);
 void buffer_remove_delete_hook(struct buffer *buffer, uint32_t hook_id,
                                remove_hook_cb callback);
+
+/** Buffer destroy hook callback function */
+typedef void (*destroy_hook_cb)(struct buffer *buffer, void *userdata);
+uint32_t buffer_add_destroy_hook(struct buffer *buffer,
+                                 destroy_hook_cb callback, void *userdata);
 
 /** Buffer create hook callback function */
 typedef void (*create_hook_cb)(struct buffer *buffer, void *userdata);

@@ -38,3 +38,28 @@ static char *to_abspath(const char *path) {
     return exp;
   }
 }
+
+static const char *join_path_with_delim(const char *p1, const char *p2,
+                                        const char delim) {
+  size_t len1 = strlen(p1);
+  size_t len2 = strlen(p2);
+
+  char *path = malloc(len1 + len2 + 2);
+  uint32_t idx = 0;
+  memcpy(&path[idx], p1, len1);
+  idx += len1;
+  path[idx++] = '/';
+  memcpy(&path[idx], p2, len2);
+  idx += len2;
+  path[idx++] = '\0';
+
+  return path;
+}
+
+static const char *join_path(const char *p1, const char *p2) {
+#ifdef __unix__
+  return join_path_with_delim(p1, p2, '/');
+#elif defined(_WIN32) || defined(WIN32)
+  return join_path_with_delim(p1, p2, '\\');
+#endif
+}

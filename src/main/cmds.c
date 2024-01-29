@@ -68,6 +68,7 @@ int32_t run_interactive(struct command_ctx ctx, int argc, const char *argv[]) {
 }
 
 int32_t do_switch_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
+  disable_completion(minibuffer_buffer());
   const char *bufname = argv[0];
   if (argc == 0) {
     // switch back to prev buffer

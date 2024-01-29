@@ -119,6 +119,25 @@ struct command_list *command_list_create(uint32_t capacity,
  */
 void command_list_set_show_whitespace(struct command_list *list, bool show);
 
+enum colors {
+  Color_Black = 0,
+  Color_Red,
+  Color_Green,
+  Color_Yellow,
+  Color_Blue,
+  Color_Magenta,
+  Color_Cyan,
+  Color_White,
+  Color_BrightBlack = 8,
+  Color_BrightRed,
+  Color_BrightGreen,
+  Color_BrightYellow,
+  Color_BrightBlue,
+  Color_BrightMagenta,
+  Color_BrightCyan,
+  Color_BrightWhite
+};
+
 /**
  * Set background color
  *

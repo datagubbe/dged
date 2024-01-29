@@ -2,6 +2,8 @@
 .OBJDIR: ./build
 .PHONY: default clean check run debug debug-tests install format
 
+SYNTAX_ENABLE ?= true
+
 default: dged
 
 build:
@@ -26,12 +28,24 @@ TEST_SOURCES = test/assert.c test/buffer.c test/text.c test/utf8.c test/main.c \
 	test/command.c test/keyboard.c test/fake-reactor.c test/allocator.c \
 	test/minibuffer.c test/undo.c test/settings.c test/container.c
 
-prefix ?= "/usr"
+prefix ?= /usr
+datadir = $(prefix)/share/dged
 
 .SUFFIXES:
 .SUFFIXES: .c .o .d
 
-CFLAGS += -Werror -g -std=c99 -I $(.CURDIR)/src -I $(.CURDIR)/src/main
+CFLAGS += -Werror -g -O2 -std=c99 -I $(.CURDIR)/src -I $(.CURDIR)/src/main -DDATADIR="$(datadir)"
+
+.if $(SYNTAX_ENABLE:tl) == true
+HEADERS += src/dged/syntax.h
+SOURCES += src/dged/syntax.c
+
+treesitterflags != pkg-config tree-sitter --cflags
+CFLAGS += ${treesitterflags} -DSYNTAX_ENABLE
+
+treesitterld != pkg-config tree-sitter --libs
+LDFLAGS += ${treesitterld}
+.endif
 
 UNAME_S != uname -s | tr '[:upper:]' '[:lower:]'
 .sinclude "$(UNAME_S).mk"
@@ -90,6 +104,10 @@ install: dged
 
 	install -d $(prefix)/share/man/man1
 	install -m 644 $(.CURDIR)/dged.1 $(prefix)/share/man/man1/dged.1
+	if [ -n "$$TREESITTER_GRAMMARS" ]; then\
+		install -d "$(datadir)";\
+		cp -rL "$$TREESITTER_GRAMMARS"/ "$(datadir)/grammars";\
+	fi
 
 docs:
 	doxygen $(.CURDIR)/Doxyfile

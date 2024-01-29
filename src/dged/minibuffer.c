@@ -2,6 +2,7 @@
 #include "binding.h"
 #include "buffer.h"
 #include "buffer_view.h"
+#include "buffers.h"
 #include "command.h"
 #include "display.h"
 
@@ -19,6 +20,8 @@ static struct minibuffer {
   bool prompt_active;
   bool clear;
   struct window *prev_window;
+
+  struct buffer *message_buffer;
 
 } g_minibuffer = {0};
 
@@ -85,7 +88,7 @@ void update(struct buffer *buffer, void *userdata) {
   }
 }
 
-void minibuffer_init(struct buffer *buffer) {
+void minibuffer_init(struct buffer *buffer, struct buffers *buffers) {
   if (g_minibuffer.buffer != NULL) {
     return;
   }
@@ -96,6 +99,9 @@ void minibuffer_init(struct buffer *buffer) {
   g_minibuffer.clear = false;
   g_minibuffer.prompt_active = false;
   buffer_add_update_hook(g_minibuffer.buffer, update, &g_minibuffer);
+
+  g_minibuffer.message_buffer =
+      buffers_add(buffers, buffer_create("*messages*"));
 }
 
 void echo(uint32_t timeout, const char *fmt, va_list args) {
@@ -107,13 +113,37 @@ void echo(uint32_t timeout, const char *fmt, va_list args) {
   g_minibuffer.expires.tv_sec += timeout;
   g_minibuffer.clear = false;
 
-  char buff[2048];
+  static char buff[2048];
   size_t nbytes = vsnprintf(buff, 2048, fmt, args);
 
   // vsnprintf returns how many characters it would have wanted to write in case
   // of overflow
   buffer_set_text(g_minibuffer.buffer, (uint8_t *)buff,
                   nbytes > 2048 ? 2048 : nbytes);
+
+  // we can get messages before this is set up
+  if (g_minibuffer.message_buffer != NULL) {
+    buffer_add(g_minibuffer.message_buffer,
+               buffer_end(g_minibuffer.message_buffer), (uint8_t *)buff,
+               nbytes > 2048 ? 2048 : nbytes);
+  }
+}
+
+void message(const char *fmt, ...) {
+  // we can get messages before this is set up
+  if (g_minibuffer.message_buffer == NULL) {
+    return;
+  }
+
+  va_list args;
+  va_start(args, fmt);
+  static char buff[2048];
+  size_t nbytes = vsnprintf(buff, 2048, fmt, args);
+  va_end(args);
+
+  buffer_add(g_minibuffer.message_buffer,
+             buffer_end(g_minibuffer.message_buffer), (uint8_t *)buff,
+             nbytes > 2048 ? 2048 : nbytes);
 }
 
 void minibuffer_destroy() {
