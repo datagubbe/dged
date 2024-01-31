@@ -285,8 +285,8 @@ int main(int argc, char *argv[]) {
 
     struct window *active_window = windows_get_active();
 
-    /* Update the screen by flushing command lists collected from updating the
-     * buffers.
+    /* Update the screen by flushing command lists collected
+     * from updating the buffers.
      */
     TIMED_SCOPE_BEGIN(display);
     display_begin_render(display);

@@ -17,6 +17,7 @@
 #include "hash.h"
 #include "minibuffer.h"
 #include "path.h"
+#include "settings.h"
 #include "text.h"
 #include "vec.h"
 
@@ -110,8 +111,17 @@ static const char *read_text(void *payload, uint32_t byte_offset,
   return NULL;
 }
 
+static const char *grammar_name_from_buffer(struct buffer *buffer) {
+  struct setting *s = lang_setting(&buffer->lang, "grammar");
+  if (s != NULL && s->value.type == Setting_String) {
+    return s->value.string_value;
+  }
+
+  return buffer->lang.name;
+}
+
 static const char *lang_folder(struct buffer *buffer) {
-  const char *langname = buffer->lang.name;
+  const char *langname = grammar_name_from_buffer(buffer);
 
   size_t tspath_len = strlen(treesitter_path);
   size_t lang_len = strlen(langname);
@@ -328,6 +338,7 @@ static void update_parser(struct buffer *buffer, void *userdata,
       } else if (s8eq(cname, s8("string")) ||
                  s8eq(cname, s8("string.special")) ||
                  s8eq(cname, s8("string.special.path")) ||
+                 s8eq(cname, s8("text.title")) || s8eq(cname, s8("text.uri")) ||
                  s8eq(cname, s8("string.special.uri"))) {
         highlight = true;
         color = Color_Green;
@@ -472,7 +483,7 @@ static void create_parser(struct buffer *buffer, void *userdata) {
     return;
   }
 
-  const char *langname = buffer->lang.name;
+  const char *langname = grammar_name_from_buffer(buffer);
   size_t lang_len = strlen(langname);
 
   const char *prefix = "tree_sitter_";
@@ -547,7 +558,13 @@ void syntax_init() {
     return;
   }
 
+  // TODO: check that it exists
+  struct language l = lang_from_id("gitcommit");
+  lang_setting_set_default(&l, "grammar",
+                           (struct setting_value){.type = Setting_String,
+                                                  .string_value = "gitcommit"});
   buffer_add_create_hook(create_parser, NULL);
+  lang_destroy(&l);
 }
 
 void syntax_teardown() {

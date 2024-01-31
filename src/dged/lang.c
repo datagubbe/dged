@@ -57,6 +57,7 @@ void languages_init(bool register_default) {
     define_lang("Nix", "nix", ".*\\.nix", 4, "rnix-lsp");
     define_lang("Make", "make", ".*(Makefile|\\.mk)", 4, NULL);
     define_lang("Python", "python", ".*\\.py", 4, NULL);
+    define_lang("Git Commit Message", "gitcommit", "COMMIT_EDITMSG", 4, NULL);
   }
 }
 
@@ -215,6 +216,6 @@ struct language lang_from_id(const char *id) {
     return lang_from_settings(id);
   } else {
     minibuffer_echo_timeout(4, "failed to find language \"%s\"", id);
-    return lang_from_settings("languages.fnd");
+    return g_fundamental;
   }
 }
