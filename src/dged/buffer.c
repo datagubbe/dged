@@ -264,7 +264,7 @@ static void write_line(struct text_chunk *chunk, void *userdata) {
 
 static bool is_word_break(uint8_t c) {
   return c == ' ' || c == '.' || c == '(' || c == ')' || c == '[' || c == ']' ||
-         c == '{' || c == '}' || c == ';';
+         c == '{' || c == '}' || c == ';' || c == '<' || c == '>' || c == ':';
 }
 
 static bool is_word_char(uint8_t c) { return !is_word_break(c); }
