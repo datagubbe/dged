@@ -347,7 +347,8 @@ static void update_parser(struct buffer *buffer, void *userdata,
         highlight = true;
         color = Color_Yellow;
       } else if (s8eq(cname, s8("number"))) {
-        highlight = false;
+        highlight = true;
+        color = Color_Yellow;
       } else if (s8eq(cname, s8("function")) ||
                  s8eq(cname, s8("function.macro")) ||
                  s8eq(cname, s8("function.method")) ||

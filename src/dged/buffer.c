@@ -435,6 +435,8 @@ void buffer_destroy(struct buffer *buffer) {
     h->callback(buffer, h->userdata);
   }
 
+  lang_destroy(&buffer->lang);
+
   text_destroy(buffer->text);
   buffer->text = NULL;
 

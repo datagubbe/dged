@@ -60,7 +60,13 @@ void languages_init(bool register_default) {
   }
 }
 
-struct language lang_from_settings(const char *id) {
+void lang_destroy(struct language *lang) {
+  if (strlen(lang->id) != 3 || strncmp(lang->id, "fnd", 3) != 0) {
+    free((void *)lang->id);
+  }
+}
+
+static struct language lang_from_settings(const char *id) {
   struct language l;
   l.id = strdup(id);
 
@@ -93,7 +99,7 @@ struct language lang_from_settings(const char *id) {
   return l;
 }
 
-void next_ext(const char *curr, const char **nxt, const char **end) {
+static void next_ext(const char *curr, const char **nxt, const char **end) {
   if (curr == NULL) {
     *nxt = *end = NULL;
     return;
@@ -133,6 +139,17 @@ void lang_setting_set(struct language *lang, const char *key,
   const char *setting_key = setting_join_key(langkey, key);
 
   settings_set(setting_key, value);
+
+  free((void *)setting_key);
+  free((void *)langkey);
+}
+
+void lang_setting_set_default(struct language *lang, const char *key,
+                              struct setting_value value) {
+  const char *langkey = setting_join_key("languages", lang->id);
+  const char *setting_key = setting_join_key(langkey, key);
+
+  settings_set_default(setting_key, value);
 
   free((void *)setting_key);
   free((void *)langkey);
