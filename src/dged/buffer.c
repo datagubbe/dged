@@ -215,12 +215,6 @@ static bool moveh(struct buffer *buffer, int64_t coldelta,
   return true;
 }
 
-static void maybe_delete_region(struct buffer *buffer, struct region region) {
-  if (region_has_size(region)) {
-    buffer_delete(buffer, region);
-  }
-}
-
 static void buffer_read_from_file(struct buffer *b) {
   struct stat sb;
   char *fullname = to_abspath(b->filename);
@@ -961,6 +955,38 @@ uint32_t visual_string_width(uint8_t *txt, uint32_t len, uint32_t start_col,
   return width;
 }
 
+static void apply_properties(struct command_list *cmds,
+                             struct text_property *properties[],
+                             uint32_t nproperties) {
+  for (uint32_t propi = 0; propi < nproperties; ++propi) {
+    struct text_property *prop = properties[propi];
+
+    switch (prop->type) {
+    case TextProperty_Colors: {
+      struct text_property_colors *colors = &prop->colors;
+      if (colors->set_bg) {
+        command_list_set_index_color_bg(cmds, colors->bg);
+      }
+
+      if (colors->set_fg) {
+        command_list_set_index_color_fg(cmds, colors->fg);
+      }
+      break;
+    }
+    }
+  }
+}
+
+static uint64_t properties_hash(struct text_property *properties[],
+                                uint32_t nproperties) {
+  uint64_t hash = 0;
+  for (uint32_t i = 0; i < nproperties; ++i) {
+    hash += (uint64_t)properties[i];
+  }
+
+  return hash;
+}
+
 void render_line(struct text_chunk *line, void *userdata) {
   struct cmdbuf *cmdbuf = (struct cmdbuf *)userdata;
   uint32_t visual_line = line->line - cmdbuf->origin.line;
@@ -977,9 +1003,9 @@ void render_line(struct text_chunk *line, void *userdata) {
   uint32_t visual_col_start = 0;
   uint32_t cur_visual_col = 0;
   uint32_t start_byte = 0, text_nbytes = 0;
-  struct text_property *properties[16] = {0};
-  struct text_property *prev_properties[16] = {0};
-  uint32_t prev_nproperties;
+  struct text_property *properties[32] = {0};
+  uint64_t prev_properties_hash = 0;
+
   for (uint32_t cur_byte = start_byte, coli = 0;
        cur_byte < text_nbytes_scroll && cur_visual_col < cmdbuf->width &&
        coli < line->nchars - cmdbuf->origin.col;
@@ -994,53 +1020,24 @@ void render_line(struct text_chunk *line, void *userdata) {
     text_get_properties(
         cmdbuf->buffer->text,
         (struct location){.line = line->line, .col = coli + cmdbuf->origin.col},
-        properties, 16, &nproperties);
+        properties, 32, &nproperties);
 
-    // handle changes to properties
-    uint32_t nnew_props = 0;
-    struct text_property *new_props[16] = {0};
-    for (uint32_t propi = 0; propi < nproperties; ++propi) {
-      if (propi >= prev_nproperties ||
-          prev_properties[propi] != properties[propi]) {
-        new_props[nnew_props] = properties[propi];
-        ++nnew_props;
-      }
-    }
-
-    // if we have any new or lost props, flush text up until now
-    if (nnew_props > 0 || nproperties < prev_nproperties) {
+    // if we have any new or lost props, flush text up until now, reset
+    // and re-apply current properties
+    uint64_t new_properties_hash = properties_hash(properties, nproperties);
+    if (new_properties_hash != prev_properties_hash) {
       command_list_draw_text(cmdbuf->cmds, visual_col_start, visual_line,
                              text + start_byte, cur_byte - start_byte);
+      command_list_reset_color(cmdbuf->cmds);
+
       visual_col_start = cur_visual_col;
       start_byte = cur_byte;
+
+      // apply new properties
+      apply_properties(cmdbuf->cmds, properties, nproperties);
     }
 
-    // apply new properties
-    for (uint32_t propi = 0; propi < nnew_props; ++propi) {
-      struct text_property *prop = new_props[propi];
-      struct text_property_colors *colors = &prop->colors;
-
-      switch (prop->type) {
-      case TextProperty_Colors:
-        if (colors->set_bg) {
-          command_list_set_index_color_bg(cmdbuf->cmds, colors->bg);
-        }
-
-        if (colors->set_fg) {
-          command_list_set_index_color_fg(cmdbuf->cmds, colors->fg);
-        }
-        break;
-      }
-    }
-
-    if (nproperties == 0 && prev_nproperties > 0) {
-      command_list_reset_color(cmdbuf->cmds);
-    }
-
-    memcpy(prev_properties, properties,
-           nproperties * sizeof(struct text_property *));
-    prev_nproperties = nproperties;
-
+    prev_properties_hash = new_properties_hash;
     cur_byte += char_nbytes;
     text_nbytes += char_nbytes;
     cur_visual_col += char_vwidth;
