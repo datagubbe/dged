@@ -130,11 +130,11 @@ uint32_t buffer_add_destroy_hook(struct buffer *buffer,
 void buffer_static_init() {
   VEC_INIT(&g_create_hooks, 8);
 
-  settings_register_setting(
+  settings_set_default(
       "editor.tab-width",
       (struct setting_value){.type = Setting_Number, .number_value = 4});
 
-  settings_register_setting(
+  settings_set_default(
       "editor.show-whitespace",
       (struct setting_value){.type = Setting_Bool, .bool_value = true});
 }
@@ -270,7 +270,7 @@ static void write_line(struct text_chunk *chunk, void *userdata) {
 
 static bool is_word_break(uint8_t c) {
   return c == ' ' || c == '.' || c == '(' || c == ')' || c == '[' || c == ']' ||
-         c == '{' || c == '}';
+         c == '{' || c == '}' || c == ';';
 }
 
 static bool is_word_char(uint8_t c) { return !is_word_break(c); }

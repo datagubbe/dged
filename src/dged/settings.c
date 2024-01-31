@@ -40,8 +40,8 @@ void setting_set_value(struct setting *setting, struct setting_value val) {
   }
 }
 
-void settings_register_setting(const char *path,
-                               struct setting_value default_value) {
+static void settings_register_setting(const char *path,
+                                      struct setting_value default_value) {
   HASHMAP_APPEND(&g_settings.settings, struct setting_entry, path,
                  struct setting_entry * s);
 
@@ -81,14 +81,14 @@ void settings_set(const char *path, struct setting_value value) {
   struct setting *setting = settings_get(path);
   if (setting != NULL) {
     setting_set_value(setting, value);
+  } else {
+    settings_register_setting(path, value);
   }
 }
 
-static void settings_upsert(const char *path, struct setting_value value) {
+void settings_set_default(const char *path, struct setting_value value) {
   struct setting *setting = settings_get(path);
-  if (setting != NULL) {
-    setting_set_value(setting, value);
-  } else {
+  if (setting == NULL) {
     settings_register_setting(path, value);
   }
 }
@@ -156,21 +156,21 @@ static int32_t parse_toml(struct parser *state, char **errmsgs[]) {
 
     case Token_IntValue:
       i = *((int64_t *)t.data);
-      settings_upsert(curkey, (struct setting_value){.type = Setting_Number,
-                                                     .number_value = i});
+      settings_set(curkey, (struct setting_value){.type = Setting_Number,
+                                                  .number_value = i});
       break;
 
     case Token_BoolValue:
       b = *((bool *)t.data);
-      settings_upsert(curkey, (struct setting_value){.type = Setting_Bool,
-                                                     .bool_value = b});
+      settings_set(curkey, (struct setting_value){.type = Setting_Bool,
+                                                  .bool_value = b});
       break;
 
     case Token_StringValue:
       v = calloc(t.len + 1, 1);
       strncpy(v, (char *)t.data, t.len);
-      settings_upsert(curkey, (struct setting_value){.type = Setting_String,
-                                                     .string_value = v});
+      settings_set(curkey, (struct setting_value){.type = Setting_String,
+                                                  .string_value = v});
       free(v);
       break;
 
@@ -294,4 +294,20 @@ int32_t settings_from_file(const char *path, char **errmsgs[]) {
 
   parser_destroy(&parser);
   return ret;
+}
+
+const char *setting_join_key(const char *initial, const char *setting) {
+  size_t l1 = strlen(initial);
+  size_t l2 = strlen(setting);
+  char *combined = (char *)malloc(sizeof(char) * (l1 + l2 + 2));
+
+  uint32_t idx = 0;
+  memcpy(&combined[idx], initial, l1);
+  idx += l1;
+  combined[idx++] = '.';
+  memcpy(&combined[idx], setting, l2);
+  idx += l2;
+  combined[idx++] = '\0';
+
+  return combined;
 }

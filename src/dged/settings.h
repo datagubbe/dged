@@ -77,17 +77,6 @@ void settings_init(uint32_t initial_capacity);
 void settings_destroy();
 
 /**
- * Register a new setting.
- *
- * @param path The path of the new setting on
- * the form <category>.<sub-category>.<setting-name>.
- * @param default_value The default value for the setting.
- * All settings are required to declare a default value.
- */
-void settings_register_setting(const char *path,
-                               struct setting_value default_value);
-
-/**
  * Retrieve a single setting by path.
  *
  * @param path The exact path of the setting on
@@ -119,6 +108,19 @@ void settings_get_prefix(const char *prefix, struct setting **settings_out[],
 void settings_set(const char *path, struct setting_value value);
 
 /**
+ * Set the default value for a setting.
+ *
+ * This works the same as @ref settings_set but
+ * will not overwrite the value if the setting already has one.
+ *
+ * @param path The exact path of the setting on
+ * the form <category>.<sub-category>.<setting-name>.
+ * @param value The new value of the setting. The type has to match the declared
+ * type for the setting. If not, the new value is ignored.
+ */
+void settings_set_default(const char *path, struct setting_value value);
+
+/**
  * Set a value for a setting.
  *
  * @param setting Pointer to a setting to set.
@@ -135,6 +137,8 @@ void setting_set_value(struct setting *setting, struct setting_value val);
  * @param n Size in bytes of @ref buf.
  */
 void setting_to_string(struct setting *setting, char *buf, size_t n);
+
+const char *setting_join_key(const char *initial, const char *setting);
 
 /**
  * Parse settings from a string in TOML format.

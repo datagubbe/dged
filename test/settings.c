@@ -7,7 +7,7 @@
 
 void test_get() {
   settings_init(10);
-  settings_register_setting(
+  settings_set_default(
       "my.setting",
       (struct setting_value){.type = Setting_Bool, .bool_value = false});
 
@@ -18,7 +18,7 @@ void test_get() {
   ASSERT(!s->value.bool_value,
          "Expected inserted setting to have the same value when retrieved");
 
-  settings_register_setting(
+  settings_set_default(
       "other.setting",
       (struct setting_value){.type = Setting_Number, .number_value = 28});
 
@@ -39,7 +39,7 @@ void test_get() {
 
 void test_set() {
   settings_init(10);
-  settings_register_setting(
+  settings_set_default(
       "my.setting",
       (struct setting_value){.type = Setting_Bool, .bool_value = false});
 

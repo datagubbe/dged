@@ -11,34 +11,40 @@ void define_lang(const char *name, const char *id, const char *pattern,
                  uint32_t tab_width, const char *lang_srv) {
   char namebuf[128] = {0};
 
-  size_t offs = snprintf(namebuf, 128, "languages.%s.", id);
+  const char *key = setting_join_key("languages", id);
 
-  char *b = namebuf + offs;
-  snprintf(b, 128 - offs, "%s", "pattern");
-  settings_register_setting(
-      namebuf, (struct setting_value){.type = Setting_String,
-                                      .string_value = (char *)pattern});
+  const char *pat_key = setting_join_key(key, "pattern");
+  settings_set_default(pat_key,
+                       (struct setting_value){.type = Setting_String,
+                                              .string_value = (char *)pattern});
+  free((void *)pat_key);
 
-  snprintf(b, 128 - offs, "%s", "tab-width");
-  settings_register_setting(namebuf,
-                            (struct setting_value){.type = Setting_Number,
-                                                   .number_value = tab_width});
+  const char *tabw_key = setting_join_key(key, "tab-width");
+  settings_set_default(tabw_key,
+                       (struct setting_value){.type = Setting_Number,
+                                              .number_value = tab_width});
+  free((void *)tabw_key);
 
+  // TODO: move lang server
   if (lang_srv != NULL) {
-    snprintf(b, 128 - offs, "%s", "lang-srv");
-    settings_register_setting(
-        namebuf, (struct setting_value){.type = Setting_String,
-                                        .string_value = (char *)lang_srv});
+    const char *langsrv_key = setting_join_key(key, "lang-srv");
+    settings_set_default(
+        langsrv_key, (struct setting_value){.type = Setting_String,
+                                            .string_value = (char *)lang_srv});
+    free((void *)langsrv_key);
   }
 
-  snprintf(b, 128 - offs, "%s", "name");
-  settings_register_setting(
-      namebuf, (struct setting_value){.type = Setting_String,
-                                      .string_value = (char *)name});
+  const char *name_key = setting_join_key(key, "name");
+  settings_set_default(name_key,
+                       (struct setting_value){.type = Setting_String,
+                                              .string_value = (char *)name});
+  free((void *)name_key);
+  free((void *)key);
 }
 
 static struct language g_fundamental = {
     .name = "Fundamental",
+    .id = "fnd",
     .tab_width = 4,
     .lang_srv = NULL,
 };
@@ -54,19 +60,22 @@ void languages_init(bool register_default) {
   }
 }
 
-struct language lang_from_settings(const char *lang_path) {
-  char setting_name_buf[128] = {0};
-  size_t offs = snprintf(setting_name_buf, 128, "%s.", lang_path);
-  char *b = setting_name_buf + offs;
-
+struct language lang_from_settings(const char *id) {
   struct language l;
+  l.id = strdup(id);
 
-  snprintf(b, 128 - offs, "%s", "name");
-  struct setting *name = settings_get(setting_name_buf);
+  const char *key = setting_join_key("languages", id);
+
+  // name
+  const char *name_key = setting_join_key(key, "name");
+  struct setting *name = settings_get(name_key);
+  free((void *)name_key);
   l.name = name != NULL ? name->value.string_value : "Unknown";
 
-  snprintf(b, 128 - offs, "%s", "tab-width");
-  struct setting *tab_width = settings_get(setting_name_buf);
+  // tab width
+  const char *tabw_key = setting_join_key(key, "tab-width");
+  struct setting *tab_width = settings_get(tabw_key);
+  free((void *)tabw_key);
 
   // fall back to global value
   if (tab_width == NULL) {
@@ -74,10 +83,13 @@ struct language lang_from_settings(const char *lang_path) {
   }
   l.tab_width = tab_width != NULL ? tab_width->value.number_value : 4;
 
-  snprintf(b, 128 - offs, "%s", "lang-srv");
-  struct setting *lang_srv = settings_get(setting_name_buf);
+  // language server, TODO: move
+  const char *langsrv_key = setting_join_key(key, "lang-srv");
+  struct setting *lang_srv = settings_get(langsrv_key);
+  free((void *)langsrv_key);
   l.lang_srv = lang_srv != NULL ? lang_srv->value.string_value : NULL;
 
+  free((void *)key);
   return l;
 }
 
@@ -94,6 +106,36 @@ void next_ext(const char *curr, const char **nxt, const char **end) {
   if (spc != NULL) {
     *end = spc;
   }
+}
+
+void lang_settings(struct language *lang, struct setting **settings[],
+                   uint32_t *nsettings) {
+  const char *key = setting_join_key("languages", lang->id);
+  settings_get_prefix(key, settings, nsettings);
+  free((void *)key);
+}
+
+struct setting *lang_setting(struct language *lang, const char *key) {
+  const char *langkey = setting_join_key("languages", lang->id);
+  const char *setting_key = setting_join_key(langkey, key);
+
+  struct setting *res = settings_get(setting_key);
+
+  free((void *)setting_key);
+  free((void *)langkey);
+
+  return res;
+}
+
+void lang_setting_set(struct language *lang, const char *key,
+                      struct setting_value value) {
+  const char *langkey = setting_join_key("languages", lang->id);
+  const char *setting_key = setting_join_key(langkey, key);
+
+  settings_set(setting_key, value);
+
+  free((void *)setting_key);
+  free((void *)langkey);
 }
 
 struct language lang_from_filename(const char *filename) {
@@ -117,12 +159,15 @@ struct language lang_from_filename(const char *filename) {
       if (regcomp(&regex, val, REG_EXTENDED) == 0 &&
           regexec(&regex, filename, 0, NULL, 0) == 0) {
 
-        char lang_path[128] = {0};
-        strncpy(lang_path, setting->path, setting_name - setting->path);
+        // len of "languages."
+        size_t id_len = setting_name - (setting->path + 10);
+        char lang_id[128] = {0};
+        memcpy(lang_id, setting->path + 10, id_len);
+        lang_id[id_len] = '\0';
 
         regfree(&regex);
         free(settings);
-        return lang_from_settings(lang_path);
+        return lang_from_settings(lang_id);
       }
       regfree(&regex);
     }
@@ -140,18 +185,17 @@ struct language lang_from_id(const char *id) {
     return g_fundamental;
   }
 
-  char lang_path[128] = {0};
-  snprintf(lang_path, 128, "languages.%s", id);
-
   // check that it exists
   struct setting **settings = NULL;
   uint32_t nsettings = 0;
+  const char *lang_path = setting_join_key("languages", id);
 
   settings_get_prefix(lang_path, &settings, &nsettings);
+  free((void *)lang_path);
   free(settings);
 
   if (nsettings > 0) {
-    return lang_from_settings(lang_path);
+    return lang_from_settings(id);
   } else {
     minibuffer_echo_timeout(4, "failed to find language \"%s\"", id);
     return lang_from_settings("languages.fnd");

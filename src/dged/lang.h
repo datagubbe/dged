@@ -8,6 +8,9 @@
  * Settings for a programming language.
  */
 struct language {
+  /** Language id */
+  const char *id;
+
   /** Descriptive name of the programming language */
   const char *name;
 
