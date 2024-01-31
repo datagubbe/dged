@@ -279,6 +279,10 @@ static void update_parser(struct buffer *buffer, void *userdata,
     return;
   }
 
+  if (buffer_is_empty(buffer)) {
+    return;
+  }
+
   // take results and set text properties
   // TODO: can reuse the cursor
   TSQueryCursor *cursor = ts_query_cursor_new();
