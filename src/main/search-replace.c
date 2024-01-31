@@ -18,6 +18,7 @@ static struct replace {
   uint32_t nmatches;
   uint32_t current_match;
   buffer_keymap_id keymap_id;
+  struct window *window;
 } g_current_replace = {0};
 
 void abort_replace() {
@@ -27,6 +28,7 @@ void abort_replace() {
   g_current_replace.matches = NULL;
   g_current_replace.replace = NULL;
   g_current_replace.nmatches = 0;
+  g_current_replace.window = NULL;
   minibuffer_abort_prompt();
 }
 
@@ -78,7 +80,7 @@ static void highlight_matches(struct buffer *buffer, struct region *matches,
 static int32_t replace_next(struct command_ctx ctx, int argc,
                             const char *argv[]) {
   struct replace *state = &g_current_replace;
-  struct buffer_view *buffer_view = window_buffer_view(windows_get_active());
+  struct buffer_view *buffer_view = window_buffer_view(state->window);
 
   struct region *m = &state->matches[state->current_match];
   buffer_view_set_mark_at(buffer_view, (struct location){.line = m->begin.line,
@@ -106,7 +108,7 @@ static int32_t replace_next(struct command_ctx ctx, int argc,
 static int32_t skip_next(struct command_ctx ctx, int argc, const char *argv[]) {
   struct replace *state = &g_current_replace;
 
-  struct buffer_view *buffer_view = window_buffer_view(windows_get_active());
+  struct buffer_view *buffer_view = window_buffer_view(state->window);
   struct region *m = &state->matches[state->current_match];
   buffer_view_goto(buffer_view, (struct location){.line = m->end.line,
                                                   .col = m->end.col + 1});
@@ -182,6 +184,7 @@ static int32_t replace(struct command_ctx ctx, int argc, const char *argv[]) {
       .matches = matches,
       .nmatches = nmatches,
       .current_match = 0,
+      .window = ctx.active_window,
   };
 
   struct region *m = &g_current_replace.matches[0];
