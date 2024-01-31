@@ -269,7 +269,8 @@ static void write_line(struct text_chunk *chunk, void *userdata) {
 }
 
 static bool is_word_break(uint8_t c) {
-  return c == ' ' || c == '.' || c == '(' || c == ')';
+  return c == ' ' || c == '.' || c == '(' || c == ')' || c == '[' || c == ']' ||
+         c == '{' || c == '}';
 }
 
 static bool is_word_char(uint8_t c) { return !is_word_break(c); }
@@ -591,8 +592,12 @@ struct location buffer_next_word(struct buffer *buffer, struct location dot) {
     return res.at;
   }
 
+  uint32_t traveled = dot.col - res.at.col;
+
   res = find_next_in_line(buffer, res.at, is_word_char);
-  if (!res.found) {
+
+  // make a stop at the end of the line as well
+  if (!res.found && traveled == 0) {
     moveh(buffer, 1, &res.at);
   }
 
