@@ -15,7 +15,6 @@
 #include "buffer.h"
 #include "display.h"
 #include "hash.h"
-#include "hashmap.h"
 #include "minibuffer.h"
 #include "path.h"
 #include "text.h"
@@ -26,13 +25,41 @@ static bool treesitter_path_allocated = false;
 static const char *parser_filename = "parser";
 static const char *highlight_path = "queries/highlights.scm";
 
-HASHMAP_ENTRY_TYPE(re_cache_entry, regex_t);
+// TODO: move to own file
+#define s8(s) ((struct s8){s, strlen(s)})
+
+struct s8 {
+  char *s;
+  uint32_t l;
+};
+
+static bool s8eq(struct s8 s1, struct s8 s2) {
+  return s1.l == s2.l && memcmp(s1.s, s2.s, s1.l) == 0;
+}
+
+static char *s8tocstr(struct s8 s) {
+  char *cstr = (char *)malloc(s.l + 1);
+  memcpy(cstr, s.s, s.l);
+  cstr[s.l] = '\0';
+  return cstr;
+}
+
+struct predicate {
+  uint32_t pattern_idx;
+
+  bool (*eval)(struct s8, uint32_t, struct s8[], struct s8, void *);
+  uint32_t argc;
+  struct s8 argv[32];
+  void *data;
+
+  void (*cleanup)(void *);
+};
 
 struct highlight {
   TSParser *parser;
   TSTree *tree;
   TSQuery *query;
-  HASHMAP(struct re_cache_entry) re_cache;
+  VEC(struct predicate) predicates;
   void *dlhandle;
 };
 
@@ -43,11 +70,13 @@ static void delete_parser(struct buffer *buffer, void *userdata) {
     ts_query_delete(highlight->query);
   }
 
-  HASHMAP_FOR_EACH(&highlight->re_cache, struct re_cache_entry * entry) {
-    regfree(&entry->value);
+  VEC_FOR_EACH(&highlight->predicates, struct predicate * p) {
+    if (p->cleanup != NULL) {
+      p->cleanup(p->data);
+    }
   }
 
-  HASHMAP_DESTROY(&highlight->re_cache);
+  VEC_DESTROY(&highlight->predicates);
 
   ts_tree_delete(highlight->tree);
   ts_parser_delete(highlight->parser);
@@ -101,6 +130,78 @@ static const char *lang_folder(struct buffer *buffer) {
   return fld;
 }
 
+static bool eval_match(struct s8 capname, uint32_t argc, struct s8 argv[],
+                       struct s8 value, void *data) {
+  regex_t *regex = (regex_t *)data;
+  if (regex == NULL) {
+    return false;
+  }
+
+  char *text = s8tocstr(value);
+  bool match = regexec(regex, text, 0, NULL, 0) == 0;
+
+  free(text);
+  return match;
+}
+
+static void cleanup_match(void *data) {
+  regex_t *regex = (regex_t *)data;
+  if (regex != NULL) {
+    regfree(regex);
+    free(regex);
+  }
+}
+
+static void create_predicates(struct highlight *h, uint32_t pattern_index) {
+  uint32_t npreds = 0;
+  const TSQueryPredicateStep *predicate_steps =
+      ts_query_predicates_for_pattern(h->query, pattern_index, &npreds);
+
+  struct s8 capname;
+  struct s8 args[32] = {0};
+  uint32_t argc = 0;
+  for (uint32_t predi = 0; predi < npreds; ++predi) {
+    const TSQueryPredicateStep *step = &predicate_steps[predi];
+    switch (step->type) {
+    case TSQueryPredicateStepTypeCapture:
+      capname.s = (char *)ts_query_capture_name_for_id(h->query, step->value_id,
+                                                       &capname.l);
+      break;
+
+    case TSQueryPredicateStepTypeString:
+      args[argc].s = (char *)ts_query_string_value_for_id(
+          h->query, step->value_id, &args[argc].l);
+      ++argc;
+      break;
+
+    case TSQueryPredicateStepTypeDone:
+      if (s8eq(args[0], s8("match?"))) {
+        regex_t *re = calloc(1, sizeof(regex_t));
+        char *val = s8tocstr(args[1]);
+
+        if (regcomp(re, val, 0) == 0) {
+          VEC_APPEND(&h->predicates, struct predicate * pred);
+          pred->pattern_idx = pattern_index;
+          pred->eval = eval_match;
+          pred->cleanup = cleanup_match;
+          pred->argc = 1;
+          pred->data = re;
+
+          memset(pred->argv, 0, sizeof(struct s8) * 32);
+          memcpy(pred->argv, args, sizeof(struct s8));
+        } else {
+          free(re);
+        }
+
+        free(val);
+      }
+
+      argc = 0;
+      break;
+    }
+  }
+}
+
 static TSQuery *setup_queries(const char *lang_root, TSTree *tree) {
   const char *filename = join_path(lang_root, highlight_path);
 
@@ -150,123 +251,28 @@ static TSQuery *setup_queries(const char *lang_root, TSTree *tree) {
   return q;
 }
 
-#define s8(s) ((struct s8){s, strlen(s)})
+static bool eval_predicates(struct highlight *h, struct text *text,
+                            TSPoint start, TSPoint end, uint32_t pattern_index,
+                            struct s8 cname) {
+  VEC_FOR_EACH(&h->predicates, struct predicate * p) {
+    if (p->pattern_idx == pattern_index) {
+      struct text_chunk txt =
+          text_get_region(text, start.row, start.column, end.row, end.column);
+      bool result =
+          p->eval(cname, p->argc, p->argv,
+                  (struct s8){.s = txt.text, .l = txt.nbytes}, p->data);
 
-struct s8 {
-  char *s;
-  uint32_t l;
-};
+      if (txt.allocated) {
+        free(txt.text);
+      }
 
-static bool s8eq(struct s8 s1, struct s8 s2) {
-  return s1.l == s2.l && memcmp(s1.s, s2.s, s1.l) == 0;
-}
-
-char *s8tocstr(struct s8 s) {
-  char *cstr = (char *)malloc(s.l + 1);
-  memcpy(cstr, s.s, s.l);
-  cstr[s.l] = '\0';
-  return cstr;
-}
-
-static bool eval_match(struct s8 capname, uint32_t argc, struct s8 argv[],
-                       struct s8 value, void *data) {
-  regex_t *regex = (regex_t *)data;
-  if (regex == NULL) {
-    return false;
-  }
-
-  char *text = s8tocstr(value);
-  bool match = regexec(regex, text, 0, NULL, 0) == 0;
-
-  free(text);
-  return match;
-}
-
-static void cleanup_match(void *data) {
-  regex_t *regex = (regex_t *)data;
-  if (regex != NULL) {
-    regfree(regex);
-    free(regex);
-  }
-}
-
-struct predicate {
-  bool (*fn)(struct s8, uint32_t, struct s8[], struct s8, void *);
-  void (*cleanup)(void *);
-  uint32_t argc;
-  struct s8 argv[32];
-  void *data;
-};
-
-typedef VEC(struct predicate) predicate_vec;
-
-static regex_t *compile_re_cached(struct highlight *h, struct s8 expr) {
-  char *val = s8tocstr(expr);
-  HASHMAP_GET(&h->re_cache, struct re_cache_entry, val, regex_t * re);
-  if (re == NULL) {
-    regex_t new_re;
-    if (regcomp(&new_re, val, 0) == 0) {
-      HASHMAP_APPEND(&h->re_cache, struct re_cache_entry, val,
-                     struct re_cache_entry * new);
-      if (new != NULL) {
-        new->value = new_re;
-        re = &new->value;
+      if (!result) {
+        return false;
       }
     }
   }
 
-  free(val);
-  return re;
-}
-
-static predicate_vec create_predicates(struct highlight *h,
-                                       uint32_t pattern_index) {
-  predicate_vec predicates;
-
-  uint32_t npreds = 0;
-  const TSQueryPredicateStep *predicate_steps =
-      ts_query_predicates_for_pattern(h->query, pattern_index, &npreds);
-
-  VEC_INIT(&predicates, 8);
-
-  bool result = true;
-  struct s8 capname;
-  struct s8 args[32] = {0};
-  uint32_t argc = 0;
-  for (uint32_t predi = 0; predi < npreds; ++predi) {
-    const TSQueryPredicateStep *step = &predicate_steps[predi];
-    switch (step->type) {
-    case TSQueryPredicateStepTypeCapture:
-      capname.s = (char *)ts_query_capture_name_for_id(h->query, step->value_id,
-                                                       &capname.l);
-      break;
-
-    case TSQueryPredicateStepTypeString:
-      args[argc].s = (char *)ts_query_string_value_for_id(
-          h->query, step->value_id, &args[argc].l);
-      ++argc;
-      break;
-
-    case TSQueryPredicateStepTypeDone:
-      if (s8eq(args[0], s8("match?"))) {
-        VEC_APPEND(&predicates, struct predicate * pred);
-        pred->fn = eval_match;
-        pred->cleanup = NULL;
-        pred->argc = 1;
-
-        // cache the regex
-        pred->data = compile_re_cached(h, args[1]);
-
-        memset(pred->argv, 0, sizeof(struct s8) * 32);
-        memcpy(pred->argv, args, sizeof(struct s8));
-      }
-
-      argc = 0;
-      break;
-    }
-  }
-
-  return predicates;
+  return true;
 }
 
 static void update_parser(struct buffer *buffer, void *userdata,
@@ -284,7 +290,6 @@ static void update_parser(struct buffer *buffer, void *userdata,
   }
 
   // take results and set text properties
-  // TODO: can reuse the cursor
   TSQueryCursor *cursor = ts_query_cursor_new();
   uint32_t end_line = origin.line + height >= buffer_num_lines(buffer)
                           ? buffer_num_lines(buffer) - 1
@@ -296,8 +301,6 @@ static void update_parser(struct buffer *buffer, void *userdata,
 
   TSQueryMatch match;
   while (ts_query_cursor_next_match(cursor, &match)) {
-    predicate_vec predicates = create_predicates(h, match.pattern_index);
-
     for (uint32_t capi = 0; capi < match.capture_count; ++capi) {
       const TSQueryCapture *cap = &match.captures[capi];
       TSPoint start = ts_node_start_point(cap->node);
@@ -307,20 +310,8 @@ static void update_parser(struct buffer *buffer, void *userdata,
       cname.s =
           (char *)ts_query_capture_name_for_id(h->query, cap->index, &cname.l);
 
-      bool predicates_match = true;
-      VEC_FOR_EACH(&predicates, struct predicate * pred) {
-        struct text_chunk txt = text_get_region(
-            buffer->text, start.row, start.column, end.row, end.column);
-        predicates_match &=
-            pred->fn(cname, pred->argc, pred->argv,
-                     (struct s8){.s = txt.text, .l = txt.nbytes}, pred->data);
-
-        if (txt.allocated) {
-          free(txt.text);
-        }
-      }
-
-      if (!predicates_match) {
+      if (!eval_predicates(h, buffer->text, start, end, match.pattern_index,
+                           cname)) {
         continue;
       }
 
@@ -388,13 +379,6 @@ static void update_parser(struct buffer *buffer, void *userdata,
                   },
           });
     }
-
-    VEC_FOR_EACH(&predicates, struct predicate * pred) {
-      if (pred->cleanup != NULL) {
-        pred->cleanup(pred->data);
-      }
-    }
-    VEC_DESTROY(&predicates);
   }
 
   ts_query_cursor_delete(cursor);
@@ -520,8 +504,13 @@ static void create_parser(struct buffer *buffer, void *userdata) {
   };
   hl->tree = ts_parser_parse(hl->parser, NULL, i);
   hl->query = setup_queries(lang_root, hl->tree);
+
+  VEC_INIT(&hl->predicates, 8);
+  uint32_t npatterns = ts_query_pattern_count(hl->query);
+  for (uint32_t pi = 0; pi < npatterns; ++pi) {
+    create_predicates(hl, pi);
+  }
   hl->dlhandle = h;
-  HASHMAP_INIT(&hl->re_cache, 64, hash_name);
 
   free((void *)lang_root);
 

@@ -2,25 +2,19 @@
 
 bool location_is_between(struct location location, struct location start,
                          struct location end) {
-  if (location.line >= start.line && location.line <= end.line) {
-    if (location.line == end.line && location.col <= end.col &&
-        location.line == start.line && location.col >= start.col) {
-      // only one line
-      return true;
-    } else if (location.line == start.line && location.line != end.line &&
-               location.col >= start.col) {
-      // we are on the first line
-      return true;
-    } else if (location.line == end.line && location.line != start.line &&
-               location.col <= end.col) {
-      // we are on the last line
-      return true;
-    } else if (location.line != end.line && location.line != start.line) {
-      // we are on lines in between
-      return true;
-    }
-  }
-  return false;
+  return (location.line >= start.line && location.line <= end.line) &&
+         (
+             // inbetween
+             (location.line != end.line && location.line != start.line) ||
+             // first line
+             (location.line == start.line && location.line != end.line &&
+              location.col >= start.col) ||
+             // last line
+             (location.line == end.line && location.line != start.line &&
+              location.col <= end.col) ||
+             // only one line
+             (location.line == end.line && location.col <= end.col &&
+              location.line == start.line && location.col >= start.col));
 }
 
 int location_compare(struct location l1, struct location l2) {

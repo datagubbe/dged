@@ -229,8 +229,10 @@ int main(int argc, char *argv[]) {
   struct buffer initial_buffer = buffer_create("welcome");
   if (filename != NULL) {
     buffer_destroy(&initial_buffer);
-    initial_buffer = buffer_from_file(filename);
+    const char *absfile = to_abspath(filename);
+    initial_buffer = buffer_from_file(absfile);
     free((void *)filename);
+    free((void *)absfile);
   } else {
     const char *welcome_txt = "Welcome to the editor for datagubbar 👴\n";
     buffer_set_text(&initial_buffer, (uint8_t *)welcome_txt,

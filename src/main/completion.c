@@ -231,7 +231,7 @@ static void on_buffer_insert(struct buffer *buffer, struct region inserted,
 
       ctx->trigger_current_nchars += nchars;
 
-      if (ctx->trigger_current_nchars < ctx->trigger.nchars) {
+      if (ctx->trigger_current_nchars < ctx->trigger.input.nchars) {
         return;
       }
 
@@ -277,6 +277,33 @@ void init_completion(struct buffers *buffers) {
   VEC_INIT(&g_active_completions, 32);
 }
 
+struct oneshot_completion {
+  uint32_t hook_id;
+  struct active_completion_ctx *ctx;
+};
+
+static void cleanup_oneshot(void *userdata) { free(userdata); }
+
+static void oneshot_completion_hook(struct buffer *buffer, void *userdata) {
+  struct oneshot_completion *comp = (struct oneshot_completion *)userdata;
+
+  // activate completion
+  g_state.active = true;
+  g_state.ctx = comp->ctx;
+
+  struct window *w = window_find_by_buffer(buffer);
+  if (w != NULL) {
+    struct buffer_view *v = window_buffer_view(w);
+    update_completions(buffer, comp->ctx, v->dot);
+  } else {
+    update_completions(buffer, comp->ctx,
+                       (struct location){.line = 0, .col = 0});
+  }
+
+  // this is a oneshot after all
+  buffer_remove_update_hook(buffer, comp->hook_id, cleanup_oneshot);
+}
+
 void enable_completion(struct buffer *source, struct completion_trigger trigger,
                        struct completion_provider *providers,
                        uint32_t nproviders, insert_cb on_completion_inserted) {
@@ -306,6 +333,16 @@ void enable_completion(struct buffer *source, struct completion_trigger trigger,
                                       .insert_hook_id = insert_hook_id,
                                       .remove_hook_id = remove_hook_id,
                                   }));
+
+  // do we want to trigger initially?
+  if (ctx->trigger.kind == CompletionTrigger_Input &&
+      ctx->trigger.input.trigger_initially) {
+    struct oneshot_completion *comp =
+        calloc(1, sizeof(struct oneshot_completion));
+    comp->ctx = ctx;
+    comp->hook_id =
+        buffer_add_update_hook(source, oneshot_completion_hook, comp);
+  }
 }
 
 static void hide_completion() {
@@ -410,10 +447,6 @@ static uint32_t complete_path(struct completion_context ctx, void *userdata) {
 
   size_t inlen = strlen(path);
 
-  if (len == 0) {
-    goto done;
-  }
-
   if (ctx.max_ncompletions == 0) {
     goto done;
   }
@@ -434,6 +467,8 @@ static uint32_t complete_path(struct completion_context ctx, void *userdata) {
   }
 
   errno = 0;
+  size_t filelen = strlen(file);
+  bool file_is_curdir = (filelen == 1 && memcmp(file, ".", 1) == 0);
   while (n < ctx.max_ncompletions) {
     struct dirent *de = readdir(d);
     if (de == NULL && errno != 0) {
@@ -449,7 +484,10 @@ static uint32_t complete_path(struct completion_context ctx, void *userdata) {
     case DT_REG:
     case DT_LNK:
       if (!is_hidden(de->d_name) &&
-          (strncmp(file, de->d_name, strlen(file)) == 0 || strlen(file) == 0)) {
+          (filelen == 0 || file_is_curdir ||
+           (filelen <= strlen(de->d_name) &&
+            memcmp(file, de->d_name, filelen) == 0))) {
+
         const char *disp = strdup(de->d_name);
         ctx.completions[n] = (struct completion){
             .display = disp,

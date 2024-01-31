@@ -13,6 +13,7 @@
 #include "dged/minibuffer.h"
 #include "dged/path.h"
 #include "dged/settings.h"
+#include "dged/utf8.h"
 
 #include "bindings.h"
 #include "completion.h"
@@ -69,7 +70,7 @@ int32_t run_interactive(struct command_ctx ctx, int argc, const char *argv[]) {
 
 int32_t do_switch_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
   disable_completion(minibuffer_buffer());
-  const char *bufname = argv[0];
+  const char *bufname = NULL;
   if (argc == 0) {
     // switch back to prev buffer
     if (window_has_prev_buffer(ctx.active_window)) {
@@ -77,8 +78,9 @@ int32_t do_switch_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
     } else {
       return 0;
     }
+  } else {
+    bufname = argv[0];
   }
-
   struct buffer *buf = buffers_find(ctx.buffers, bufname);
 
   if (buf == NULL) {
@@ -96,10 +98,14 @@ static void switch_buffer_comp_inserted() { minibuffer_execute(); }
 
 int32_t switch_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
   if (argc == 0) {
+    minibuffer_clear();
     struct completion_provider providers[] = {buffer_provider()};
     enable_completion(minibuffer_buffer(),
                       ((struct completion_trigger){
-                          .kind = CompletionTrigger_Input, .nchars = 0}),
+                          .kind = CompletionTrigger_Input,
+                          .input =
+                              (struct completion_trigger_input){
+                                  .nchars = 0, .trigger_initially = true}}),
                       providers, 1, switch_buffer_comp_inserted);
 
     ctx.self = &do_switch_buffer_command;
@@ -132,14 +138,39 @@ int32_t timers(struct command_ctx ctx, int argc, const char *argv[]) {
 }
 
 void buffer_to_list_line(struct buffer *buffer, void *userdata) {
-  struct buffer_view *listbuf = (struct buffer_view *)userdata;
+  struct buffer *listbuf = (struct buffer *)userdata;
+
+  const char *path = buffer->filename != NULL ? buffer->filename : "<no-file>";
   char buf[1024];
-  size_t written =
-      snprintf(buf, 1024, "%-16s %s\n", buffer->name,
-               buffer->filename != NULL ? buffer->filename : "<no-file>");
+  size_t written = snprintf(buf, 1024, "%-24s %s\n", buffer->name, path);
 
   if (written > 0) {
-    buffer_view_add(listbuf, (uint8_t *)buf, written);
+    struct location begin = buffer_end(listbuf);
+    buffer_add(listbuf, begin, (uint8_t *)buf, written);
+    size_t namelen = strlen(buffer->name);
+    uint32_t nchars = utf8_nchars(buffer->name, namelen);
+    buffer_add_text_property(
+        listbuf, begin,
+        (struct location){.line = begin.line, .col = begin.col + nchars},
+        (struct text_property){.type = TextProperty_Colors,
+                               .colors = (struct text_property_colors){
+                                   .set_bg = false,
+                                   .set_fg = true,
+                                   .fg = Color_Green,
+                               }});
+
+    size_t pathlen = strlen(path);
+    uint32_t nchars_path = utf8_nchars((uint8_t *)path, pathlen);
+    buffer_add_text_property(
+        listbuf, (struct location){.line = begin.line, .col = begin.col + 24},
+        (struct location){.line = begin.line,
+                          .col = begin.col + 24 + nchars_path},
+        (struct text_property){.type = TextProperty_Colors,
+                               .colors = (struct text_property_colors){
+                                   .set_bg = false,
+                                   .set_fg = true,
+                                   .fg = Color_Blue,
+                               }});
   }
 }
 
@@ -169,21 +200,22 @@ int32_t buflist_visit_cmd(struct command_ctx ctx, int argc,
 
 int32_t buflist_close_cmd(struct command_ctx ctx, int argc,
                           const char *argv[]) {
-  window_close(ctx.active_window);
+  return execute_command(&do_switch_buffer_command, ctx.commands,
+                         ctx.active_window, ctx.buffers, argc, argv);
   return 0;
 }
 
-void buflist_refresh(struct buffers *buffers, struct buffer_view *target) {
-  buffer_set_readonly(target->buffer, false);
-  buffer_clear(target->buffer);
-  buffer_view_goto_beginning(target);
-  buffers_for_each(buffers, buffer_to_list_line, target);
-  buffer_set_readonly(target->buffer, true);
+void buflist_refresh(struct buffer *buffer, void *userdata) {
+  struct buffers *buffers = (struct buffers *)userdata;
+  buffer_set_readonly(buffer, false);
+  buffer_clear(buffer);
+  buffers_for_each(buffers, buffer_to_list_line, buffer);
+  buffer_set_readonly(buffer, true);
 }
 
 int32_t buflist_refresh_cmd(struct command_ctx ctx, int argc,
                             const char *argv[]) {
-  buflist_refresh(ctx.buffers, window_buffer_view(ctx.active_window));
+  buflist_refresh(window_buffer(ctx.active_window), ctx.buffers);
   return 0;
 }
 
@@ -196,7 +228,8 @@ int32_t buffer_list(struct command_ctx ctx, int argc, const char *argv[]) {
   struct window *w = ctx.active_window;
   window_set_buffer(ctx.active_window, b);
 
-  buflist_refresh(ctx.buffers, window_buffer_view(w));
+  buffer_add_update_hook(b, buflist_refresh, ctx.buffers);
+  buflist_refresh(b, ctx.buffers);
 
   static struct command buflist_visit = {
       .name = "buflist-visit",
@@ -232,6 +265,7 @@ static int32_t open_file(struct buffers *buffers, struct window *active_window,
                          const char *pth) {
 
   if (active_window == minibuffer_window()) {
+    minibuffer_echo_timeout(4, "cannot open files in the minibuffer");
     return 1;
   }
 
@@ -266,10 +300,14 @@ static int32_t open_file(struct buffers *buffers, struct window *active_window,
 int32_t find_file(struct command_ctx ctx, int argc, const char *argv[]) {
   const char *pth = NULL;
   if (argc == 0) {
+    minibuffer_clear();
     struct completion_provider providers[] = {path_provider()};
     enable_completion(minibuffer_buffer(),
                       ((struct completion_trigger){
-                          .kind = CompletionTrigger_Input, .nchars = 0}),
+                          .kind = CompletionTrigger_Input,
+                          .input =
+                              (struct completion_trigger_input){
+                                  .nchars = 0, .trigger_initially = true}}),
                       providers, 1, find_file_comp_inserted);
     return minibuffer_prompt(ctx, "find file: ");
   }
@@ -293,10 +331,14 @@ int32_t find_file_relative(struct command_ctx ctx, int argc,
   char *dir = dirname(filename);
   size_t dirlen = strlen(dir);
   if (argc == 0) {
+    minibuffer_clear();
     struct completion_provider providers[] = {path_provider()};
     enable_completion(minibuffer_buffer(),
                       ((struct completion_trigger){
-                          .kind = CompletionTrigger_Input, .nchars = 0}),
+                          .kind = CompletionTrigger_Input,
+                          .input =
+                              (struct completion_trigger_input){
+                                  .nchars = 0, .trigger_initially = true}}),
                       providers, 1, find_file_comp_inserted);
 
     ctx.self = &find_file_command;

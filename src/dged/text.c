@@ -184,10 +184,18 @@ void insert_at(struct text *text, uint32_t line, uint32_t col, uint8_t *data,
 }
 
 uint32_t text_line_length(struct text *text, uint32_t lineidx) {
+  if (lineidx >= text_num_lines(text)) {
+    return 0;
+  }
+
   return text->lines[lineidx].nchars;
 }
 
 uint32_t text_line_size(struct text *text, uint32_t lineidx) {
+  if (lineidx >= text_num_lines(text)) {
+    return 0;
+  }
+
   return text->lines[lineidx].nbytes;
 }
 

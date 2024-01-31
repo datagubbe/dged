@@ -18,7 +18,6 @@ static struct minibuffer {
   char prompt[128];
   struct command_ctx prompt_command_ctx;
   bool prompt_active;
-  bool clear;
   struct window *prev_window;
 
   struct buffer *message_buffer;
@@ -65,9 +64,9 @@ int32_t minibuffer_execute() {
       }
     }
 
-    minibuffer_abort_prompt();
     int32_t res = execute_command(c->self, c->commands, c->active_window,
                                   c->buffers, argc, (const char **)argv);
+    minibuffer_abort_prompt();
 
     free(l);
 
@@ -81,10 +80,8 @@ void update(struct buffer *buffer, void *userdata) {
   struct timespec current;
   struct minibuffer *mb = (struct minibuffer *)userdata;
   clock_gettime(CLOCK_MONOTONIC, &current);
-  if ((!mb->prompt_active && current.tv_sec >= mb->expires.tv_sec) ||
-      mb->clear) {
-    buffer_clear(buffer);
-    mb->clear = false;
+  if ((!mb->prompt_active && current.tv_sec >= mb->expires.tv_sec)) {
+    minibuffer_clear();
   }
 }
 
@@ -96,7 +93,6 @@ void minibuffer_init(struct buffer *buffer, struct buffers *buffers) {
   g_minibuffer.buffer = buffer;
   g_minibuffer.expires.tv_sec = 0;
   g_minibuffer.expires.tv_nsec = 0;
-  g_minibuffer.clear = false;
   g_minibuffer.prompt_active = false;
   buffer_add_update_hook(g_minibuffer.buffer, update, &g_minibuffer);
 
@@ -111,7 +107,6 @@ void echo(uint32_t timeout, const char *fmt, va_list args) {
 
   clock_gettime(CLOCK_MONOTONIC, &g_minibuffer.expires);
   g_minibuffer.expires.tv_sec += timeout;
-  g_minibuffer.clear = false;
 
   static char buff[2048];
   size_t nbytes = vsnprintf(buff, 2048, fmt, args);
@@ -188,17 +183,12 @@ static void minibuffer_setup(struct command_ctx command_ctx,
     windows_set_active(minibuffer_window());
   }
 
+  minibuffer_clear();
   if (initial != NULL) {
     buffer_set_text(g_minibuffer.buffer, (uint8_t *)initial, strlen(initial));
 
-    // there might be an earlier clear request but
-    // we have sort of taken care of that here
-    g_minibuffer.clear = false;
-
     // TODO: what to do with these
     buffer_view_goto_end_of_line(window_buffer_view(minibuffer_window()));
-  } else {
-    minibuffer_clear();
   }
 }
 
@@ -259,7 +249,7 @@ bool minibuffer_displaying() {
 void minibuffer_clear() {
   g_minibuffer.expires.tv_sec = 0;
   g_minibuffer.expires.tv_nsec = 0;
-  g_minibuffer.clear = true;
+  buffer_clear(g_minibuffer.buffer);
 }
 
 bool minibuffer_focused() { return g_minibuffer.prompt_active; }

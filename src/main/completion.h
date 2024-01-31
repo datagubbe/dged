@@ -33,11 +33,16 @@ enum completion_trigger_kind {
   CompletionTrigger_Char = 1,
 };
 
+struct completion_trigger_input {
+  uint32_t nchars;
+  bool trigger_initially;
+};
+
 struct completion_trigger {
   enum completion_trigger_kind kind;
   union {
     uint32_t c;
-    uint32_t nchars;
+    struct completion_trigger_input input;
   };
 };
 
