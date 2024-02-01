@@ -37,6 +37,8 @@ uint32_t minibuffer_draw_prompt(struct command_list *commands) {
   return len;
 }
 
+static void minibuffer_abort_prompt_internal(bool clear);
+
 int32_t minibuffer_execute() {
   if (g_minibuffer.prompt_active) {
     struct command_ctx *c = &g_minibuffer.prompt_command_ctx;
@@ -64,9 +66,9 @@ int32_t minibuffer_execute() {
       }
     }
 
+    minibuffer_abort_prompt_internal(false);
     int32_t res = execute_command(c->self, c->commands, c->active_window,
                                   c->buffers, argc, (const char **)argv);
-    minibuffer_abort_prompt();
 
     free(l);
 
@@ -231,14 +233,18 @@ void minibuffer_set_prompt(const char *fmt, ...) {
   va_end(args);
 }
 
-void minibuffer_abort_prompt() {
-  minibuffer_clear();
+static void minibuffer_abort_prompt_internal(bool clear) {
+  if (clear) {
+    minibuffer_clear();
+  }
   g_minibuffer.prompt_active = false;
 
   if (g_minibuffer.prev_window != NULL) {
     windows_set_active(g_minibuffer.prev_window);
   }
 }
+
+void minibuffer_abort_prompt() { minibuffer_abort_prompt_internal(true); }
 
 bool minibuffer_empty() { return !minibuffer_displaying(); }
 
