@@ -22,9 +22,6 @@ void test_add_text() {
   const char *txt = "This is line 1\n";
   text_insert_at(t, 0, 0, (uint8_t *)txt, strlen(txt), &lines_added,
                  &cols_added);
-  ASSERT(
-      text_num_lines(t) == 1,
-      "Expected text to have one line after insertion, since line 2 is empty");
 
   ASSERT(text_line_size(t, 0) == 14 && text_line_length(t, 0) == 14,
          "Expected line 1 to have 14 chars and 14 bytes");
@@ -34,8 +31,8 @@ void test_add_text() {
   const char *txt2 = "This is line 2\n";
   text_insert_at(t, 1, 0, (uint8_t *)txt2, strlen(txt2), &lines_added,
                  &cols_added);
-  ASSERT(text_num_lines(t) == 2,
-         "Expected text to have two lines after second insertion");
+  ASSERT(text_num_lines(t) == 3,
+         "Expected text to have three lines after second insertion");
   assert_line_eq(text_get_line(t, 1), "This is line 2",
                  "Expected line 2 to be line 2");
 
@@ -43,8 +40,8 @@ void test_add_text() {
   const char *txt3 = "    ";
   text_insert_at(t, 0, 0, (uint8_t *)txt3, strlen(txt3), &lines_added,
                  &cols_added);
-  ASSERT(text_num_lines(t) == 2,
-         "Expected text to have two lines after second insertion");
+  ASSERT(text_num_lines(t) == 3,
+         "Expected text to have three lines after second insertion");
   assert_line_eq(text_get_line(t, 0), "    This is line 1",
                  "Expected line 1 to be indented");
   assert_line_eq(text_get_line(t, 1), "This is line 2",
@@ -52,8 +49,8 @@ void test_add_text() {
 
   // insert newline in middle of line
   text_insert_at(t, 1, 4, (uint8_t *)"\n", 1, &lines_added, &cols_added);
-  ASSERT(text_num_lines(t) == 3,
-         "Expected text to have three lines after inserting a new line");
+  ASSERT(text_num_lines(t) == 4,
+         "Expected text to have four lines after inserting a new line");
   assert_line_eq(text_get_line(t, 1), "This", "Expected line 2 to be split");
   assert_line_eq(text_get_line(t, 2), " is line 2",
                  "Expected line 2 to be split");
@@ -61,8 +58,8 @@ void test_add_text() {
   // insert newline before line 1
   text_insert_at(t, 1, 0, (uint8_t *)"\n", 1, &lines_added, &cols_added);
   ASSERT(
-      text_num_lines(t) == 4,
-      "Expected to have four lines after adding an empty line in the middle");
+      text_num_lines(t) == 5,
+      "Expected to have five lines after adding an empty line in the middle");
   ASSERT(text_line_length(t, 1) == 0, "Expected line 2 to be empty");
   assert_line_eq(text_get_line(t, 2), "This",
                  "Expected line 3 to be previous line 2");

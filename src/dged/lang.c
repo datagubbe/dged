@@ -51,10 +51,11 @@ static struct language g_fundamental = {
 
 void languages_init(bool register_default) {
   if (register_default) {
+    define_lang("Bash", "bash", ".*\\.bash", 4, NULL);
     define_lang("C", "c", ".*\\.(c|h)", 2, "clangd");
     define_lang("C++", "cxx", ".*\\.(cpp|cxx|cc|c++|hh|h)", 2, "clangd");
     define_lang("Rust", "rs", ".*\\.rs", 4, "rust-analyzer");
-    define_lang("Nix", "nix", ".*\\.nix", 4, "rnix-lsp");
+    define_lang("Nix", "nix", ".*\\.nix", 2, "rnix-lsp");
     define_lang("Make", "make", ".*(Makefile|\\.mk)", 4, NULL);
     define_lang("Python", "python", ".*\\.py", 4, NULL);
     define_lang("Git Commit Message", "gitcommit", "COMMIT_EDITMSG", 4, NULL);

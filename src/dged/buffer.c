@@ -215,6 +215,13 @@ static bool moveh(struct buffer *buffer, int64_t coldelta,
   return true;
 }
 
+static void strip_final_newline(struct buffer *b) {
+  uint32_t nlines = text_num_lines(b->text);
+  if (nlines > 0 && text_line_length(b->text, nlines - 1) == 0) {
+    text_delete(b->text, nlines - 1, 0, nlines - 1, 1);
+  }
+}
+
 static void buffer_read_from_file(struct buffer *b) {
   struct stat sb;
   char *fullname = to_abspath(b->filename);
@@ -245,6 +252,9 @@ static void buffer_read_from_file(struct buffer *b) {
 
     fclose(file);
     b->last_write = sb.st_mtim;
+
+    // if last line is empty, remove it
+    strip_final_newline(b);
   } else {
     minibuffer_echo("Error opening %s: %s", b->filename, strerror(errno));
     free(fullname);
@@ -510,6 +520,10 @@ struct location buffer_set_text(struct buffer *buffer, uint8_t *text,
 
   text_clear(buffer->text);
   text_append(buffer->text, text, nbytes, &lines, &cols);
+
+  // if last line is empty, remove it
+  strip_final_newline(buffer);
+
   return buffer_clamp(buffer, lines, cols);
 }
 
