@@ -404,8 +404,7 @@ BUFFER_WRAPCMD(reload);
 BUFFER_VIEW_WRAPCMD(kill_line);
 BUFFER_VIEW_WRAPCMD(forward_delete_char);
 BUFFER_VIEW_WRAPCMD(backward_delete_char);
-BUFFER_VIEW_WRAPCMD(forward_delete_word);
-BUFFER_VIEW_WRAPCMD(backward_delete_word);
+BUFFER_VIEW_WRAPCMD(delete_word);
 BUFFER_VIEW_WRAPCMD(backward_char);
 BUFFER_VIEW_WRAPCMD(backward_word);
 BUFFER_VIEW_WRAPCMD(forward_char);
@@ -475,8 +474,7 @@ static int32_t insert_tab(struct command_ctx ctx, int argc,
 void register_buffer_commands(struct commands *commands) {
   static struct command buffer_commands[] = {
       {.name = "kill-line", .fn = kill_line_cmd},
-      {.name = "delete-word", .fn = forward_delete_word_cmd},
-      {.name = "backward-delete-word", .fn = backward_delete_word_cmd},
+      {.name = "delete-word", .fn = delete_word_cmd},
       {.name = "delete-char", .fn = forward_delete_char_cmd},
       {.name = "backward-delete-char", .fn = backward_delete_char_cmd},
       {.name = "backward-char", .fn = backward_char_cmd},

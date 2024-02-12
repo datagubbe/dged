@@ -328,6 +328,11 @@ static struct match_result find_prev_in_line(struct buffer *buffer,
     --bytei;
   }
 
+  // first byte on line can also be a match
+  if (predicate(line.text[bytei])) {
+    found = true;
+  }
+
   uint32_t target_col = text_byteindex_to_col(buffer->text, start.line, bytei);
   return (struct match_result){
       .at = (struct location){.line = start.line, .col = target_col},
@@ -593,6 +598,20 @@ struct location buffer_previous_line(struct buffer *buffer,
 struct location buffer_next_char(struct buffer *buffer, struct location dot) {
   moveh(buffer, 1, &dot);
   return dot;
+}
+
+struct region buffer_word_at(struct buffer *buffer, struct location at) {
+  struct match_result prev_word_break =
+      find_prev_in_line(buffer, at, is_word_break);
+  struct match_result next_word_break =
+      find_next_in_line(buffer, at, is_word_break);
+
+  if (prev_word_break.at.col != next_word_break.at.col &&
+      prev_word_break.found) {
+    moveh(buffer, 1, &prev_word_break.at);
+  }
+
+  return region_new(prev_word_break.at, next_word_break.at);
 }
 
 struct location buffer_next_word(struct buffer *buffer, struct location dot) {

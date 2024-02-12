@@ -186,24 +186,17 @@ void buffer_view_backward_delete_char(struct buffer_view *view) {
       region_new(buffer_previous_char(view->buffer, view->dot), view->dot));
 }
 
-void buffer_view_forward_delete_word(struct buffer_view *view) {
+void buffer_view_delete_word(struct buffer_view *view) {
   if (maybe_delete_region(view)) {
     return;
   }
 
-  view->dot = buffer_delete(
-      view->buffer,
-      region_new(view->dot, buffer_next_word(view->buffer, view->dot)));
-}
+  struct region word = buffer_word_at(view->buffer, view->dot);
 
-void buffer_view_backward_delete_word(struct buffer_view *view) {
-  if (maybe_delete_region(view)) {
-    return;
+  if (region_has_size(word)) {
+    buffer_delete(view->buffer, word);
+    view->dot = word.begin;
   }
-
-  view->dot = buffer_delete(
-      view->buffer,
-      region_new(buffer_previous_word(view->buffer, view->dot), view->dot));
 }
 
 void buffer_view_kill_line(struct buffer_view *view) {
