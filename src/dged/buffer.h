@@ -245,6 +245,17 @@ struct location buffer_next_word(struct buffer *buffer, struct location dot);
 struct location buffer_next_line(struct buffer *buffer, struct location dot);
 
 /**
+ * Get the extents of the word located at @ref at.
+ *
+ * @param [in] buffer The buffer to look in.
+ * @param [in] at The location to start from.
+ *
+ * @returns The extent of the closest word as a region. If
+ * there is no word, the region will be zero-sized.
+ */
+struct region buffer_word_at(struct buffer *buffer, struct location at);
+
+/**
  * Clamp a buffer position to the boundaries of the buffer.
  *
  * Note that both @ref line and @ref col can be negative or bigger than the
