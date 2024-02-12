@@ -34,6 +34,7 @@ stdenv.mkDerivation {
 
   TREESITTER_GRAMMARS = with tree-sitter-grammars;
     linkFarm "tree-sitter-grammars" {
+      "bash" = tree-sitter-bash;
       "c" = tree-sitter-c;
       "rust" = tree-sitter-rust;
       "nix" = tree-sitter-nix;
