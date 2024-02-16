@@ -142,7 +142,7 @@ void buffer_to_list_line(struct buffer *buffer, void *userdata) {
 
   const char *path = buffer->filename != NULL ? buffer->filename : "<no-file>";
   char buf[1024];
-  size_t written = snprintf(buf, 1024, "%-24s %s\n", buffer->name, path);
+  size_t written = snprintf(buf, 1024, "%-24s %s", buffer->name, path);
 
   if (written > 0) {
     struct location begin = buffer_end(listbuf);
