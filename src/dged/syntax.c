@@ -96,12 +96,12 @@ static const char *read_text(void *payload, uint32_t byte_offset,
     struct text_chunk chunk = text_get_line(text, position.row);
 
     // empty lines
-    if (chunk.nbytes == 0 || position.column >= chunk.nchars) {
+    if (chunk.nbytes == 0 || position.column >= chunk.nbytes) {
       *bytes_read = 1;
       return "\n";
     }
 
-    uint32_t bytei = text_col_to_byteindex(text, chunk.line, position.column);
+    uint32_t bytei = position.column;
     *bytes_read = chunk.nbytes - bytei;
     return (const char *)chunk.text + bytei;
   }
@@ -379,8 +379,13 @@ static void update_parser(struct buffer *buffer, void *userdata,
       }
 
       buffer_add_text_property(
-          buffer, (struct location){.line = start.row, .col = start.column},
-          (struct location){.line = end.row, .col = end.column - 1},
+          buffer,
+          (struct location){.line = start.row,
+                            .col = text_byteindex_to_col(
+                                buffer->text, start.row, start.column)},
+          (struct location){.line = end.row,
+                            .col = text_byteindex_to_col(buffer->text, end.row,
+                                                         end.column - 1)},
           (struct text_property){
               .type = TextProperty_Colors,
               .colors =
@@ -399,13 +404,18 @@ static void text_removed(struct buffer *buffer, struct region removed,
                          uint32_t begin_idx, uint32_t end_idx, void *userdata) {
   struct highlight *h = (struct highlight *)userdata;
 
+  TSPoint begin = {.row = removed.begin.line,
+                   .column = text_col_to_byteindex(
+                       buffer->text, removed.begin.line, removed.begin.col)};
+  TSPoint new_end = begin;
+  TSPoint old_end = {.row = removed.end.line,
+                     .column = text_col_to_byteindex(
+                         buffer->text, removed.end.line, removed.end.col)};
+
   TSInputEdit edit = {
-      .start_point =
-          (TSPoint){.row = removed.begin.line, .column = removed.begin.col},
-      .old_end_point =
-          (TSPoint){.row = removed.end.line, .column = removed.end.col},
-      .new_end_point =
-          (TSPoint){.row = removed.begin.line, .column = removed.begin.col},
+      .start_point = begin,
+      .old_end_point = old_end,
+      .new_end_point = new_end,
       .start_byte = begin_idx,
       .old_end_byte = end_idx,
       .new_end_byte = begin_idx,
@@ -446,13 +456,18 @@ static void text_inserted(struct buffer *buffer, struct region inserted,
                           void *userdata) {
   struct highlight *h = (struct highlight *)userdata;
 
+  TSPoint begin = {.row = inserted.begin.line,
+                   .column = text_col_to_byteindex(
+                       buffer->text, inserted.begin.line, inserted.begin.col)};
+  TSPoint old_end = begin;
+  TSPoint new_end = {.row = inserted.end.line,
+                     .column = text_col_to_byteindex(
+                         buffer->text, inserted.end.line, inserted.end.col)};
+
   TSInputEdit edit = {
-      .start_point =
-          (TSPoint){.row = inserted.begin.line, .column = inserted.begin.col},
-      .old_end_point =
-          (TSPoint){.row = inserted.begin.line, .column = inserted.begin.col},
-      .new_end_point =
-          (TSPoint){.row = inserted.end.line, .column = inserted.end.col},
+      .start_point = begin,
+      .old_end_point = old_end,
+      .new_end_point = new_end,
       .start_byte = begin_idx,
       .old_end_byte = begin_idx,
       .new_end_byte = end_idx,
