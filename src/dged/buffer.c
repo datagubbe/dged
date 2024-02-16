@@ -829,6 +829,9 @@ struct location buffer_delete(struct buffer *buffer, struct region region) {
       text_get_region(buffer->text, region.begin.line, region.begin.col,
                       region.end.line, region.end.col);
 
+  undo_push_boundary(&buffer->undo,
+                     (struct undo_boundary){.save_point = false});
+
   undo_push_delete(&buffer->undo,
                    (struct undo_delete){.data = txt.text,
                                         .nbytes = txt.nbytes,
