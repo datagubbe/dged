@@ -491,7 +491,7 @@ static uint32_t complete_path(struct completion_context ctx, void *userdata) {
         const char *disp = strdup(de->d_name);
         ctx.completions[n] = (struct completion){
             .display = disp,
-            .insert = strdup(disp + strlen(file)),
+            .insert = strdup(disp + (file_is_curdir ? 0 : filelen)),
             .complete = de->d_type == DT_REG,
         };
         ++n;
