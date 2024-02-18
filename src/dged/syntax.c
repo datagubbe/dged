@@ -355,6 +355,7 @@ static void update_parser(struct buffer *buffer, void *userdata,
                  s8eq(cname, s8("function.macro")) ||
                  s8eq(cname, s8("function.method")) ||
                  s8eq(cname, s8("function.builtin")) ||
+                 s8eq(cname, s8("function.signal")) ||
                  s8eq(cname, s8("function.special"))) {
         highlight = true;
         color = Color_Yellow;
@@ -578,6 +579,7 @@ void syntax_init() {
   lang_setting_set_default(&l, "grammar",
                            (struct setting_value){.type = Setting_String,
                                                   .string_value = "gitcommit"});
+
   buffer_add_create_hook(create_parser, NULL);
   lang_destroy(&l);
 }

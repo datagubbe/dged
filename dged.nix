@@ -40,6 +40,16 @@ stdenv.mkDerivation {
       "nix" = tree-sitter-nix;
       "python" = tree-sitter-python;
       "make" = tree-sitter-make;
+      "qmljs" = tree-sitter.buildGrammar {
+        language = "qmljs";
+        version = "0.1.2";
+        src = fetchFromGitHub {
+          owner = "yuja";
+          repo = "tree-sitter-qmljs";
+          rev = "master";
+          hash = "sha256-q20gLVLs0LpqRpgo/qNRDfExbWXhICWZjM1ux4+AT6M=";
+        };
+      };
       "gitcommit" = tree-sitter.buildGrammar {
         language = "gitcommit";
         version = "0.3.3";
