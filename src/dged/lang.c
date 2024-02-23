@@ -57,14 +57,15 @@ void lang_destroy(struct language *lang) {
 }
 
 static struct language lang_from_settings(const char *id) {
-  struct language l;
-  l.id = strdup(id);
 
   // name
   struct setting *name = _lang_setting(id, "name");
-  l.name = name != NULL ? name->value.string_value : "Unknown";
+  const char *name_value = name != NULL ? name->value.string_value : "Unknown";
 
-  return l;
+  return (struct language){
+      .id = strdup(id),
+      .name = name_value,
+  };
 }
 
 static void next_ext(const char *curr, const char **nxt, const char **end) {
@@ -93,6 +94,8 @@ static struct setting *_lang_setting(const char *id, const char *key) {
   const char *setting_key = setting_join_key(id, key);
   struct setting *res = settings_get(setting_key);
   free((void *)setting_key);
+
+  return res;
 }
 
 struct setting *lang_setting(struct language *lang, const char *key) {
@@ -153,9 +156,9 @@ struct language lang_from_filename(const char *filename) {
           regexec(&regex, filename, 0, NULL, 0) == 0) {
 
         // len of "languages."
-        size_t id_len = setting_name - (setting->path + 10);
+        size_t id_len = setting_name - setting->path;
         char lang_id[128] = {0};
-        memcpy(lang_id, setting->path + 10, id_len);
+        memcpy(lang_id, setting->path, id_len);
         lang_id[id_len] = '\0';
 
         regfree(&regex);
@@ -184,13 +187,15 @@ struct language lang_from_id(const char *id) {
   const char *lang_path = setting_join_key("languages", id);
 
   settings_get_prefix(lang_path, &settings, &nsettings);
-  free((void *)lang_path);
   free(settings);
 
   if (nsettings > 0) {
-    return lang_from_settings(id);
+    struct language l = lang_from_settings(lang_path);
+    free((void *)lang_path);
+    return l;
   } else {
     minibuffer_echo_timeout(4, "failed to find language \"%s\"", id);
+    free((void *)lang_path);
     return g_fundamental;
   }
 }
