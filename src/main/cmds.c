@@ -105,7 +105,7 @@ int32_t switch_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
                           .kind = CompletionTrigger_Input,
                           .input =
                               (struct completion_trigger_input){
-                                  .nchars = 0, .trigger_initially = true}}),
+                                  .nchars = 0, .trigger_initially = false}}),
                       providers, 1, switch_buffer_comp_inserted);
 
     ctx.self = &do_switch_buffer_command;
