@@ -7,63 +7,51 @@
 #include <stdlib.h>
 #include <string.h>
 
+static struct setting *_lang_setting(const char *id, const char *key);
+static void _lang_setting_set(const char *id, const char *key,
+                              struct setting_value value);
+static void _lang_setting_set_default(const char *id, const char *key,
+                                      struct setting_value value);
+
 void define_lang(const char *name, const char *id, const char *pattern,
-                 uint32_t tab_width, const char *lang_srv) {
-  char namebuf[128] = {0};
+                 uint32_t tab_width) {
 
-  const char *key = setting_join_key("languages", id);
+  struct language lang = {
+      .id = id,
+      .name = name,
+  };
 
-  const char *pat_key = setting_join_key(key, "pattern");
-  settings_set_default(pat_key,
-                       (struct setting_value){.type = Setting_String,
-                                              .string_value = (char *)pattern});
-  free((void *)pat_key);
-
-  const char *tabw_key = setting_join_key(key, "tab-width");
-  settings_set_default(tabw_key,
-                       (struct setting_value){.type = Setting_Number,
-                                              .number_value = tab_width});
-  free((void *)tabw_key);
-
-  // TODO: move lang server
-  if (lang_srv != NULL) {
-    const char *langsrv_key = setting_join_key(key, "lang-srv");
-    settings_set_default(
-        langsrv_key, (struct setting_value){.type = Setting_String,
-                                            .string_value = (char *)lang_srv});
-    free((void *)langsrv_key);
-  }
-
-  const char *name_key = setting_join_key(key, "name");
-  settings_set_default(name_key,
-                       (struct setting_value){.type = Setting_String,
-                                              .string_value = (char *)name});
-  free((void *)name_key);
-  free((void *)key);
+  lang_setting_set(&lang, "name",
+                   (struct setting_value){.type = Setting_String,
+                                          .string_value = (char *)name});
+  lang_setting_set(&lang, "pattern",
+                   (struct setting_value){.type = Setting_String,
+                                          .string_value = (char *)pattern});
+  lang_setting_set(&lang, "tab-width",
+                   (struct setting_value){.type = Setting_Number,
+                                          .number_value = tab_width});
 }
 
 static struct language g_fundamental = {
     .name = "Fundamental",
     .id = "fnd",
-    .tab_width = 4,
-    .lang_srv = NULL,
 };
 
 void languages_init(bool register_default) {
   if (register_default) {
-    define_lang("Bash", "bash", ".*\\.bash$", 4, NULL);
-    define_lang("C", "c", ".*\\.(c|h)$", 2, "clangd");
-    define_lang("C++", "cxx", ".*\\.(cpp|cxx|cc|c++|hh|h)$", 2, "clangd");
-    define_lang("Rust", "rs", ".*\\.rs$", 4, "rust-analyzer");
-    define_lang("Nix", "nix", ".*\\.nix$", 2, "rnix-lsp");
-    define_lang("Make", "make", ".*(Makefile|\\.mk)$", 4, NULL);
-    define_lang("Python", "python", ".*\\.py$", 4, NULL);
-    define_lang("Git Commit Message", "gitcommit", "^COMMIT_EDITMSG$", 4, NULL);
+    define_lang("Bash", "bash", "^.*\\.bash$", 4);
+    define_lang("C", "c", "^.*\\.(c|h)$", 2);
+    define_lang("C++", "cxx", "^.*\\.(cpp|cxx|cc|c++|hh|h)$", 2);
+    define_lang("Rust", "rs", "^.*\\.rs$", 4);
+    define_lang("Nix", "nix", "^.*\\.nix$", 2);
+    define_lang("Make", "make", "^.*(Makefile|\\.mk)$", 4);
+    define_lang("Python", "python", "^.*\\.py$", 4);
+    define_lang("Git Commit Message", "gitcommit", "^COMMIT_EDITMSG$", 4);
   }
 }
 
 void lang_destroy(struct language *lang) {
-  if (strlen(lang->id) != 3 || strncmp(lang->id, "fnd", 3) != 0) {
+  if (strlen(lang->id) != 3 || memcmp(lang->id, "fnd", 3) != 0) {
     free((void *)lang->id);
   }
 }
@@ -72,32 +60,10 @@ static struct language lang_from_settings(const char *id) {
   struct language l;
   l.id = strdup(id);
 
-  const char *key = setting_join_key("languages", id);
-
   // name
-  const char *name_key = setting_join_key(key, "name");
-  struct setting *name = settings_get(name_key);
-  free((void *)name_key);
+  struct setting *name = _lang_setting(id, "name");
   l.name = name != NULL ? name->value.string_value : "Unknown";
 
-  // tab width
-  const char *tabw_key = setting_join_key(key, "tab-width");
-  struct setting *tab_width = settings_get(tabw_key);
-  free((void *)tabw_key);
-
-  // fall back to global value
-  if (tab_width == NULL) {
-    tab_width = settings_get("editor.tab-width");
-  }
-  l.tab_width = tab_width != NULL ? tab_width->value.number_value : 4;
-
-  // language server, TODO: move
-  const char *langsrv_key = setting_join_key(key, "lang-srv");
-  struct setting *lang_srv = settings_get(langsrv_key);
-  free((void *)langsrv_key);
-  l.lang_srv = lang_srv != NULL ? lang_srv->value.string_value : NULL;
-
-  free((void *)key);
   return l;
 }
 
@@ -123,37 +89,45 @@ void lang_settings(struct language *lang, struct setting **settings[],
   free((void *)key);
 }
 
+static struct setting *_lang_setting(const char *id, const char *key) {
+  const char *setting_key = setting_join_key(id, key);
+  struct setting *res = settings_get(setting_key);
+  free((void *)setting_key);
+}
+
 struct setting *lang_setting(struct language *lang, const char *key) {
   const char *langkey = setting_join_key("languages", lang->id);
-  const char *setting_key = setting_join_key(langkey, key);
-
-  struct setting *res = settings_get(setting_key);
-
-  free((void *)setting_key);
+  struct setting *res = _lang_setting(langkey, key);
   free((void *)langkey);
 
   return res;
 }
 
+static void _lang_setting_set(const char *id, const char *key,
+                              struct setting_value value) {
+  const char *setting_key = setting_join_key(id, key);
+  settings_set(setting_key, value);
+  free((void *)setting_key);
+}
+
 void lang_setting_set(struct language *lang, const char *key,
                       struct setting_value value) {
   const char *langkey = setting_join_key("languages", lang->id);
-  const char *setting_key = setting_join_key(langkey, key);
-
-  settings_set(setting_key, value);
-
-  free((void *)setting_key);
+  _lang_setting_set(langkey, key, value);
   free((void *)langkey);
+}
+
+static void _lang_setting_set_default(const char *id, const char *key,
+                                      struct setting_value value) {
+  const char *setting_key = setting_join_key(id, key);
+  settings_set_default(setting_key, value);
+  free((void *)setting_key);
 }
 
 void lang_setting_set_default(struct language *lang, const char *key,
                               struct setting_value value) {
   const char *langkey = setting_join_key("languages", lang->id);
-  const char *setting_key = setting_join_key(langkey, key);
-
-  settings_set_default(setting_key, value);
-
-  free((void *)setting_key);
+  _lang_setting_set_default(langkey, key, value);
   free((void *)langkey);
 }
 

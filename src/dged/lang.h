@@ -16,12 +16,6 @@ struct language {
 
   /** Descriptive name of the programming language */
   const char *name;
-
-  /** Tab width for indentation */
-  uint32_t tab_width;
-
-  /** Path to the language server */
-  const char *lang_srv;
 };
 
 /**

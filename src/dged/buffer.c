@@ -681,7 +681,15 @@ struct location buffer_newline(struct buffer *buffer, struct location at) {
 }
 
 struct location buffer_indent(struct buffer *buffer, struct location at) {
-  uint32_t tab_width = buffer->lang.tab_width;
+  struct setting *tw = lang_setting(&buffer->lang, "tab-width");
+  if (tw == NULL) {
+    tw = settings_get("tab-width");
+  }
+
+  uint32_t tab_width = 4;
+  if (tw != NULL && tw->value.type == Setting_Number) {
+    tab_width = tw->value.number_value;
+  }
   return buffer_add(buffer, at, (uint8_t *)"                ",
                     tab_width > 16 ? 16 : tab_width);
 }
