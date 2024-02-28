@@ -683,7 +683,7 @@ struct location buffer_newline(struct buffer *buffer, struct location at) {
 struct location buffer_indent(struct buffer *buffer, struct location at) {
   struct setting *tw = lang_setting(&buffer->lang, "tab-width");
   if (tw == NULL) {
-    tw = settings_get("tab-width");
+    tw = settings_get("editor.tab-width");
   }
 
   uint32_t tab_width = 4;
