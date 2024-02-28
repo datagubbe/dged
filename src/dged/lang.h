@@ -49,6 +49,13 @@ struct language lang_from_filename(const char *filename);
 struct language lang_from_id(const char *id);
 
 /**
+ * Check if this lang is the fundamental (default) lang.
+ *
+ * @returns True if language is fundamental, false otherwise.
+ */
+bool lang_is_fundamental(const struct language *lang);
+
+/**
  * Get all settings associated with a language.
  *
  * @param lang The language to get settings for.
