@@ -69,7 +69,17 @@ FILES = $(DEPS) $(MAIN_OBJS) $(OBJS) dged libdged.a $(TEST_OBJS) $(PLATFORM_OBJS
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-dged: $(MAIN_OBJS) libdged.a
+grammars:
+	if [ -n "$$TREESITTER_GRAMMARS" ]; then \
+		IFS=":"; for p in "$$TREESITTER_GRAMMARS"; do \
+			cp -rL "$$p"/ grammars; \
+		done \
+	else \
+		@echo "TODO: download and build default set of grammars"; \
+		mkdir -p ./grammars; \
+	fi
+
+dged: $(MAIN_OBJS) libdged.a grammars
 	$(CC) $(LDFLAGS) $(MAIN_OBJS) libdged.a -o dged -lm
 
 libdged.a: $(OBJS) $(PLATFORM_OBJS)
@@ -104,15 +114,13 @@ install: dged
 
 	install -d $(prefix)/share/man/man1
 	install -m 644 $(.CURDIR)/dged.1 $(prefix)/share/man/man1/dged.1
-	if [ -n "$$TREESITTER_GRAMMARS" ]; then\
-		install -d "$(datadir)";\
-		cp -rL "$$TREESITTER_GRAMMARS"/ "$(datadir)/grammars";\
-	fi
+
+	install -d $(datadir)/grammars
+	cp -rL $(.OBJDIR)/grammars "$(datadir)/"
 
 docs:
 	doxygen $(.CURDIR)/Doxyfile
 
-# in this case we need a separate depend target
 depend: $(DEPS)
 	@:
 

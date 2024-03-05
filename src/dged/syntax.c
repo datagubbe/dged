@@ -21,8 +21,8 @@
 #include "text.h"
 #include "vec.h"
 
-static char *treesitter_path = NULL;
-static bool treesitter_path_allocated = false;
+static char *treesitter_path[256] = {0};
+static uint32_t treesitter_path_len = 0;
 static const char *parser_filename = "parser";
 static const char *highlight_path = "queries/highlights.scm";
 
@@ -120,15 +120,14 @@ static const char *grammar_name_from_buffer(struct buffer *buffer) {
   return buffer->lang.name;
 }
 
-static const char *lang_folder(struct buffer *buffer) {
+static const char *lang_folder(struct buffer *buffer, const char *path) {
   const char *langname = grammar_name_from_buffer(buffer);
-
-  size_t tspath_len = strlen(treesitter_path);
+  size_t tspath_len = strlen(path);
   size_t lang_len = strlen(langname);
 
   char *fld = malloc(tspath_len + lang_len + 2);
   uint32_t idx = 0;
-  memcpy(&fld[idx], treesitter_path, tspath_len);
+  memcpy(&fld[idx], path, tspath_len);
   idx += tspath_len;
   fld[idx++] = '/';
   for (uint32_t i = 0; i < lang_len; ++i) {
@@ -489,33 +488,44 @@ static void text_inserted(struct buffer *buffer, struct region inserted,
 }
 
 static void create_parser(struct buffer *buffer, void *userdata) {
-  const char *lang_root = lang_folder(buffer);
-  const char *filename = join_path(lang_root, parser_filename);
 
-  void *h = dlopen(filename, RTLD_LAZY);
-  free((void *)filename);
-  if (h == NULL) {
-    free((void *)lang_root);
-    return;
+  TSLanguage *(*langsym)() = NULL;
+  const char *lang_root = NULL, *langname = NULL;
+  void *h = NULL;
+
+  for (uint32_t i = 0; i < treesitter_path_len && langsym == NULL; ++i) {
+    const char *path = treesitter_path[i];
+    lang_root = lang_folder(buffer, path);
+    const char *filename = join_path(lang_root, parser_filename);
+
+    h = dlopen(filename, RTLD_LAZY);
+    free((void *)filename);
+    if (h == NULL) {
+      free((void *)lang_root);
+      continue;
+    }
+
+    langname = grammar_name_from_buffer(buffer);
+    size_t lang_len = strlen(langname);
+
+    const char *prefix = "tree_sitter_";
+    size_t prefix_len = strlen(prefix);
+    char *function = malloc(prefix_len + lang_len + 1);
+    memcpy(function, prefix, prefix_len);
+    for (uint32_t i = 0; i < lang_len; ++i) {
+      function[prefix_len + i] = tolower(langname[i]);
+    }
+    function[prefix_len + lang_len] = '\0';
+    langsym = dlsym(h, function);
+
+    free(function);
+    if (langsym == NULL) {
+      free((void *)lang_root);
+      dlclose(h);
+    }
   }
 
-  const char *langname = grammar_name_from_buffer(buffer);
-  size_t lang_len = strlen(langname);
-
-  const char *prefix = "tree_sitter_";
-  size_t prefix_len = strlen(prefix);
-  char *function = malloc(prefix_len + lang_len + 1);
-  memcpy(function, prefix, prefix_len);
-  for (uint32_t i = 0; i < lang_len; ++i) {
-    function[prefix_len + i] = tolower(langname[i]);
-  }
-  function[prefix_len + lang_len] = '\0';
-  TSLanguage *(*langsym)() = dlsym(h, function);
-
-  free(function);
   if (langsym == NULL) {
-    free((void *)lang_root);
-    dlclose(h);
     return;
   }
 
@@ -550,28 +560,11 @@ static void create_parser(struct buffer *buffer, void *userdata) {
   buffer_add_destroy_hook(buffer, delete_parser, hl);
 }
 
-#define xstr(s) str(s)
-#define str(s) #s
+void syntax_init(uint32_t grammar_path_len, const char *grammar_path[]) {
 
-void syntax_init() {
-  treesitter_path = getenv("TREESITTER_GRAMMARS");
-  if (treesitter_path == NULL) {
-    treesitter_path = (char *)join_path(xstr(DATADIR), "grammars");
-    treesitter_path_allocated = true;
-  }
-
-  struct stat buffer;
-  if (stat(treesitter_path, &buffer) != 0) {
-    minibuffer_echo_timeout(4,
-                            "failed to initialize syntax, TREESITTER_GRAMMARS "
-                            "not set and grammars dir does not exist at %s.",
-                            treesitter_path);
-
-    if (treesitter_path_allocated) {
-      free(treesitter_path);
-    }
-
-    return;
+  treesitter_path_len = grammar_path_len < 256 ? grammar_path_len : 256;
+  for (uint32_t i = 0; i < treesitter_path_len; ++i) {
+    treesitter_path[i] = strdup(grammar_path[i]);
   }
 
   // TODO: check that it exists
@@ -585,7 +578,7 @@ void syntax_init() {
 }
 
 void syntax_teardown() {
-  if (treesitter_path_allocated) {
-    free(treesitter_path);
+  for (uint32_t i = 0; i < treesitter_path_len; ++i) {
+    free((void *)treesitter_path[i]);
   }
 }

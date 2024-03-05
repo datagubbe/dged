@@ -22,6 +22,9 @@
 
 #ifdef SYNTAX_ENABLE
 #include "dged/syntax.h"
+
+#define xstr(s) str(s)
+#define str(s) #s
 #endif
 
 #include "bindings.h"
@@ -67,6 +70,7 @@ uint64_t calc_frame_time_ns(struct timespec *timers, uint32_t num_timer_pairs) {
 #define TIMED_SCOPE_BEGIN(timer) clock_gettime(CLOCK_MONOTONIC, &timer##_begin)
 #define TIMED_SCOPE_END(timer) clock_gettime(CLOCK_MONOTONIC, &timer##_end)
 
+#define INVALID_WATCH -1
 struct watched_file {
   uint32_t watch_id;
   struct buffer *buffer;
@@ -95,7 +99,8 @@ void reload_buffer(struct buffer *buffer) {
 void update_file_watches(struct reactor *reactor) {
   // first, find invalid file watches and try to update them
   VEC_FOR_EACH(&g_watched_files, struct watched_file * w) {
-    if (w->watch_id == -1) {
+    if (w->watch_id == INVALID_WATCH) {
+      message("re-watching: %s", w->buffer->filename);
       w->watch_id =
           reactor_watch_file(reactor, w->buffer->filename, FileWritten);
       reload_buffer(w->buffer);
@@ -109,7 +114,8 @@ void update_file_watches(struct reactor *reactor) {
     VEC_FOR_EACH(&g_watched_files, struct watched_file * w) {
       if (w->watch_id == ev.id) {
         if ((ev.mask & LastEvent) != 0) {
-          w->watch_id = -1;
+          message("lost watched file: %s", w->buffer->filename);
+          w->watch_id = INVALID_WATCH;
           continue;
         }
 
@@ -222,8 +228,35 @@ int main(int argc, char *argv[]) {
   minibuffer_init(&minibuffer, &buflist);
 
   buffers_add_add_hook(&buflist, watch_file, (void *)reactor);
+
 #ifdef SYNTAX_ENABLE
-  syntax_init();
+  char *treesitter_path_env = getenv("TREESITTER_GRAMMARS");
+  const char *builtin_path = join_path(xstr(DATADIR), "grammars");
+
+  const char *treesitter_path[256] = {0};
+  uint32_t treesitter_path_len = 0;
+
+  if (treesitter_path_env != NULL) {
+    treesitter_path_env = strdup(treesitter_path_env);
+    char *result = strtok(treesitter_path_env, ":");
+    while (result != NULL && treesitter_path_len < 256) {
+      treesitter_path[treesitter_path_len] = result;
+      ++treesitter_path_len;
+      result = strtok(NULL, ":");
+    }
+  }
+
+  if (treesitter_path_len < 256) {
+    treesitter_path[treesitter_path_len] = builtin_path;
+    ++treesitter_path_len;
+  }
+
+  syntax_init(treesitter_path_len, treesitter_path);
+
+  if (treesitter_path_env != NULL) {
+    free((void *)treesitter_path_env);
+  }
+  free((void *)builtin_path);
 #endif
 
   struct buffer initial_buffer = buffer_create("welcome");
@@ -234,7 +267,8 @@ int main(int argc, char *argv[]) {
     free((void *)filename);
     free((void *)absfile);
   } else {
-    const char *welcome_txt = "Welcome to the editor for datagubbar 👴\n";
+    const char *welcome_txt =
+        "Welcome to the editor for datagubbar and datagummor 👴👵\n";
     buffer_set_text(&initial_buffer, (uint8_t *)welcome_txt,
                     strlen(welcome_txt));
   }

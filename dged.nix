@@ -49,6 +49,11 @@ stdenv.mkDerivation {
           rev = "master";
           hash = "sha256-q20gLVLs0LpqRpgo/qNRDfExbWXhICWZjM1ux4+AT6M=";
         };
+        # remove broken symlinks
+        postInstall = ''
+          unlink "$out/queries/highlights-javascript.scm"
+          unlink "$out/queries/highlights-typescript.scm"
+        '';
       };
       "gitcommit" = tree-sitter.buildGrammar {
         language = "gitcommit";
