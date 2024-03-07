@@ -14,7 +14,7 @@ static void _lang_setting_set_default(const char *id, const char *key,
                                       struct setting_value value);
 
 void define_lang(const char *name, const char *id, const char *pattern,
-                 uint32_t tab_width) {
+                 uint32_t tab_width, bool use_tabs) {
 
   _lang_setting_set_default(
       id, "name",
@@ -27,6 +27,9 @@ void define_lang(const char *name, const char *id, const char *pattern,
   _lang_setting_set_default(id, "tab-width",
                             (struct setting_value){.type = Setting_Number,
                                                    .number_value = tab_width});
+  _lang_setting_set_default(
+      id, "use-tabs",
+      (struct setting_value){.type = Setting_Bool, .bool_value = use_tabs});
 }
 
 static struct language g_fundamental = {
@@ -36,14 +39,15 @@ static struct language g_fundamental = {
 
 void languages_init(bool register_default) {
   if (register_default) {
-    define_lang("Bash", "bash", "^.*\\.bash$", 4);
-    define_lang("C", "c", "^.*\\.(c|h)$", 2);
-    define_lang("C++", "cxx", "^.*\\.(cpp|cxx|cc|c++|hh|h)$", 2);
-    define_lang("Rust", "rs", "^.*\\.rs$", 4);
-    define_lang("Nix", "nix", "^.*\\.nix$", 2);
-    define_lang("Make", "make", "^.*(Makefile|\\.mk)$", 4);
-    define_lang("Python", "python", "^.*\\.py$", 4);
-    define_lang("Git Commit Message", "gitcommit", "^.*COMMIT_EDITMSG$", 4);
+    define_lang("Bash", "bash", "^.*\\.bash$", 4, false);
+    define_lang("C", "c", "^.*\\.(c|h)$", 2, false);
+    define_lang("C++", "cxx", "^.*\\.(cpp|cxx|cc|c++|hh|h)$", 2, false);
+    define_lang("Rust", "rs", "^.*\\.rs$", 4, false);
+    define_lang("Nix", "nix", "^.*\\.nix$", 2, false);
+    define_lang("Make", "make", "^.*(Makefile|\\.mk)$", 4, true);
+    define_lang("Python", "python", "^.*\\.py$", 4, false);
+    define_lang("Git Commit Message", "gitcommit", "^.*COMMIT_EDITMSG$", 4,
+                false);
   }
 }
 

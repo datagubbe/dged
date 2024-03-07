@@ -68,6 +68,7 @@ void buffer_view_kill_line(struct buffer_view *view);
 
 void buffer_view_newline(struct buffer_view *view);
 void buffer_view_indent(struct buffer_view *view);
+void buffer_view_indent_alt(struct buffer_view *view);
 
 void buffer_view_copy(struct buffer_view *view);
 void buffer_view_cut(struct buffer_view *view);
@@ -83,11 +84,13 @@ struct location buffer_view_dot_to_visual(struct buffer_view *view);
 
 void buffer_view_undo(struct buffer_view *view);
 
+void buffer_view_sort_lines(struct buffer_view *view);
+
 struct buffer_view_update_params {
   struct command_list *commands;
   void *(*frame_alloc)(size_t);
   uint32_t window_id;
-  int64_t frame_time;
+  float frame_time;
   uint32_t width;
   uint32_t height;
   uint32_t window_x;

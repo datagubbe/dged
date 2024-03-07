@@ -7,9 +7,11 @@
 #include "minibuffer.h"
 #include "path.h"
 #include "reactor.h"
+#include "s8.h"
 #include "settings.h"
 #include "utf8.h"
 
+#include <assert.h>
 #include <fcntl.h>
 #include <libgen.h>
 #include <stdbool.h>
@@ -680,7 +682,7 @@ struct location buffer_newline(struct buffer *buffer, struct location at) {
   return buffer_add(buffer, at, (uint8_t *)"\n", 1);
 }
 
-struct location buffer_indent(struct buffer *buffer, struct location at) {
+static uint32_t get_tab_width(struct buffer *buffer) {
   struct setting *tw = lang_setting(&buffer->lang, "tab-width");
   if (tw == NULL) {
     tw = settings_get("editor.tab-width");
@@ -690,8 +692,39 @@ struct location buffer_indent(struct buffer *buffer, struct location at) {
   if (tw != NULL && tw->value.type == Setting_Number) {
     tab_width = tw->value.number_value;
   }
-  return buffer_add(buffer, at, (uint8_t *)"                ",
-                    tab_width > 16 ? 16 : tab_width);
+  return tab_width;
+}
+
+static bool use_tabs(struct buffer *buffer) {
+  struct setting *ut = lang_setting(&buffer->lang, "use-tabs");
+  if (ut == NULL) {
+    ut = settings_get("editor.use-tabs");
+  }
+
+  bool use_tabs = false;
+  if (ut != NULL && ut->value.type == Setting_Bool) {
+    use_tabs = ut->value.bool_value;
+  }
+
+  return use_tabs;
+}
+
+static struct location do_indent(struct buffer *buffer, struct location at,
+                                 uint32_t tab_width, bool use_tabs) {
+  if (use_tabs) {
+    return buffer_add(buffer, at, (uint8_t *)"\t", 1);
+  } else {
+    return buffer_add(buffer, at, (uint8_t *)"                ",
+                      tab_width > 16 ? 16 : tab_width);
+  }
+}
+
+struct location buffer_indent(struct buffer *buffer, struct location at) {
+  return do_indent(buffer, at, get_tab_width(buffer), use_tabs(buffer));
+}
+
+struct location buffer_indent_alt(struct buffer *buffer, struct location at) {
+  return do_indent(buffer, at, get_tab_width(buffer), !use_tabs(buffer));
 }
 
 struct location buffer_undo(struct buffer *buffer, struct location dot) {
@@ -1159,4 +1192,64 @@ void buffer_get_text_properties(struct buffer *buffer, struct location location,
 
 void buffer_clear_text_properties(struct buffer *buffer) {
   text_clear_properties(buffer->text);
+}
+
+static int compare_lines(const void *l1, const void *l2) {
+  return s8cmp(*(const struct s8 *)l1, *(const struct s8 *)l2);
+}
+
+void buffer_sort_lines(struct buffer *buffer, uint32_t start_line,
+                       uint32_t end_line) {
+  const uint32_t nlines = text_num_lines(buffer->text);
+  if (nlines == 0) {
+    return;
+  }
+
+  uint32_t start = start_line >= nlines ? nlines - 1 : start_line;
+  uint32_t end = end_line >= nlines ? nlines - 1 : end_line;
+
+  if (end <= start) {
+    return;
+  }
+
+  const uint32_t ntosort = end - start + 1;
+
+  struct region region =
+      region_new((struct location){.line = start, .col = 0},
+                 (struct location){.line = end + 1, .col = 0});
+
+  struct s8 *lines = (struct s8 *)malloc(sizeof(struct s8) * ntosort);
+  struct text_chunk txt =
+      text_get_region(buffer->text, region.begin.line, region.begin.col,
+                      region.end.line, region.end.col);
+
+  uint32_t line_start = 0;
+  uint32_t curr_line = 0;
+  for (uint32_t bytei = 0; bytei < txt.nbytes; ++bytei) {
+    if (txt.text[bytei] == '\n') {
+      lines[curr_line] =
+          (struct s8){.s = &txt.text[line_start], .l = bytei - line_start + 1};
+
+      ++curr_line;
+      line_start = bytei + 1;
+    }
+  }
+
+  qsort(lines, ntosort, sizeof(struct s8), compare_lines);
+
+  struct location at = buffer_delete(buffer, region);
+  for (uint32_t linei = 0; linei < ntosort; ++linei) {
+    struct s8 line = lines[linei];
+    at = buffer_add(buffer, at, (uint8_t *)line.s, line.l);
+  }
+
+  // if the last line we are sorting is the last line in the buffer,
+  // we have added one extra unwanted newline
+  if (end == nlines - 1) {
+    strip_final_newline(buffer);
+  }
+
+  if (txt.allocated) {
+    free(txt.text);
+  }
 }

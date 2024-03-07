@@ -13,6 +13,7 @@
 #include "dged/minibuffer.h"
 #include "dged/path.h"
 #include "dged/settings.h"
+#include "dged/timers.h"
 #include "dged/utf8.h"
 
 #include "bindings.h"
@@ -123,17 +124,38 @@ int32_t switch_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
                          ctx.active_window, ctx.buffers, argc, argv);
 }
 
+void timer_to_list_line(const struct timer *timer, void *userdata) {
+  struct buffer *target = (struct buffer *)userdata;
+
+  static char buf[128];
+  const char *name = timer_name(timer);
+  size_t namelen = strlen(name);
+  size_t len =
+      snprintf(buf, 128, "%s - %.2f ms", name, (timer_average(timer) / 1e6));
+  buffer_add(target, buffer_end(target), (uint8_t *)buf, len);
+}
+
+void timers_refresh(struct buffer *buffer, void *userdata) {
+  buffer_set_readonly(buffer, false);
+  buffer_clear(buffer);
+  timers_for_each(timer_to_list_line, buffer);
+  uint32_t nlines = buffer_num_lines(buffer);
+  if (nlines > 0) {
+    buffer_sort_lines(buffer, 0, nlines);
+  }
+  buffer_set_readonly(buffer, true);
+}
+
 int32_t timers(struct command_ctx ctx, int argc, const char *argv[]) {
-  struct buffer *b = buffers_add(ctx.buffers, buffer_create("timers"));
-  buffer_set_readonly(b, true);
-  struct window *new_window_a, *new_window_b;
-  window_split(ctx.active_window, &new_window_a, &new_window_b);
+  struct buffer *b = buffers_find(ctx.buffers, "*timers*");
+  if (b == NULL) {
+    b = buffers_add(ctx.buffers, buffer_create("*timers*"));
+    buffer_add_update_hook(b, timers_refresh, NULL);
+  }
 
-  const char *txt =
-      "TODO: this is not real values!\ntimer 1: 1ms\ntimer 2: 2ms\n";
-  buffer_set_text(b, (uint8_t *)txt, strlen(txt));
+  window_set_buffer(ctx.active_window, b);
+  timers_refresh(b, NULL);
 
-  window_set_buffer(new_window_b, b);
   return 0;
 }
 
@@ -223,12 +245,12 @@ int32_t buffer_list(struct command_ctx ctx, int argc, const char *argv[]) {
   struct buffer *b = buffers_find(ctx.buffers, "*buffers*");
   if (b == NULL) {
     b = buffers_add(ctx.buffers, buffer_create("*buffers*"));
+    buffer_add_update_hook(b, buflist_refresh, ctx.buffers);
   }
 
   struct window *w = ctx.active_window;
   window_set_buffer(ctx.active_window, b);
 
-  buffer_add_update_hook(b, buflist_refresh, ctx.buffers);
   buflist_refresh(b, ctx.buffers);
 
   static struct command buflist_visit = {
@@ -415,6 +437,7 @@ BUFFER_VIEW_WRAPCMD(goto_end_of_line);
 BUFFER_VIEW_WRAPCMD(goto_beginning_of_line);
 BUFFER_VIEW_WRAPCMD(newline);
 BUFFER_VIEW_WRAPCMD(indent);
+BUFFER_VIEW_WRAPCMD(indent_alt);
 BUFFER_VIEW_WRAPCMD(set_mark);
 BUFFER_VIEW_WRAPCMD(clear_mark);
 BUFFER_VIEW_WRAPCMD(copy);
@@ -424,6 +447,7 @@ BUFFER_VIEW_WRAPCMD(paste_older);
 BUFFER_VIEW_WRAPCMD(goto_beginning);
 BUFFER_VIEW_WRAPCMD(goto_end);
 BUFFER_VIEW_WRAPCMD(undo);
+BUFFER_VIEW_WRAPCMD(sort_lines);
 
 static int32_t scroll_up_cmd(struct command_ctx ctx, int argc,
                              const char *argv[]) {
@@ -464,13 +488,6 @@ static int32_t goto_line(struct command_ctx ctx, int argc, const char *argv[]) {
   return 0;
 }
 
-static int32_t insert_tab(struct command_ctx ctx, int argc,
-                          const char *argv[]) {
-  struct buffer_view *v = window_buffer_view(ctx.active_window);
-  buffer_view_add(v, (uint8_t *)"\t", 1);
-  return 0;
-}
-
 void register_buffer_commands(struct commands *commands) {
   static struct command buffer_commands[] = {
       {.name = "kill-line", .fn = kill_line_cmd},
@@ -487,7 +504,7 @@ void register_buffer_commands(struct commands *commands) {
       {.name = "beginning-of-line", .fn = goto_beginning_of_line_cmd},
       {.name = "newline", .fn = newline_cmd},
       {.name = "indent", .fn = indent_cmd},
-      {.name = "insert-tab", .fn = insert_tab},
+      {.name = "indent-alt", .fn = indent_alt_cmd},
       {.name = "buffer-write-to-file", .fn = to_file_cmd},
       {.name = "set-mark", .fn = set_mark_cmd},
       {.name = "clear-mark", .fn = clear_mark_cmd},
@@ -502,6 +519,7 @@ void register_buffer_commands(struct commands *commands) {
       {.name = "scroll-up", .fn = scroll_up_cmd},
       {.name = "reload", .fn = reload_cmd},
       {.name = "goto-line", .fn = goto_line},
+      {.name = "sort-lines", .fn = sort_lines_cmd},
   };
 
   register_commands(commands, buffer_commands,

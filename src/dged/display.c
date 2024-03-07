@@ -2,6 +2,7 @@
 #include "display.h"
 
 #include "buffer.h"
+#include "timers.h"
 #include "utf8.h"
 
 #include <assert.h>
@@ -358,6 +359,10 @@ void display_render(struct display *display,
                     struct command_list *command_list) {
 
   struct command_list *cl = command_list;
+  static char name[32] = {0};
+  snprintf(name, 31, "display.cl.%s", cl->name);
+  struct timer *render_timer = timer_start(name);
+
   uint8_t fmt_stack[256] = {0};
   fmt_stack[0] = ESC;
   fmt_stack[1] = '[';
@@ -419,6 +424,8 @@ void display_render(struct display *display,
     }
     cl = cl->next_list;
   }
+
+  timer_stop(render_timer);
 }
 
 void hide_cursor() {

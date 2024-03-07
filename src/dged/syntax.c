@@ -17,6 +17,7 @@
 #include "hash.h"
 #include "minibuffer.h"
 #include "path.h"
+#include "s8.h"
 #include "settings.h"
 #include "text.h"
 #include "vec.h"
@@ -25,25 +26,6 @@ static char *treesitter_path[256] = {0};
 static uint32_t treesitter_path_len = 0;
 static const char *parser_filename = "parser";
 static const char *highlight_path = "queries/highlights.scm";
-
-// TODO: move to own file
-#define s8(s) ((struct s8){s, strlen(s)})
-
-struct s8 {
-  char *s;
-  uint32_t l;
-};
-
-static bool s8eq(struct s8 s1, struct s8 s2) {
-  return s1.l == s2.l && memcmp(s1.s, s2.s, s1.l) == 0;
-}
-
-static char *s8tocstr(struct s8 s) {
-  char *cstr = (char *)malloc(s.l + 1);
-  memcpy(cstr, s.s, s.l);
-  cstr[s.l] = '\0';
-  return cstr;
-}
 
 struct predicate {
   uint32_t pattern_idx;

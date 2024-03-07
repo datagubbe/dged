@@ -14,13 +14,14 @@ HEADERS = src/dged/settings.h src/dged/minibuffer.h src/dged/keyboard.h src/dged
 	src/dged/buffer.h src/dged/btree.h src/dged/command.h src/dged/allocator.h src/dged/reactor.h \
 	src/dged/vec.h src/dged/window.h src/dged/hash.h src/dged/undo.h src/dged/lang.h \
 	src/dged/settings-parse.h src/dged/utf8.h src/main/cmds.h src/main/bindings.h \
-	src/main/search-replace.h src/dged/location.h src/dged/buffer_view.h src/main/completion.h
+	src/main/search-replace.h src/dged/location.h src/dged/buffer_view.h src/main/completion.h \
+	src/dged/timers.h src/dged/s8.h
 
 SOURCES = src/dged/binding.c src/dged/buffer.c src/dged/command.c src/dged/display.c \
 	src/dged/keyboard.c src/dged/minibuffer.c src/dged/text.c \
 	src/dged/utf8.c src/dged/buffers.c src/dged/window.c src/dged/allocator.c src/dged/undo.c \
 	src/dged/settings.c src/dged/lang.c src/dged/settings-parse.c src/dged/location.c \
-	src/dged/buffer_view.c
+	src/dged/buffer_view.c src/dged/timers.c src/dged/s8.c
 
 MAIN_SOURCES = src/main/main.c src/main/cmds.c src/main/bindings.c src/main/search-replace.c src/main/completion.c
 

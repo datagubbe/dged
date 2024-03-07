@@ -421,6 +421,7 @@ void text_for_each_line(struct text *text, uint32_t line, uint32_t nlines,
   for (uint32_t li = line; li < nlines_max; ++li) {
     struct line *src_line = &text->lines[li];
     struct text_chunk line = (struct text_chunk){
+        .allocated = false,
         .text = src_line->data,
         .nbytes = src_line->nbytes,
         .nchars = src_line->nchars,

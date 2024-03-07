@@ -312,6 +312,18 @@ struct location buffer_newline(struct buffer *buffer, struct location at);
 struct location buffer_indent(struct buffer *buffer, struct location at);
 
 /**
+ * Insert alternative indentation in the buffer.
+ *
+ * Alternative indentation is spaces if it is normally using tabs
+ * and vice versa.
+ *
+ * @param [in] buffer The buffer to indent in.
+ * @param [in] at The location to insert indentation at.
+ * @returns The position after indenting.
+ */
+struct location buffer_indent_alt(struct buffer *buffer, struct location at);
+
+/**
  * Undo the last operation in the buffer.
  *
  * @param [in] buffer The buffer to undo in.
@@ -529,5 +541,15 @@ void buffer_render(struct buffer *buffer, struct buffer_render_params *params);
 // TODO: move this to where it makes sense
 uint32_t visual_string_width(uint8_t *txt, uint32_t len, uint32_t start_col,
                              uint32_t end_col);
+
+/**
+ * Sort lines in a buffer alphabetically.
+ *
+ * @param [in] buffer The buffer to sort lines in.
+ * @param [in] start_line The first line to sort.
+ * @param [in] end_line The last line to sort.
+ */
+void buffer_sort_lines(struct buffer *buffer, uint32_t start_line,
+                       uint32_t end_line);
 
 #endif

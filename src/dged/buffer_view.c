@@ -3,6 +3,7 @@
 #include "buffer.h"
 #include "buffer_view.h"
 #include "display.h"
+#include "timers.h"
 #include "utf8.h"
 
 struct modeline {
@@ -139,6 +140,10 @@ void buffer_view_indent(struct buffer_view *view) {
   view->dot = buffer_indent(view->buffer, view->dot);
 }
 
+void buffer_view_indent_alt(struct buffer_view *view) {
+  view->dot = buffer_indent_alt(view->buffer, view->dot);
+}
+
 void buffer_view_copy(struct buffer_view *view) {
   if (!view->mark_set) {
     return;
@@ -212,6 +217,18 @@ void buffer_view_kill_line(struct buffer_view *view) {
                                             });
 
   buffer_cut(view->buffer, reg);
+}
+
+void buffer_view_sort_lines(struct buffer_view *view) {
+  struct region reg = region_new(view->dot, view->mark);
+  if (view->mark_set && region_has_size(reg)) {
+    if (reg.end.line > 0 && buffer_num_chars(view->buffer, reg.end.line) == 0) {
+      reg.end.line -= 1;
+    }
+
+    buffer_sort_lines(view->buffer, reg.begin.line, reg.end.line);
+    buffer_view_clear_mark(view);
+  }
 }
 
 void buffer_view_set_mark(struct buffer_view *view) {
@@ -314,23 +331,14 @@ static uint32_t render_line_numbers(struct buffer_view *view,
 
 static void render_modeline(struct modeline *modeline, struct buffer_view *view,
                             struct command_list *commands, uint32_t window_id,
-                            uint32_t width, uint32_t height,
-                            uint64_t frame_time) {
+                            uint32_t width, uint32_t height, float frame_time) {
   char buf[width * 4];
-
-  static uint64_t samples[10] = {0};
-  static uint32_t samplei = 0;
-  static uint64_t avg = 0;
-
-  // calc a moving average with a window of the last 10 frames
-  ++samplei;
-  samplei %= 10;
-  avg += 0.1 * (frame_time - samples[samplei]);
-  samples[samplei] = frame_time;
+  memset(buf, 0, width * 4);
 
   time_t now = time(NULL);
   struct tm *lt = localtime(&now);
-  char left[128], right[128];
+  static char left[128] = {0};
+  static char right[128] = {0};
 
   snprintf(left, 128, "  %c%c %d:%-16s (%d, %d) (%s)",
            view->buffer->modified ? '*' : '-',
@@ -357,8 +365,11 @@ static void render_modeline(struct modeline *modeline, struct buffer_view *view,
 void buffer_view_update(struct buffer_view *view,
                         struct buffer_view_update_params *params) {
 
+  struct timer *buffer_update_timer =
+      timer_start("update-windows.buffer-update");
   struct buffer_update_params update_params = {};
   buffer_update(view->buffer, &update_params);
+  timer_stop(buffer_update_timer);
 
   uint32_t height = params->height;
   uint32_t width = params->width;
@@ -369,6 +380,8 @@ void buffer_view_update(struct buffer_view *view,
                            (int64_t)view->dot.col);
 
   // render modeline
+  struct timer *render_modeline_timer =
+      timer_start("update-windows.modeline-render");
   uint32_t modeline_height = 0;
   if (view->modeline != NULL) {
     modeline_height = 1;
@@ -387,8 +400,11 @@ void buffer_view_update(struct buffer_view *view,
                      0)
             .line;
   }
+  timer_stop(render_modeline_timer);
 
   // render line numbers
+  struct timer *render_linenumbers_timer =
+      timer_start("update-windows.linenum-render");
   uint32_t linum_width = 0;
   if (view->line_numbers) {
     linum_width = render_line_numbers(view, params->commands, height);
@@ -402,6 +418,7 @@ void buffer_view_update(struct buffer_view *view,
     view->scroll.col =
         buffer_clamp(view->buffer, view->dot.line, view->dot.col).col;
   }
+  timer_stop(render_linenumbers_timer);
 
   // color region
   if (view->mark_set) {
@@ -420,7 +437,9 @@ void buffer_view_update(struct buffer_view *view,
     }
   }
 
-  // update buffer
+  // render buffer
+  struct timer *render_buffer_timer =
+      timer_start("update-windows.buffer-render");
   struct command_list *buf_cmds = command_list_create(
       width * height, params->frame_alloc, params->window_x + linum_width,
       params->window_y, view->buffer->name);
@@ -434,5 +453,9 @@ void buffer_view_update(struct buffer_view *view,
 
   // draw buffer commands nested inside this command list
   command_list_draw_command_list(params->commands, buf_cmds);
+  timer_stop(render_buffer_timer);
+
+  // TODO: move to somewhere where more correct if buffers
+  // are in more than one view (same with buffer hooks).
   buffer_clear_text_properties(view->buffer);
 }

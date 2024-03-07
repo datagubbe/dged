@@ -10,6 +10,7 @@
 #include "dged/display.h"
 #include "dged/minibuffer.h"
 #include "dged/settings.h"
+#include "dged/timers.h"
 
 static struct buffer b = {0};
 static struct buffers bufs = {0};
@@ -21,6 +22,7 @@ void *alloc_fn(size_t sz) { return frame_allocator_alloc(g_alloc, sz); }
 void init() {
   if (b.name == NULL) {
     settings_init(10);
+    timers_init();
     b = buffer_create("minibuffer");
     buffers_init(&bufs, 10);
   }
@@ -33,6 +35,7 @@ void destroy() {
   if (b.name != NULL) {
     buffer_destroy(&b);
     settings_destroy();
+    timers_destroy();
     windows_destroy();
   }
 }

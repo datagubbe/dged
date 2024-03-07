@@ -154,7 +154,7 @@ void windows_resize(uint32_t height, uint32_t width) {
   window_tree_resize(BINTREE_ROOT(&g_windows.windows), height - 1, width);
 }
 
-void windows_update(void *(*frame_alloc)(size_t), uint64_t frame_time) {
+void windows_update(void *(*frame_alloc)(size_t), float frame_time) {
 
   struct window *w = &g_minibuffer_window;
   w->x = 0;
@@ -281,8 +281,8 @@ void windows_update(void *(*frame_alloc)(size_t), uint64_t frame_time) {
   while (n != NULL) {
     struct window *w = &BINTREE_VALUE(n);
     if (w->type == Window_Buffer) {
-      char name[16];
-      snprintf(name, 16, "bufview-%s", w->buffer_view.buffer->name);
+      char name[16] = {0};
+      snprintf(name, 15, "bufview-%s", w->buffer_view.buffer->name);
       w->commands = command_list_create(w->height * w->width, frame_alloc, w->x,
                                         w->y, name);
 

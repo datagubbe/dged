@@ -19,6 +19,7 @@
 #include "dged/path.h"
 #include "dged/reactor.h"
 #include "dged/settings.h"
+#include "dged/timers.h"
 
 #ifdef SYNTAX_ENABLE
 #include "dged/syntax.h"
@@ -51,24 +52,6 @@ void resized() {
 
   signal(SIGWINCH, resized);
 }
-
-uint64_t calc_frame_time_ns(struct timespec *timers, uint32_t num_timer_pairs) {
-  uint64_t total = 0;
-  for (uint32_t ti = 0; ti < num_timer_pairs * 2; ti += 2) {
-    struct timespec *start_timer = &timers[ti];
-    struct timespec *end_timer = &timers[ti + 1];
-
-    total +=
-        ((uint64_t)end_timer->tv_sec * 1e9 + (uint64_t)end_timer->tv_nsec) -
-        ((uint64_t)start_timer->tv_sec * 1e9 + (uint64_t)start_timer->tv_nsec);
-  }
-
-  return total;
-}
-
-#define DECLARE_TIMER(timer) struct timespec timer##_begin, timer##_end
-#define TIMED_SCOPE_BEGIN(timer) clock_gettime(CLOCK_MONOTONIC, &timer##_begin)
-#define TIMED_SCOPE_END(timer) clock_gettime(CLOCK_MONOTONIC, &timer##_end)
 
 #define INVALID_WATCH -1
 struct watched_file {
@@ -297,32 +280,30 @@ int main(int argc, char *argv[]) {
   init_bindings();
 
   init_completion(&buflist);
+  timers_init();
 
-  DECLARE_TIMER(buffer);
-  DECLARE_TIMER(display);
-  DECLARE_TIMER(keyboard);
-
-  uint64_t frame_time = 0;
+  float frame_time = 0.f;
   static char keyname[64] = {0};
   static uint32_t nkeychars = 0;
 
   while (running) {
+    timers_start_frame();
     if (display_resized) {
       windows_resize(display_height(display), display_width(display));
       display_resized = false;
     }
 
     /* Update all windows together with the buffers in them. */
-    TIMED_SCOPE_BEGIN(buffer);
+    struct timer *update_windows = timer_start("update-windows");
     windows_update(frame_alloc, frame_time);
-    TIMED_SCOPE_END(buffer);
+    timer_stop(update_windows);
 
     struct window *active_window = windows_get_active();
 
     /* Update the screen by flushing command lists collected
      * from updating the buffers.
      */
-    TIMED_SCOPE_BEGIN(display);
+    struct timer *update_display = timer_start("display");
     display_begin_render(display);
     windows_render(display);
     struct buffer_view *view = window_buffer_view(active_window);
@@ -330,7 +311,7 @@ int main(int argc, char *argv[]) {
     struct window_position winpos = window_position(active_window);
     display_move_cursor(display, winpos.y + cursor.line, winpos.x + cursor.col);
     display_end_render(display);
-    TIMED_SCOPE_END(display);
+    timer_stop(update_display);
 
     /* This blocks for events, so if nothing has happened we block here and let
      * the CPU do something more useful than updating this editor for no reason.
@@ -339,7 +320,7 @@ int main(int argc, char *argv[]) {
      */
     reactor_update(reactor);
 
-    TIMED_SCOPE_BEGIN(keyboard);
+    struct timer *update_keyboard = timer_start("update-keyboard");
     struct keyboard_update kbd_upd =
         keyboard_update(&kbd, reactor, frame_alloc);
 
@@ -413,17 +394,18 @@ int main(int argc, char *argv[]) {
         keyname[0] = '\0';
       }
     }
-    TIMED_SCOPE_END(keyboard);
+    timer_stop(update_keyboard);
 
     update_file_watches(reactor);
 
     // calculate frame time
-    struct timespec timers[] = {buffer_begin, buffer_end,     display_begin,
-                                display_end,  keyboard_begin, keyboard_end};
-    frame_time = calc_frame_time_ns(timers, 3);
+    frame_time = timer_average(update_windows) +
+                 timer_average(update_keyboard) + timer_average(update_display);
+
     frame_allocator_clear(&frame_allocator);
   }
 
+  timers_destroy();
   destroy_completion();
   windows_destroy();
   minibuffer_destroy();

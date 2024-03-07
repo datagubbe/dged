@@ -49,7 +49,7 @@ void set_default_buffer_bindings(struct keymap *keymap) {
 
       BINDING(ENTER, "newline"),
       BINDING(TAB, "indent"),
-      BINDING(Spec, 'Z', "insert-tab"),
+      BINDING(Spec, 'Z', "indent-alt"),
 
       BINDING(Ctrl, 'K', "kill-line"),
       BINDING(DELETE, "delete-char"),
