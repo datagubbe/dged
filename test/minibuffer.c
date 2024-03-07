@@ -34,6 +34,7 @@ void init() {
 void destroy() {
   if (b.name != NULL) {
     buffer_destroy(&b);
+    buffers_destroy(&bufs);
     settings_destroy();
     timers_destroy();
     windows_destroy();

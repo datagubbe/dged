@@ -456,7 +456,7 @@ static uint32_t complete_path(struct completion_context ctx, void *userdata) {
 
   // check the input path here since
   // to_abspath removes trailing slashes
-  if (path[inlen - 1] != '/') {
+  if (inlen == 0 || path[inlen - 1] != '/') {
     dir = dirname(p1);
     file = basename(p2);
   }

@@ -15,6 +15,8 @@ void test_add() {
 
   ASSERT(loc.line == 1 && loc.col == strlen(txt),
          "Expected buffer to have one line with characters");
+
+  buffer_destroy(&b);
 }
 
 void test_word_at() {
@@ -43,6 +45,8 @@ void test_word_at() {
   ASSERT(region_has_size(word3), "expected 0,100 to be in the last word");
   ASSERT(word3.begin.col == 15 && word3.end.col == 22,
          "Expected word to span cols 15..22");
+
+  buffer_destroy(&b);
 }
 
 void run_buffer_tests() {

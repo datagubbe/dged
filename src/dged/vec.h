@@ -17,6 +17,8 @@
   (vec)->capacity = initial_capacity;                                          \
   (vec)->nentries = 0;
 
+#define VEC_DISOWN_ENTRIES(vec) (vec)->entries = NULL;
+
 #define VEC_DESTROY(vec)                                                       \
   free((vec)->temp);                                                           \
   free((vec)->entries);                                                        \

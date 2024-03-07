@@ -63,7 +63,6 @@ struct setting *settings_get(const char *path) {
 void settings_get_prefix(const char *prefix, struct setting **settings_out[],
                          uint32_t *nsettings_out) {
 
-  uint32_t capacity = 16;
   VEC(struct setting *) res;
   VEC_INIT(&res, 16);
   HASHMAP_FOR_EACH(&g_settings.settings, struct setting_entry * entry) {
@@ -75,6 +74,9 @@ void settings_get_prefix(const char *prefix, struct setting **settings_out[],
 
   *nsettings_out = VEC_SIZE(&res);
   *settings_out = VEC_ENTRIES(&res);
+
+  VEC_DISOWN_ENTRIES(&res);
+  VEC_DESTROY(&res);
 }
 
 void settings_set(const char *path, struct setting_value value) {
@@ -194,13 +196,18 @@ static int32_t parse_toml(struct parser *state, char **errmsgs[]) {
     free(curkey);
   }
 
+  uint32_t ret = 0;
   if (!VEC_EMPTY(&errs)) {
     *errmsgs = VEC_ENTRIES(&errs);
+    ret = VEC_SIZE(&errs);
+
+    VEC_DISOWN_ENTRIES(&errs);
+    VEC_DESTROY(&errs);
   } else {
     *errmsgs = NULL;
     VEC_DESTROY(&errs);
   }
-  return VEC_SIZE(&errs);
+  return ret;
 }
 
 struct str_cursor {
@@ -272,7 +279,7 @@ static size_t get_bytes_from_file(size_t nbytes, uint8_t *buf, void *userdata) {
   memcpy(buf, r->buffer, to_read);
 
   r->buflen -= to_read;
-  memcpy(r->buffer, r->buffer + to_read, r->buflen);
+  memmove(r->buffer, r->buffer + to_read, r->buflen);
   return to_read;
 }
 

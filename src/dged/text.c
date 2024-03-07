@@ -77,9 +77,14 @@ void text_clear(struct text *text) {
 
 // given `char_idx` as a character index, return the byte index
 uint32_t charidx_to_byteidx(struct line *line, uint32_t char_idx) {
-  if (char_idx > line->nchars) {
-    return line->nbytes;
+  if (line->nchars == 0) {
+    return 0;
   }
+
+  if (char_idx > line->nchars) {
+    return line->nbytes - 1;
+  }
+
   return utf8_nbytes(line->data, line->nbytes, char_idx);
 }
 

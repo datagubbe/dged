@@ -837,6 +837,9 @@ void buffer_find(struct buffer *buffer, const char *pattern,
 
   *matches = VEC_ENTRIES(&data.matches);
   *nmatches = VEC_SIZE(&data.matches);
+
+  VEC_DISOWN_ENTRIES(&data.matches);
+  VEC_DESTROY(&data.matches);
 }
 
 struct location buffer_copy(struct buffer *buffer, struct region region) {
