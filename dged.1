@@ -3,10 +3,245 @@
 .Os
 .Sh NAME
 .Nm dged
-.Nd a text editor for datagubbar
+.Nd a text editor for datagubbar and datagummor
 .Sh SYNOPSIS
 .Nm dged
-.Op Pa file
+.Op Fl l | -line Ar line
+.Op Fl e | -end
+.Op Fl h | -help
+.Op Ar file
 .Sh DESCRIPTION
 .Nm
 is a small, fast and no bullshit text editor for the future.
+.Pp
+The options are:
+.Bl -tag -width XXXX
+.It Fl l Ar n | Fl -line Ns = Ns Ar n
+This option directly jumps to line
+.Ar n
+in the opened
+.Ar file .
+.It Fl e | Fl -end
+This option directly jumps to the end of the opened
+.Ar file .
+.It Fl h | Fl -help
+Show the help text.
+.El
+.Sh EDITING TEXT
+When a file is loaded in
+.Nm ,
+It is stored in a
+.Em buffer .
+This buffer is displayed on the screen in what is called a
+.Em window .
+A buffer is an in-memory representation of a file and no changes
+to it are written to disk until the buffer is saved.
+.Pp
+Windows can be split and show different buffers.
+.Sh COMMANDS
+The
+.Nm
+editor is built up around 
+.Em commands .
+Commands perform some function either
+globally, or on the active window or buffer. Commands can also take arguments.
+To invoke a command, use the command prompt (default
+.Dq M-x )
+or the corresponding key binding.
+.Bl -tag -width xxxx
+.It backward-char
+Move dot one char backwards.
+.It forward-char
+Move dot one char forwards.
+.It backward-line
+Move dot one line backwards.
+.It forward-line
+Move dot one line forwards.
+.It forward-word
+Move dot one word forwards.
+.It backward-word
+Move dot one word backwards.
+.It beginning-of-line
+Move dot to the beginning of the line it is currently on.
+.It end-of-line
+Move doto to the end of the line it is currently on.
+.It find-next Ar needle
+Find next occurence of
+.Ar needle
+in the buffer.
+.It find-prev Ar needle
+Find previous occurence of
+.Ar needle
+in the buffer.
+.It goto-line Ar n
+Move dot to line
+.Ar n .
+.It goto-beginning
+Move dot to the first character in the buffer.
+.It goto-end
+Move dot past the last character in the buffer.
+.It scroll-down
+Scroll the active buffer one page down.
+.It scroll-up
+Scroll the active buffer one page up.
+.It newline
+Insert a newline in the active buffer.
+.It indent
+Insert appropriate indentation (according to the language)
+in the active buffer.
+.It indent-alt
+Insert the opposite (w.r.t. indent) type of indentation in
+the active buffer. I.e. if the buffer type usually uses tabs,
+this inserts spaces.
+.It kill-line
+Remove all text following dot in the current line, placing it
+in the kill ring.
+.It delete-char
+Delete the char following the dot, placing it in the kill ring.
+.It delete-word
+Delete the next word following dot, placing it in the kill ring.
+.It backward-delete-char
+Delete the char preceding the dot, placing it in the kill ring.
+.It set-mark
+Set the mark at the current dot position, effectively starting a
+selection.
+.It cut
+Cut the text between dot and mark, placing it in the kill ring.
+.It paste
+Paste the most recent entry from the kill ring into the active buffer.
+.It paste-older
+Each time the command is repeated, replace the last paste with an older
+one from the kill ring into the active buffer.
+.It copy
+Copy the text between dot and mark, placing it in the kill ring.
+.It undo
+Undo the last operation in the active buffer.
+.It exit
+Exit the editor.
+.It buffer-write-to-file Ar file
+Write the active buffer to
+.Ar file .
+.It find-file
+Open a file in a new buffer, relative to current working directory.
+.It find-file-relative
+Open a file in a new buffer, relative to the active buffer.
+.It switch-buffer
+Switch to another open buffer.
+.It buffer-list
+Open the buffer list in the currently active window.
+.It window-close
+Close the currently active window.
+.It window-close-others
+Close all windows except the active one.
+.It window-split-horizontal
+Split the active window horizontally.
+.It window-split-vertical
+Split the active window vertically.
+.It window-focus-next 
+Make the "next" window the active window.
+.It window-focus-{0..9}
+Make window {0..9} the active window.
+.It get Ar setting
+Get the value of the setting
+.Ar setting .
+.It set Ar setting Ar value
+Set the value of the setting
+.Ar setting
+to
+.Ar value .
+.Sh KEY BINDINGS
+In the following table, C-x means Control+x, M-x means Meta+x
+where Meta is usually the ALT key or a special key on the keyboard. The
+corresponding value for each key combination is a command
+described in
+.Sx COMMANDS .
+.Bl -tag -width xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx -compact
+.It M-x
+invoke-command
+.It C-g
+abort
+.It C-x-0
+window-close
+.It C-x-1
+window-close-others
+.It C-x-2
+window-split-horizontal
+.It C-x-3
+window-split-vertical
+.It C-x-o
+window-focus-next
+.It C-x-w-{0..9}
+window-focus-{0..9}
+.It C-b | <LEFT-ARROW>
+backward-char
+.It C-f | <RIGHT-ARROW>
+forward-char
+.It C-p | <UP-ARROW>
+backward-line
+.It C-n | <DOWN-ARROW>
+forward-line
+.It M-f
+forward-word
+.It M-b
+backward-word
+.It C-a
+beginning-of-line
+.It C-e
+end-of-line
+.It C-s
+find-next
+.It C-r
+find-prev
+.It M-g
+goto-line
+.It M-<
+goto-beginning
+.It M->
+goto-end
+.It C-v | <PAGE-DOWN>
+scroll-down
+.It M-v | <PAGE-UP>
+scroll-up
+.It C-<SPACE>
+set-mark
+.It C-w
+cut
+.It C-y
+paste
+.It M-y
+paste-older
+.It M-w
+copy
+.It C-/
+undo
+.Sh CONFIGURATION FILE
+The main configuration file,
+.Pa dged.toml
+is written in a subset of the TOML language. For example, setting the default
+tab-width looks like
+.Bd -literal
+[editor]
+tab-width = 5  # no, no one would do this
+.Ed
+.Ss Configuring Programming Languages
+The programming language support in
+.Nm
+can be configured using the TOML configuration file. The
+configuration for a language is stored in the key
+languages.<id> where id is an alphanumeric identifier for the language.
+.Nm
+comes with some built in languages that are automatically defined but to add
+more languages, add something like
+.Bd -literal
+[languages.mylang]
+name = "My Language"  # a descriptive name
+grammar = "mylang"  # name of the treesitter grammar to use (if syntax is enabled)
+.Ed
+
+to the configuration file.
+.Sh FILES
+.Bl -tag -width XX
+.It Pa ~/.config/dged/dged.toml
+Main configuration file.
+.Sh SEE ALSO
+.Xr emacs 1
