@@ -4,10 +4,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define s8(s) ((struct s8){s, strlen(s)})
+#define s8(s) ((struct s8){(uint8_t *)s, strlen(s)})
 
 struct s8 {
-  char *s;
+  uint8_t *s;
   uint32_t l;
 };
 

@@ -174,12 +174,12 @@ static void create_predicates(struct highlight *h, uint32_t pattern_index) {
     const TSQueryPredicateStep *step = &predicate_steps[predi];
     switch (step->type) {
     case TSQueryPredicateStepTypeCapture:
-      capname.s = (char *)ts_query_capture_name_for_id(h->query, step->value_id,
-                                                       &capname.l);
+      capname.s = (uint8_t *)ts_query_capture_name_for_id(
+          h->query, step->value_id, &capname.l);
       break;
 
     case TSQueryPredicateStepTypeString:
-      args[argc].s = (char *)ts_query_string_value_for_id(
+      args[argc].s = (uint8_t *)ts_query_string_value_for_id(
           h->query, step->value_id, &args[argc].l);
       ++argc;
       break;
@@ -259,6 +259,14 @@ static TSQuery *setup_queries(const char *lang_root, TSTree *tree) {
       break;
     case TSQueryErrorCapture:
       msg = "capture";
+      break;
+    case TSQueryErrorStructure:
+      msg = "structure";
+      break;
+    case TSQueryErrorLanguage:
+      msg = "language";
+      break;
+    default:
       break;
     }
 
@@ -344,8 +352,8 @@ static void update_parser(struct buffer *buffer, void *userdata,
       TSPoint end = ts_node_end_point(cap->node);
 
       struct s8 cname;
-      cname.s =
-          (char *)ts_query_capture_name_for_id(h->query, cap->index, &cname.l);
+      cname.s = (uint8_t *)ts_query_capture_name_for_id(h->query, cap->index,
+                                                        &cname.l);
 
       if (!eval_predicates(h, buffer->text, start, end, match.pattern_index,
                            cname)) {

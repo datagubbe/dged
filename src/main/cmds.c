@@ -170,7 +170,7 @@ void buffer_to_list_line(struct buffer *buffer, void *userdata) {
     struct location begin = buffer_end(listbuf);
     buffer_add(listbuf, begin, (uint8_t *)buf, written);
     size_t namelen = strlen(buffer->name);
-    uint32_t nchars = utf8_nchars(buffer->name, namelen);
+    uint32_t nchars = utf8_nchars((uint8_t *)buffer->name, namelen);
     buffer_add_text_property(
         listbuf, begin,
         (struct location){.line = begin.line, .col = begin.col + nchars},

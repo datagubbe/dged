@@ -36,7 +36,7 @@ struct s8 s8dup(struct s8 s) {
   struct s8 new = {0};
   new.l = s.l;
 
-  new.s = (char *)malloc(s.l);
+  new.s = (uint8_t *)malloc(s.l);
   memcpy(new.s, s.s, s.l);
 
   return new;
