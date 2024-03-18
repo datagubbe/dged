@@ -39,12 +39,12 @@ CFLAGS += -Werror -g -O2 -std=c99 -I $(.CURDIR)/src -I $(.CURDIR)/src/main -DDAT
 
 ASAN ?= false
 
-.if $(ASAN:tl) == true
+.if $(ASAN) == true
 CFLAGS += -fsanitize=address -fno-omit-frame-pointer
 LDFLAGS += -fsanitize=address
 .endif
 
-.if $(SYNTAX_ENABLE:tl) == true
+.if $(SYNTAX_ENABLE) == true
 HEADERS += src/dged/syntax.h
 SOURCES += src/dged/syntax.c
 
@@ -56,7 +56,9 @@ LDFLAGS += ${treesitterld}
 .endif
 
 UNAME_S != uname -s | tr '[:upper:]' '[:lower:]'
-.sinclude "$(UNAME_S).mk"
+.if exists(${.CURDIR}/${UNAME_S}.mk)
+.  include "$(.CURDIR)/$(UNAME_S).mk"
+.endif
 
 DEPS = $(SOURCES:.c=.d) $(MAIN_SOURCES:.c=.d) $(TEST_SOURCES:.c=.d)
 
@@ -78,12 +80,12 @@ FILES = $(DEPS) $(MAIN_OBJS) $(OBJS) dged libdged.a $(TEST_OBJS) $(PLATFORM_OBJS
 	$(CC) $(CFLAGS) -c $< -o $@
 
 grammars:
-	if [ -n "$$TREESITTER_GRAMMARS" ]; then \
+	@if [ -n "$$TREESITTER_GRAMMARS" ]; then \
 		IFS=":"; for p in "$$TREESITTER_GRAMMARS"; do \
 			cp -rL --no-preserve=mode "$$p"/ grammars; \
 		done \
 	else \
-		@echo "TODO: download and build default set of grammars"; \
+		echo "TODO: download and build default set of grammars"; \
 		mkdir -p ./grammars; \
 	fi
 
@@ -135,6 +137,8 @@ depend: $(DEPS)
 
 .if !(make(clean))
 .  for o in ${DEPS}
-.    sinclude "$o"
+.    if exists(${o})
+.      include "$o"
+.    endif
 .  endfor
 .endif
