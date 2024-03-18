@@ -14,5 +14,7 @@ struct s8 {
 bool s8eq(struct s8 s1, struct s8 s2);
 int s8cmp(struct s8 s1, struct s8 s2);
 char *s8tocstr(struct s8 s);
+bool s8startswith(struct s8 s, struct s8 prefix);
+struct s8 s8dup(struct s8 s);
 
 #endif

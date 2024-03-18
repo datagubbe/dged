@@ -46,6 +46,8 @@ void languages_init(bool register_default) {
     define_lang("Nix", "nix", "^.*\\.nix$", 2, false);
     define_lang("Make", "make", "^.*(Makefile|\\.mk)$", 4, true);
     define_lang("Python", "python", "^.*\\.py$", 4, false);
+    define_lang("Markdown", "markdown", "^.*\\.md$", 4, false);
+    define_lang("Javascript", "javascript", "^.*\\.js$", 4, false);
     define_lang("Git Commit Message", "gitcommit", "^.*COMMIT_EDITMSG$", 4,
                 false);
   }

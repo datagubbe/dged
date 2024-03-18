@@ -115,6 +115,7 @@ format:
 clean:
 	rm -f $(FILES)
 	rm -rf $(.CURDIR)/docs
+	rm -rf $(.OBJDIR)/grammars
 
 install: dged
 	install -d $(prefix)/bin

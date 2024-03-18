@@ -214,6 +214,11 @@ int main(int argc, char *argv[]) {
 
 #ifdef SYNTAX_ENABLE
   char *treesitter_path_env = getenv("TREESITTER_GRAMMARS");
+  struct setting *path_setting = settings_get("editor.grammars-path");
+  char *settings_path = NULL;
+  if (path_setting != NULL && path_setting->value.type == Setting_String) {
+    settings_path = path_setting->value.string_value;
+  }
   const char *builtin_path = join_path(xstr(DATADIR), "grammars");
 
   const char *treesitter_path[256] = {0};
@@ -222,6 +227,16 @@ int main(int argc, char *argv[]) {
   if (treesitter_path_env != NULL) {
     treesitter_path_env = strdup(treesitter_path_env);
     char *result = strtok(treesitter_path_env, ":");
+    while (result != NULL && treesitter_path_len < 256) {
+      treesitter_path[treesitter_path_len] = result;
+      ++treesitter_path_len;
+      result = strtok(NULL, ":");
+    }
+  }
+
+  if (settings_path != NULL) {
+    settings_path = strdup(settings_path);
+    char *result = strtok(settings_path, ":");
     while (result != NULL && treesitter_path_len < 256) {
       treesitter_path[treesitter_path_len] = result;
       ++treesitter_path_len;
@@ -238,6 +253,9 @@ int main(int argc, char *argv[]) {
 
   if (treesitter_path_env != NULL) {
     free((void *)treesitter_path_env);
+  }
+  if (settings_path != NULL) {
+    free((void *)settings_path);
   }
   free((void *)builtin_path);
 #endif

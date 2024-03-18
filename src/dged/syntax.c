@@ -121,6 +121,25 @@ static const char *lang_folder(struct buffer *buffer, const char *path) {
   return fld;
 }
 
+static bool eval_eq(struct s8 capname, uint32_t argc, struct s8 argv[],
+                    struct s8 value, void *data) {
+  const struct s8 *cmp_to = (const struct s8 *)data;
+  if (data == NULL) {
+    return false;
+  }
+
+  return s8eq(value, *cmp_to);
+}
+
+static void cleanup_eq(void *data) {
+  struct s8 *s = (struct s8 *)data;
+  if (s != NULL) {
+    free(s->s);
+    s->l = 0;
+    free(s);
+  }
+}
+
 static bool eval_match(struct s8 capname, uint32_t argc, struct s8 argv[],
                        struct s8 value, void *data) {
   regex_t *regex = (regex_t *)data;
@@ -185,6 +204,15 @@ static void create_predicates(struct highlight *h, uint32_t pattern_index) {
         }
 
         free(val);
+      } else if (s8eq(args[0], s8("eq?"))) {
+        struct s8 *val = calloc(1, sizeof(struct s8));
+        *val = s8dup(args[1]);
+        VEC_APPEND(&h->predicates, struct predicate * pred);
+        pred->pattern_idx = pattern_index;
+        pred->eval = eval_eq;
+        pred->cleanup = cleanup_eq;
+        pred->argc = 1;
+        pred->data = val;
       }
 
       argc = 0;
@@ -217,8 +245,6 @@ static TSQuery *setup_queries(const char *lang_root, TSTree *tree) {
   TSQuery *q = ts_query_new(ts_tree_language(tree), (char *)data, len,
                             &error_offset, &error);
 
-  munmap(data, len);
-
   if (error != TSQueryErrorNone) {
     const char *msg = "unknown error";
     switch (error) {
@@ -235,10 +261,27 @@ static TSQuery *setup_queries(const char *lang_root, TSTree *tree) {
       msg = "capture";
       break;
     }
-    message("ts query error at byte offset %d: %s", error_offset, msg);
+
+    // calculate line
+    const char *chars = (const char *)data;
+    uint64_t byteoff = 0;
+    uint32_t lineno = 1;
+    uint32_t colno = 0;
+    while (byteoff < error_offset) {
+      if (chars[byteoff] == '\n') {
+        ++lineno;
+        colno = 0;
+      }
+      ++colno;
+      ++byteoff;
+    }
+    message("ts query error at (%d, %d): %s, %.*s", lineno, colno, msg);
+
+    munmap(data, len);
     return NULL;
   }
 
+  munmap(data, len);
   return q;
 }
 
@@ -265,6 +308,9 @@ static bool eval_predicates(struct highlight *h, struct text *text,
 
   return true;
 }
+
+#define match_cname(cname, capture)                                            \
+  (s8eq(cname, s8(capture)) || s8startswith(cname, s8(capture ".")))
 
 static void update_parser(struct buffer *buffer, void *userdata,
                           struct location origin, uint32_t width,
@@ -308,50 +354,41 @@ static void update_parser(struct buffer *buffer, void *userdata,
 
       bool highlight = false;
       uint32_t color = 0;
-      if (s8eq(cname, s8("keyword"))) {
+      if (match_cname(cname, "keyword")) {
         highlight = true;
         color = Color_Blue;
-      } else if (s8eq(cname, s8("operator"))) {
+      } else if (match_cname(cname, "operator")) {
         highlight = true;
         color = Color_Magenta;
-      } else if (s8eq(cname, s8("delimiter"))) {
+      } else if (match_cname(cname, "delimiter")) {
         highlight = false;
-      } else if (s8eq(cname, s8("string")) ||
-                 s8eq(cname, s8("string.special")) ||
-                 s8eq(cname, s8("string.special.path")) ||
-                 s8eq(cname, s8("text.title")) || s8eq(cname, s8("text.uri")) ||
-                 s8eq(cname, s8("string.special.uri"))) {
+      } else if (s8eq(cname, s8("text"))) {
+        highlight = false;
+      } else if (match_cname(cname, "string") || match_cname(cname, "text")) {
         highlight = true;
         color = Color_Green;
-      } else if (s8eq(cname, s8("constant"))) {
+      } else if (match_cname(cname, "constant")) {
         highlight = true;
         color = Color_Yellow;
-      } else if (s8eq(cname, s8("attribute"))) {
+      } else if (match_cname(cname, "attribute")) {
         highlight = true;
         color = Color_Yellow;
-      } else if (s8eq(cname, s8("number"))) {
+      } else if (match_cname(cname, "number")) {
         highlight = true;
         color = Color_Yellow;
-      } else if (s8eq(cname, s8("function")) ||
-                 s8eq(cname, s8("function.macro")) ||
-                 s8eq(cname, s8("function.method")) ||
-                 s8eq(cname, s8("function.builtin")) ||
-                 s8eq(cname, s8("function.signal")) ||
-                 s8eq(cname, s8("function.special"))) {
+      } else if (match_cname(cname, "function")) {
         highlight = true;
         color = Color_Yellow;
-      } else if (s8eq(cname, s8("property"))) {
+      } else if (match_cname(cname, "property")) {
         highlight = false;
-      } else if (s8eq(cname, s8("label"))) {
+      } else if (match_cname(cname, "label")) {
         highlight = false;
-      } else if (s8eq(cname, s8("type")) || s8eq(cname, s8("type.builtin"))) {
+      } else if (match_cname(cname, "type")) {
         highlight = true;
         color = Color_Cyan;
-      } else if (s8eq(cname, s8("variable")) ||
-                 s8eq(cname, s8("variable.builtin")) ||
-                 s8eq(cname, s8("variable.parameter"))) {
+      } else if (match_cname(cname, "variable")) {
         highlight = false;
-      } else if (s8eq(cname, s8("comment"))) {
+      } else if (match_cname(cname, "comment")) {
         highlight = true;
         color = Color_BrightBlack;
       }
@@ -524,6 +561,12 @@ static void create_parser(struct buffer *buffer, void *userdata) {
   hl->tree = ts_parser_parse(hl->parser, NULL, i);
   hl->query = setup_queries(lang_root, hl->tree);
 
+  if (hl->query == NULL) {
+    ts_parser_delete(hl->parser);
+    free((void *)lang_root);
+    return;
+  }
+
   VEC_INIT(&hl->predicates, 8);
   uint32_t npatterns = ts_query_pattern_count(hl->query);
   for (uint32_t pi = 0; pi < npatterns; ++pi) {
@@ -549,14 +592,26 @@ void syntax_init(uint32_t grammar_path_len, const char *grammar_path[]) {
     treesitter_path[i] = strdup(grammar_path[i]);
   }
 
-  // TODO: check that it exists
+  // special-case some of the built-in languages
+  // that have grammar names different from the default
   struct language l = lang_from_id("gitcommit");
-  lang_setting_set_default(&l, "grammar",
-                           (struct setting_value){.type = Setting_String,
-                                                  .string_value = "gitcommit"});
+  if (!lang_is_fundamental(&l)) {
+    lang_setting_set_default(
+        &l, "grammar",
+        (struct setting_value){.type = Setting_String,
+                               .string_value = "gitcommit"});
+    lang_destroy(&l);
+  }
+
+  l = lang_from_id("cxx");
+  if (!lang_is_fundamental(&l)) {
+    lang_setting_set_default(
+        &l, "grammar",
+        (struct setting_value){.type = Setting_String, .string_value = "cpp"});
+    lang_destroy(&l);
+  }
 
   buffer_add_create_hook(create_parser, NULL);
-  lang_destroy(&l);
 }
 
 void syntax_teardown() {

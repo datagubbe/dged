@@ -23,3 +23,21 @@ char *s8tocstr(struct s8 s) {
   cstr[s.l] = '\0';
   return cstr;
 }
+
+bool s8startswith(struct s8 s, struct s8 prefix) {
+  if (prefix.l > s.l) {
+    return false;
+  }
+
+  return memcmp(s.s, prefix.s, prefix.l) == 0;
+}
+
+struct s8 s8dup(struct s8 s) {
+  struct s8 new = {0};
+  new.l = s.l;
+
+  new.s = (char *)malloc(s.l);
+  memcpy(new.s, s.s, s.l);
+
+  return new;
+}
