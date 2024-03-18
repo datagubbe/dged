@@ -8,6 +8,7 @@
 #include "vec.h"
 
 #include <fcntl.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -101,7 +102,7 @@ void setting_to_string(struct setting *setting, char *buf, size_t n) {
     snprintf(buf, n, "%s", setting->value.bool_value ? "true" : "false");
     break;
   case Setting_Number:
-    snprintf(buf, n, "%ld", setting->value.number_value);
+    snprintf(buf, n, "%" PRId64, setting->value.number_value);
     break;
   case Setting_String:
     snprintf(buf, n, "%s", setting->value.string_value);
