@@ -150,7 +150,7 @@ static int32_t parse_toml(struct parser *state, char **errmsgs[]) {
 
       curkey = calloc(len, 1);
       if (curtbl != NULL) {
-        strcpy(curkey, curtbl);
+        memcpy(curkey, curtbl, strlen(curtbl));
         curkey[strlen(curtbl)] = '.';
       }
 

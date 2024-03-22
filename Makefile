@@ -1,7 +1,6 @@
 # Makefile for bmake
-.OBJDIR: ./build
 .PHONY: default clean check run debug debug-tests install format
-
+.OBJDIR: ./build
 SYNTAX_ENABLE ?= true
 
 default: dged
@@ -29,7 +28,7 @@ TEST_SOURCES = test/assert.c test/buffer.c test/text.c test/utf8.c test/main.c \
 	test/command.c test/keyboard.c test/fake-reactor.c test/allocator.c \
 	test/minibuffer.c test/undo.c test/settings.c test/container.c
 
-prefix ?= /usr
+prefix ?= /usr/local
 datadir = $(prefix)/share/dged
 
 .SUFFIXES:
@@ -59,6 +58,8 @@ UNAME_S != uname -s | tr '[:upper:]' '[:lower:]'
 .if exists(${.CURDIR}/${UNAME_S}.mk)
 .  include "$(.CURDIR)/$(UNAME_S).mk"
 .endif
+
+FORMAT_TOOL ?= clang-format
 
 DEPS = $(SOURCES:.c=.d) $(MAIN_SOURCES:.c=.d) $(TEST_SOURCES:.c=.d)
 
@@ -99,7 +100,7 @@ run-tests: $(TEST_OBJS) $(OBJS)
 	$(CC) $(LDFLAGS) $(TEST_OBJS) $(OBJS) -lm -o run-tests
 
 check: run-tests
-	clang-format --dry-run --Werror $(SOURCES:%.c=../%.c) $(MAIN_SOURCES:%.c=../%.c) $(TEST_SOURCES:%c=../%c) $(HEADERS:%.h=../%.h)
+	$(FORMAT_TOOL) --dry-run --Werror $(SOURCES:%.c=../%.c) $(MAIN_SOURCES:%.c=../%.c) $(TEST_SOURCES:%c=../%c) $(HEADERS:%.h=../%.h)
 	./run-tests
 
 run: dged
@@ -112,7 +113,7 @@ debug-tests: run-tests
 	gdb ./run-tests
 
 format:
-	clang-format -i $(SOURCES:%.c=../%.c) $(MAIN_SOURCES:%.c=../%.c) $(TEST_SOURCES:%c=../%c) $(HEADERS:%.h=../%.h)
+	$(FORMAT_TOOL) -i $(SOURCES:%.c=../%.c) $(MAIN_SOURCES:%.c=../%.c) $(TEST_SOURCES:%c=../%c) $(HEADERS:%.h=../%.h)
 
 clean:
 	rm -f $(FILES)

@@ -353,7 +353,11 @@ static void render_modeline(struct modeline *modeline, struct buffer_view *view,
   if (strcmp(buf, (char *)modeline->buffer) != 0) {
     modeline->buffer = realloc(modeline->buffer, width * 4);
     modeline->sz = width * 4;
-    strcpy((char *)modeline->buffer, buf);
+
+    uint32_t len = strlen(buf);
+    len = (len + 1) > modeline->sz ? modeline->sz - 1 : len;
+    memcpy(modeline->buffer, buf, len);
+    modeline->buffer[len] = '\0';
   }
 
   command_list_set_index_color_bg(commands, 8);
