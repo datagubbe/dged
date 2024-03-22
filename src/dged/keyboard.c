@@ -108,7 +108,7 @@ struct keyboard_update keyboard_update(struct keyboard *kbd,
   }
 
   // read all input in chunks of `bufsize` bytes
-  const uint32_t bufsize = 128;
+  const uint32_t bufsize = 1024;
   uint8_t *buf = malloc(bufsize), *writepos = buf;
   int nbytes = 0, nread = 0;
   while ((nread = read(kbd->fd, writepos, bufsize)) == bufsize) {

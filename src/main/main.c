@@ -53,6 +53,18 @@ void resized() {
   signal(SIGWINCH, resized);
 }
 
+void segfault() {
+  // make an effort to restore the
+  // terminal to its former glory
+  if (display != NULL) {
+    display_clear(display);
+    display_destroy(display);
+  }
+
+  printf("Segfault encountered...\n");
+  abort();
+}
+
 #define INVALID_WATCH -1
 struct watched_file {
   uint32_t watch_id;
@@ -156,6 +168,7 @@ int main(int argc, char *argv[]) {
   setlocale(LC_ALL, "");
 
   signal(SIGTERM, terminate);
+  signal(SIGSEGV, segfault);
 
   struct commands commands = command_registry_create(32);
 
