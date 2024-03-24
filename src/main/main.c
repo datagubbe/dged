@@ -38,7 +38,7 @@ void *frame_alloc(size_t sz) {
   return frame_allocator_alloc(&frame_allocator, sz);
 }
 
-bool running = true;
+static bool running = true;
 
 void terminate() { running = false; }
 

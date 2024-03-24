@@ -176,47 +176,6 @@ static struct buffer create_internal(const char *name, char *filename) {
   return b;
 }
 
-static bool movev(struct buffer *buffer, int64_t linedelta,
-                  struct location *location) {
-  int64_t new_line = (int64_t)location->line + linedelta;
-  if (new_line < 0) {
-    location->line = 0;
-    return false;
-  } else if (new_line > text_num_lines(buffer->text)) {
-    // allow addition of an extra line by going past the bottom
-    location->line = text_num_lines(buffer->text);
-    return false;
-  } else {
-    location->line = (uint32_t)new_line;
-
-    // make sure column stays on the line
-    uint32_t linelen = text_line_length(buffer->text, location->line);
-    location->col = location->col > linelen ? linelen : location->col;
-    return true;
-  }
-}
-
-// move dot `coldelta` chars
-static bool moveh(struct buffer *buffer, int64_t coldelta,
-                  struct location *location) {
-  int64_t new_col = (int64_t)location->col + coldelta;
-  if (new_col > (int64_t)text_line_length(buffer->text, location->line)) {
-    if (movev(buffer, 1, location)) {
-      location->col = 0;
-    }
-  } else if (new_col < 0) {
-    if (movev(buffer, -1, location)) {
-      location->col = text_line_length(buffer->text, location->line);
-    } else {
-      return false;
-    }
-  } else {
-    location->col = new_col;
-  }
-
-  return true;
-}
-
 static void strip_final_newline(struct buffer *b) {
   uint32_t nlines = text_num_lines(b->text);
   if (nlines > 0 && text_line_length(b->text, nlines - 1) == 0) {
@@ -492,12 +451,12 @@ struct location buffer_add(struct buffer *buffer, struct location at,
                  &lines_added, &cols_added);
 
   // move to after inserted text
-  movev(buffer, lines_added, &final);
   if (lines_added > 0) {
-    // does not make sense to use position from another line
-    final.col = 0;
+    final = buffer_clamp(buffer, (int64_t)at.line + lines_added, 0);
+  } else {
+    final =
+        buffer_clamp(buffer, (int64_t)at.line, (int64_t)at.col + cols_added);
   }
-  moveh(buffer, cols_added, &final);
 
   undo_push_add(
       &buffer->undo,
@@ -553,7 +512,17 @@ bool buffer_is_backed(struct buffer *buffer) {
 
 struct location buffer_previous_char(struct buffer *buffer,
                                      struct location dot) {
-  moveh(buffer, -1, &dot);
+  if (dot.col == 0) {
+    if (dot.line == 0) {
+      return dot;
+    }
+
+    --dot.line;
+    dot.col = buffer_num_chars(buffer, dot.line);
+  } else {
+    --dot.col;
+  }
+
   return dot;
 }
 
@@ -562,8 +531,7 @@ struct location buffer_previous_word(struct buffer *buffer,
 
   struct match_result res = find_prev_in_line(buffer, dot, is_word_break);
   if (!res.found && res.at.col == dot.col) {
-    moveh(buffer, -1, &res.at);
-    return res.at;
+    return buffer_previous_char(buffer, res.at);
   }
 
   // check if we got here from the middle of a word or not
@@ -573,8 +541,7 @@ struct location buffer_previous_word(struct buffer *buffer,
   if (traveled <= 1) {
     res = find_prev_in_line(buffer, res.at, is_word_char);
     if (!res.found) {
-      moveh(buffer, -1, &res.at);
-      return res.at;
+      return buffer_previous_char(buffer, res.at);
     }
 
     // at this point, we are at the end of the previous word
@@ -582,10 +549,10 @@ struct location buffer_previous_word(struct buffer *buffer,
     if (!res.found) {
       return res.at;
     } else {
-      moveh(buffer, 1, &res.at);
+      res.at = buffer_next_char(buffer, res.at);
     }
   } else {
-    moveh(buffer, 1, &res.at);
+    res.at = buffer_next_char(buffer, res.at);
   }
 
   return res.at;
@@ -593,12 +560,31 @@ struct location buffer_previous_word(struct buffer *buffer,
 
 struct location buffer_previous_line(struct buffer *buffer,
                                      struct location dot) {
-  movev(buffer, -1, &dot);
+  if (dot.line == 0) {
+    return dot;
+  }
+
+  --dot.line;
+  uint32_t nchars = buffer_num_chars(buffer, dot.line);
+  uint32_t new_col = dot.col > nchars ? nchars : dot.col;
+
   return dot;
 }
 
 struct location buffer_next_char(struct buffer *buffer, struct location dot) {
-  moveh(buffer, 1, &dot);
+  if (dot.col == buffer_num_chars(buffer, dot.line)) {
+    uint32_t lastline = buffer->lazy_row_add ? buffer_num_lines(buffer)
+                                             : buffer_num_lines(buffer) - 1;
+    if (dot.line == lastline) {
+      return dot;
+    }
+
+    dot.col = 0;
+    ++dot.line;
+  } else {
+    ++dot.col;
+  }
+
   return dot;
 }
 
@@ -610,7 +596,7 @@ struct region buffer_word_at(struct buffer *buffer, struct location at) {
 
   if (prev_word_break.at.col != next_word_break.at.col &&
       prev_word_break.found) {
-    moveh(buffer, 1, &prev_word_break.at);
+    prev_word_break.at = buffer_next_char(buffer, prev_word_break.at);
   }
 
   return region_new(prev_word_break.at, next_word_break.at);
@@ -619,8 +605,7 @@ struct region buffer_word_at(struct buffer *buffer, struct location at) {
 struct location buffer_next_word(struct buffer *buffer, struct location dot) {
   struct match_result res = find_next_in_line(buffer, dot, is_word_break);
   if (!res.found) {
-    moveh(buffer, 1, &res.at);
-    return res.at;
+    return buffer_next_char(buffer, res.at);
   }
 
   uint32_t traveled = dot.col - res.at.col;
@@ -629,14 +614,24 @@ struct location buffer_next_word(struct buffer *buffer, struct location dot) {
 
   // make a stop at the end of the line as well
   if (!res.found && traveled == 0) {
-    moveh(buffer, 1, &res.at);
+    res.at = buffer_next_char(buffer, res.at);
   }
 
   return res.at;
 }
 
 struct location buffer_next_line(struct buffer *buffer, struct location dot) {
-  movev(buffer, 1, &dot);
+  uint32_t lastline = buffer->lazy_row_add ? buffer_num_lines(buffer)
+                                           : buffer_num_lines(buffer) - 1;
+  if (dot.line == lastline) {
+    return dot;
+  }
+
+  ++dot.line;
+  uint32_t new_col = dot.col;
+  uint32_t nchars = buffer_num_chars(buffer, dot.line);
+  new_col = new_col > nchars ? nchars : new_col;
+
   return dot;
 }
 
@@ -646,28 +641,42 @@ struct location buffer_clamp(struct buffer *buffer, int64_t line, int64_t col) {
     return location;
   }
 
-  if (line > buffer_num_lines(buffer)) {
+  // clamp line
+  if (line >= buffer_num_lines(buffer)) {
     if (buffer->lazy_row_add) {
-      location.line = buffer_num_lines(buffer);
-      location.col = 0;
+      line = buffer_num_lines(buffer);
+
+      // the "new" line is always empty
+      col = 0;
     } else {
-      location.line = buffer_num_lines(buffer) - 1;
-      location.col = buffer_num_chars(buffer, location.line);
+      line = buffer_num_lines(buffer) - 1;
     }
   } else if (line < 0) {
-    return location;
-  } else {
-    location.line = line;
-    uint32_t nchars = buffer_num_chars(buffer, location.line);
-    location.col = col > nchars ? nchars : col;
+    line = 0;
   }
+
+  // clamp col
+  if (col < 0) {
+    col = 0;
+  } else if (col > buffer_num_chars(buffer, line)) {
+    col = buffer_num_chars(buffer, line);
+  }
+
+  location.col = col;
+  location.line = line;
 
   return location;
 }
 
 struct location buffer_end(struct buffer *buffer) {
   uint32_t nlines = buffer_num_lines(buffer);
-  return (struct location){.line = nlines, .col = 0};
+
+  if (buffer->lazy_row_add) {
+    return (struct location){.line = nlines, .col = 0};
+  } else {
+    return (struct location){.line = nlines - 1,
+                             .col = buffer_num_chars(buffer, nlines - 1)};
+  }
 }
 
 uint32_t buffer_num_lines(struct buffer *buffer) {
@@ -675,6 +684,10 @@ uint32_t buffer_num_lines(struct buffer *buffer) {
 }
 
 uint32_t buffer_num_chars(struct buffer *buffer, uint32_t line) {
+  if (line >= buffer_num_lines(buffer)) {
+    return 0;
+  }
+
   return text_line_length(buffer->text, line);
 }
 
