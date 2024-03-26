@@ -74,8 +74,8 @@ int32_t do_switch_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
   const char *bufname = NULL;
   if (argc == 0) {
     // switch back to prev buffer
-    if (window_has_prev_buffer(ctx.active_window)) {
-      bufname = window_prev_buffer(ctx.active_window)->name;
+    if (window_has_prev_buffer_view(ctx.active_window)) {
+      bufname = window_prev_buffer_view(ctx.active_window)->buffer->name;
     } else {
       return 0;
     }
@@ -110,12 +110,58 @@ int32_t switch_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
                       providers, 1, switch_buffer_comp_inserted);
 
     ctx.self = &do_switch_buffer_command;
-    if (window_has_prev_buffer(ctx.active_window)) {
-      return minibuffer_prompt(ctx, "buffer (default %s): ",
-                               window_prev_buffer(ctx.active_window)->name);
+    if (window_has_prev_buffer_view(ctx.active_window)) {
+      return minibuffer_prompt(
+          ctx, "buffer (default %s): ",
+          window_prev_buffer_view(ctx.active_window)->buffer->name);
     } else {
       return minibuffer_prompt(ctx, "buffer: ");
     }
+  }
+
+  disable_completion(minibuffer_buffer());
+
+  return execute_command(&do_switch_buffer_command, ctx.commands,
+                         ctx.active_window, ctx.buffers, argc, argv);
+}
+
+int32_t do_kill_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
+  disable_completion(minibuffer_buffer());
+  const char *bufname = NULL;
+  if (argc == 0) {
+    // kill current buffer
+    bufname = window_buffer(ctx.active_window)->name;
+  } else {
+    bufname = argv[0];
+  }
+
+  if (buffers_remove(ctx.buffers, bufname)) {
+    return 0;
+  } else {
+    minibuffer_echo_timeout(4, "buffer %s not found", bufname);
+    return 1;
+  }
+}
+
+COMMAND_FN("do-kill-buffer", do_kill_buffer, do_kill_buffer, NULL);
+
+static void kill_buffer_comp_inserted() { minibuffer_execute(); }
+
+int32_t kill_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
+  if (argc == 0) {
+    minibuffer_clear();
+    struct completion_provider providers[] = {buffer_provider()};
+    enable_completion(minibuffer_buffer(),
+                      ((struct completion_trigger){
+                          .kind = CompletionTrigger_Input,
+                          .input =
+                              (struct completion_trigger_input){
+                                  .nchars = 0, .trigger_initially = false}}),
+                      providers, 1, kill_buffer_comp_inserted);
+
+    ctx.self = &do_kill_buffer_command;
+    return minibuffer_prompt(ctx, "kill buffer (default %s): ",
+                             window_buffer(ctx.active_window)->name);
   }
 
   disable_completion(minibuffer_buffer());
@@ -241,6 +287,34 @@ int32_t buflist_refresh_cmd(struct command_ctx ctx, int argc,
   return 0;
 }
 
+static struct command buflist_refresh_command = {
+    .name = "buflist-refresh",
+    .fn = buflist_refresh_cmd,
+};
+
+int32_t buflist_kill_cmd(struct command_ctx ctx, int argc, const char *argv[]) {
+  struct window *w = ctx.active_window;
+
+  struct buffer_view *bv = window_buffer_view(w);
+  struct text_chunk text = buffer_line(bv->buffer, bv->dot.line);
+
+  char *end = (char *)memchr(text.text, ' ', text.nbytes);
+
+  if (end != NULL) {
+    uint32_t len = end - (char *)text.text;
+    char *bufname = (char *)malloc(len + 1);
+    strncpy(bufname, (const char *)text.text, len);
+    bufname[len] = '\0';
+
+    buffers_remove(ctx.buffers, bufname);
+    free(bufname);
+    execute_command(&buflist_refresh_command, ctx.commands, ctx.active_window,
+                    ctx.buffers, 0, NULL);
+  }
+
+  return 0;
+}
+
 int32_t buffer_list(struct command_ctx ctx, int argc, const char *argv[]) {
   struct buffer *b = buffers_find(ctx.buffers, "*buffers*");
   if (b == NULL) {
@@ -258,20 +332,21 @@ int32_t buffer_list(struct command_ctx ctx, int argc, const char *argv[]) {
       .fn = buflist_visit_cmd,
   };
 
+  static struct command buflist_kill = {
+      .name = "buflist-kill",
+      .fn = buflist_kill_cmd,
+  };
+
   static struct command buflist_close = {
       .name = "buflist-close",
       .fn = buflist_close_cmd,
   };
 
-  static struct command buflist_refresh = {
-      .name = "buflist-refresh",
-      .fn = buflist_refresh_cmd,
-  };
-
   struct binding bindings[] = {
-      ANONYMOUS_BINDING(Ctrl, 'M', &buflist_visit),
+      ANONYMOUS_BINDING(ENTER, &buflist_visit),
+      ANONYMOUS_BINDING(None, 'k', &buflist_kill),
       ANONYMOUS_BINDING(None, 'q', &buflist_close),
-      ANONYMOUS_BINDING(None, 'g', &buflist_refresh),
+      ANONYMOUS_BINDING(None, 'g', &buflist_refresh_command),
   };
   struct keymap km = keymap_create("buflist", 8);
   keymap_bind_keys(&km, bindings, sizeof(bindings) / sizeof(bindings[0]));
@@ -396,6 +471,7 @@ void register_global_commands(struct commands *commands,
       {.name = "write-file", .fn = write_file},
       {.name = "run-command-interactive", .fn = run_interactive},
       {.name = "switch-buffer", .fn = switch_buffer},
+      {.name = "kill-buffer", .fn = kill_buffer},
       {.name = "abort", .fn = _abort},
       {.name = "timers", .fn = timers},
       {.name = "buffer-list", .fn = buffer_list},

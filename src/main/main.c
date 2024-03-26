@@ -61,7 +61,7 @@ void segfault() {
     display_destroy(display);
   }
 
-  printf("Segfault encountered...\n");
+  fprintf(stderr, "Segfault encountered...\n");
   abort();
 }
 
@@ -289,8 +289,8 @@ int main(int argc, char *argv[]) {
 
   struct buffer *ib = buffers_add(&buflist, initial_buffer);
 
-  windows_init(display_height(display), display_width(display), ib,
-               &minibuffer);
+  windows_init(display_height(display), display_width(display), ib, &minibuffer,
+               &buflist);
   struct window *active = windows_get_active();
   if (goto_end) {
     buffer_view_goto_end(window_buffer_view(active));

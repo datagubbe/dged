@@ -100,6 +100,7 @@ void init_bindings() {
       BINDING(Ctrl, 'G', "find-file-relative"),
       BINDING(Ctrl, 'W', "write-file"),
       BINDING(None, 'b', "switch-buffer"),
+      BINDING(None, 'k', "kill-buffer"),
       BINDING(Ctrl, 'B', "buffer-list"),
 
       BINDING(None, '0', "window-close"),

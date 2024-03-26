@@ -70,7 +70,10 @@ void buffer_view_destroy(struct buffer_view *view) {
   if (view->modeline != NULL) {
     free(view->modeline->buffer);
     free(view->modeline);
+    view->modeline = NULL;
   }
+
+  view->buffer = NULL;
 }
 
 void buffer_view_add(struct buffer_view *view, uint8_t *txt, uint32_t nbytes) {

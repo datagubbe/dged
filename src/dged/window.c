@@ -2,6 +2,7 @@
 #include "btree.h"
 #include "buffer.h"
 #include "buffer_view.h"
+#include "buffers.h"
 #include "command.h"
 #include "display.h"
 #include "minibuffer.h"
@@ -21,7 +22,8 @@ struct window {
   uint32_t height;
   enum window_type type;
   struct buffer_view buffer_view;
-  struct buffer *prev_buffer;
+  struct buffer_view prev_buffer_view;
+  bool has_prev_buffer_view;
   struct command_list *commands;
   uint32_t relline;
   uint32_t relcol;
@@ -40,13 +42,52 @@ static struct window g_minibuffer_window;
 static struct window g_popup_window = {0};
 static bool g_popup_visible = false;
 
+static void buffer_removed(struct buffer *buffer, void *userdata) {
+  struct window_node *n = BINTREE_ROOT(&g_windows.windows);
+  BINTREE_FIRST(n);
+  while (n != NULL) {
+    struct window *w = &BINTREE_VALUE(n);
+    if (window_prev_buffer_view(w)->buffer == buffer) {
+      buffer_view_destroy(&w->prev_buffer_view);
+      w->has_prev_buffer_view = false;
+    }
+
+    if (window_buffer(w) == buffer) {
+      if (window_has_prev_buffer_view(w)) {
+        window_set_buffer(w, window_prev_buffer_view(w)->buffer);
+        buffer_view_destroy(&w->prev_buffer_view);
+        w->has_prev_buffer_view = false;
+      } else {
+        struct buffers *buffers = (struct buffers *)userdata;
+        struct buffer *b = buffers_find(buffers, "*messages*");
+
+        if (b != NULL) {
+          window_set_buffer(w, b);
+        } else {
+          b = buffers_first(buffers);
+
+          // if there are no more buffers, not sure what to do?
+          if (b != NULL) {
+            window_set_buffer(w, b);
+          }
+        }
+        buffer_view_destroy(&w->prev_buffer_view);
+        w->has_prev_buffer_view = false;
+      }
+    }
+
+    BINTREE_NEXT(n);
+  }
+}
+
 void windows_init(uint32_t height, uint32_t width,
-                  struct buffer *initial_buffer, struct buffer *minibuffer) {
+                  struct buffer *initial_buffer, struct buffer *minibuffer,
+                  struct buffers *buffers) {
   BINTREE_INIT(&g_windows.windows);
 
   g_minibuffer_window = (struct window){
       .buffer_view = buffer_view_create(minibuffer, false, false),
-      .prev_buffer = NULL,
+      .has_prev_buffer_view = false,
       .x = 0,
       .y = height - 1,
       .height = 1,
@@ -55,7 +96,7 @@ void windows_init(uint32_t height, uint32_t width,
 
   struct window root_window = (struct window){
       .buffer_view = buffer_view_create(initial_buffer, true, true),
-      .prev_buffer = NULL,
+      .has_prev_buffer_view = false,
       .height = height - 1,
       .width = width,
       .x = 0,
@@ -63,6 +104,8 @@ void windows_init(uint32_t height, uint32_t width,
   };
   BINTREE_SET_ROOT(&g_windows.windows, root_window);
   g_windows.active = &BINTREE_VALUE(BINTREE_ROOT(&g_windows.windows));
+
+  buffers_add_remove_hook(buffers, buffer_removed, buffers);
 }
 
 static void window_tree_clear_sub(struct window_node *root_node) {
@@ -72,6 +115,9 @@ static void window_tree_clear_sub(struct window_node *root_node) {
     struct window *w = &BINTREE_VALUE(n);
     if (w->type == Window_Buffer) {
       buffer_view_destroy(&w->buffer_view);
+      if (w->has_prev_buffer_view) {
+        buffer_view_destroy(&w->prev_buffer_view);
+      }
     }
     BINTREE_NEXT(n);
   }
@@ -377,8 +423,23 @@ void window_set_buffer(struct window *window, struct buffer *buffer) {
 void window_set_buffer_e(struct window *window, struct buffer *buffer,
                          bool modeline, bool line_numbers) {
   if (buffer != window->buffer_view.buffer) {
-    window->prev_buffer = window->buffer_view.buffer;
-    buffer_view_destroy(&window->buffer_view);
+    if (window->has_prev_buffer_view) {
+
+      if (window->prev_buffer_view.buffer == buffer) {
+
+        struct buffer_view tmp = window->prev_buffer_view;
+        window->prev_buffer_view = window->buffer_view;
+        window->has_prev_buffer_view = true;
+        window->buffer_view = tmp;
+        return;
+
+      } else {
+        buffer_view_destroy(&window->prev_buffer_view);
+      }
+    }
+
+    window->prev_buffer_view = window->buffer_view;
+    window->has_prev_buffer_view = true;
     window->buffer_view = buffer_view_create(buffer, modeline, line_numbers);
   }
 }
@@ -391,12 +452,12 @@ struct buffer_view *window_buffer_view(struct window *window) {
   return &window->buffer_view;
 }
 
-struct buffer *window_prev_buffer(struct window *window) {
-  return window->prev_buffer;
+struct buffer_view *window_prev_buffer_view(struct window *window) {
+  return &window->prev_buffer_view;
 }
 
-bool window_has_prev_buffer(struct window *window) {
-  return window->prev_buffer != NULL;
+bool window_has_prev_buffer_view(struct window *window) {
+  return window->has_prev_buffer_view;
 }
 
 void window_close(struct window *window) {
@@ -417,6 +478,7 @@ void window_close(struct window *window) {
                                    : BINTREE_RIGHT(target);
 
   buffer_view_destroy(&window->buffer_view);
+  buffer_view_destroy(&window->prev_buffer_view);
   BINTREE_REMOVE(to_delete);
   BINTREE_FREE_NODE(to_delete);
 
@@ -454,6 +516,11 @@ void window_close_others(struct window *window) {
   new_root.x = 0;
   new_root.y = 0;
   new_root.buffer_view = buffer_view_clone(&window->buffer_view);
+  new_root.has_prev_buffer_view = false;
+  if (window->has_prev_buffer_view) {
+    new_root.has_prev_buffer_view = true;
+    new_root.prev_buffer_view = buffer_view_clone(&window->prev_buffer_view);
+  }
   new_root.width = BINTREE_VALUE(root).width;
   new_root.height = BINTREE_VALUE(root).height;
 
@@ -495,7 +562,9 @@ void window_hsplit(struct window *window, struct window **new_window_a,
       buffer_view_goto(&new_window.buffer_view,
                        (struct location){.line = w.buffer_view.dot.line,
                                          .col = w.buffer_view.dot.col});
-      new_window.prev_buffer = w.prev_buffer;
+      if (w.has_prev_buffer_view) {
+        new_window.prev_buffer_view = buffer_view_clone(&w.prev_buffer_view);
+      }
       new_window.x = w.x;
       new_window.y = w.y + w.height;
       new_window.width = w.width;
@@ -539,7 +608,9 @@ void window_vsplit(struct window *window, struct window **new_window_a,
                        (struct location){.line = w.buffer_view.dot.line,
                                          .col = w.buffer_view.dot.col});
 
-      new_window.prev_buffer = w.prev_buffer;
+      if (w.has_prev_buffer_view) {
+        new_window.prev_buffer_view = buffer_view_clone(&w.prev_buffer_view);
+      }
       new_window.x = w.x + w.width;
       new_window.y = w.y;
       new_window.width = parent.width - w.width;

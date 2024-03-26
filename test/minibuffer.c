@@ -28,7 +28,7 @@ void init() {
   }
 
   minibuffer_init(&b, &bufs);
-  windows_init(100, 100, &b, &b);
+  windows_init(100, 100, &b, &b, &bufs);
 }
 
 void destroy() {

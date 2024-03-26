@@ -11,6 +11,7 @@ struct display;
 struct keymap;
 struct commands;
 struct buffer;
+struct buffers;
 
 struct window;
 struct windows;
@@ -21,7 +22,8 @@ struct window_position {
 };
 
 void windows_init(uint32_t height, uint32_t width,
-                  struct buffer *initial_buffer, struct buffer *minibuffer);
+                  struct buffer *initial_buffer, struct buffer *minibuffer,
+                  struct buffers *buffers);
 
 void windows_destroy();
 void windows_resize(uint32_t height, uint32_t width);
@@ -44,8 +46,8 @@ void window_set_buffer_e(struct window *window, struct buffer *buffer,
                          bool modeline, bool line_numbers);
 struct buffer *window_buffer(struct window *window);
 struct buffer_view *window_buffer_view(struct window *window);
-struct buffer *window_prev_buffer(struct window *window);
-bool window_has_prev_buffer(struct window *window);
+struct buffer_view *window_prev_buffer_view(struct window *window);
+bool window_has_prev_buffer_view(struct window *window);
 uint32_t window_width(const struct window *window);
 uint32_t window_height(const struct window *window);
 struct window_position window_position(const struct window *window);
