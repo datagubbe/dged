@@ -72,9 +72,10 @@ uint32_t utf8_visual_char_width(uint8_t *bytes, uint32_t len) {
     wchar_t wc;
     size_t nbytes = 0;
     if ((nbytes = mbrtowc(&wc, (char *)bytes, len, NULL)) > 0) {
-      return wcwidth(wc);
+      size_t w = wcwidth(wc);
+      return w > 0 ? w : 2;
     } else {
-      return 0;
+      return 1;
     }
   } else if (utf8_byte_is_unicode_continuation(*bytes)) {
     return 0;
