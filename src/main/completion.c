@@ -54,12 +54,24 @@ static struct completion_provider g_buffer_provider = {
     .userdata = NULL,
 };
 
+static uint32_t complete_commands(struct completion_context ctx,
+                                  void *userdata);
+static struct completion_provider g_commands_provider = {
+    .name = "commands",
+    .complete = complete_commands,
+    .userdata = NULL,
+};
+
 struct completion_provider path_provider() {
   return g_path_provider;
 }
 
 struct completion_provider buffer_provider() {
   return g_buffer_provider;
+}
+
+struct completion_provider commands_provider() {
+  return g_commands_provider;
 }
 
 struct active_completion {
@@ -267,13 +279,14 @@ static void update_completion_buffer(struct buffer *buffer, void *userdata) {
                              }});
 }
 
-void init_completion(struct buffers *buffers) {
+void init_completion(struct buffers *buffers, struct commands *commands) {
   if (g_target_buffer == NULL) {
     g_target_buffer = buffers_add(buffers, buffer_create("*completions*"));
     buffer_add_update_hook(g_target_buffer, update_completion_buffer, NULL);
   }
 
   g_buffer_provider.userdata = buffers;
+  g_commands_provider.userdata = commands;
   VEC_INIT(&g_active_completions, 32);
 }
 
@@ -511,7 +524,7 @@ done:
   return n;
 }
 
-struct buffer_match_ctx {
+struct needle_match_ctx {
   const char *needle;
   struct completion *completions;
   uint32_t max_ncompletions;
@@ -519,7 +532,7 @@ struct buffer_match_ctx {
 };
 
 static void buffer_matches(struct buffer *buffer, void *userdata) {
-  struct buffer_match_ctx *ctx = (struct buffer_match_ctx *)userdata;
+  struct needle_match_ctx *ctx = (struct needle_match_ctx *)userdata;
 
   if (strncmp(ctx->needle, buffer->name, strlen(ctx->needle)) == 0 &&
       ctx->ncompletions < ctx->max_ncompletions) {
@@ -568,13 +581,76 @@ static uint32_t complete_buffers(struct completion_context ctx,
     free(txt.text);
   }
 
-  struct buffer_match_ctx match_ctx = (struct buffer_match_ctx){
+  struct needle_match_ctx match_ctx = (struct needle_match_ctx){
       .needle = needle,
       .max_ncompletions = ctx.max_ncompletions,
       .completions = ctx.completions,
       .ncompletions = 0,
   };
   buffers_for_each(buffers, buffer_matches, &match_ctx);
+
+  free(needle);
+  return match_ctx.ncompletions;
+}
+
+static void command_matches(struct command *command, void *userdata) {
+  struct needle_match_ctx *ctx = (struct needle_match_ctx *)userdata;
+
+  if (strncmp(ctx->needle, command->name, strlen(ctx->needle)) == 0 &&
+      ctx->ncompletions < ctx->max_ncompletions) {
+    ctx->completions[ctx->ncompletions] = (struct completion){
+        .display = strdup(command->name),
+        .insert = strdup(command->name + strlen(ctx->needle)),
+        .complete = true,
+    };
+    ++ctx->ncompletions;
+  }
+}
+
+static uint32_t complete_commands(struct completion_context ctx,
+                                  void *userdata) {
+
+  struct commands *commands = (struct commands *)userdata;
+  if (commands == NULL) {
+    return 0;
+  }
+
+  struct text_chunk txt = {0};
+  uint32_t start_idx = 0;
+  if (ctx.buffer == minibuffer_buffer()) {
+    txt = minibuffer_content();
+  } else {
+    txt = buffer_line(ctx.buffer, ctx.location.line);
+    uint32_t end_idx = text_col_to_byteindex(
+        ctx.buffer->text, ctx.location.line, ctx.location.col);
+    for (uint32_t bytei = end_idx; bytei > 0; --bytei) {
+      if (txt.text[bytei] == ' ') {
+        start_idx = bytei + 1;
+        break;
+      }
+    }
+
+    if (start_idx >= end_idx) {
+      return 0;
+    }
+
+    txt.nbytes = end_idx - start_idx;
+  }
+
+  char *needle = calloc(txt.nbytes + 1, sizeof(uint8_t));
+  memcpy(needle, txt.text + start_idx, txt.nbytes);
+
+  if (txt.allocated) {
+    free(txt.text);
+  }
+
+  struct needle_match_ctx match_ctx = (struct needle_match_ctx){
+      .needle = needle,
+      .max_ncompletions = ctx.max_ncompletions,
+      .completions = ctx.completions,
+      .ncompletions = 0,
+  };
+  commands_for_each(commands, command_matches, &match_ctx);
 
   free(needle);
   return match_ctx.ncompletions;

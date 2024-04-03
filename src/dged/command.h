@@ -183,6 +183,10 @@ struct command *lookup_command(struct commands *commands, const char *name);
 struct command *lookup_command_by_hash(struct commands *commands,
                                        uint32_t hash);
 
+void commands_for_each(struct commands *commands,
+                       void (*callback)(struct command *, void *),
+                       void *userdata);
+
 void command_ctx_push_arg(struct command_ctx *ctx, const char *argv);
 void command_ctx_free(struct command_ctx *ctx);
 

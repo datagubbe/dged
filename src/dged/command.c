@@ -63,6 +63,14 @@ int32_t execute_command(struct command *command, struct commands *commands,
       argc, argv);
 }
 
+void commands_for_each(struct commands *commands,
+                       void (*callback)(struct command *, void *),
+                       void *userdata) {
+  HASHMAP_FOR_EACH(&commands->commands, struct command_entry * entry) {
+    callback(&entry->value, userdata);
+  }
+}
+
 void command_ctx_push_arg(struct command_ctx *ctx, const char *argv) {
   if (ctx->saved_argc < 64) {
     ctx->saved_argv[ctx->saved_argc] = strdup(argv);

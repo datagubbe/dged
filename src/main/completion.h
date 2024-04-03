@@ -5,6 +5,7 @@
 
 struct buffer;
 struct buffers;
+struct commands;
 
 struct completion {
   const char *display;
@@ -46,7 +47,7 @@ struct completion_trigger {
   };
 };
 
-void init_completion(struct buffers *buffers);
+void init_completion(struct buffers *buffers, struct commands *commands);
 void destroy_completion();
 
 typedef void (*insert_cb)();
@@ -65,6 +66,7 @@ void enable_completion(struct buffer *source, struct completion_trigger trigger,
 
 struct completion_provider path_provider();
 struct completion_provider buffer_provider();
+struct completion_provider commands_provider();
 
 /**
  * Abort any active completion.

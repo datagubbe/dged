@@ -54,11 +54,23 @@ int32_t write_file(struct command_ctx ctx, int argc, const char *argv[]) {
   return 0;
 }
 
+static void run_interactive_comp_inserted() { minibuffer_execute(); }
+
 int32_t run_interactive(struct command_ctx ctx, int argc, const char *argv[]) {
   if (argc == 0) {
+    struct completion_provider providers[] = {commands_provider()};
+    enable_completion(minibuffer_buffer(),
+                      ((struct completion_trigger){
+                          .kind = CompletionTrigger_Input,
+                          .input =
+                              (struct completion_trigger_input){
+                                  .nchars = 0, .trigger_initially = false}}),
+                      providers, 1, run_interactive_comp_inserted);
+
     return minibuffer_prompt(ctx, "execute: ");
   }
 
+  disable_completion(minibuffer_buffer());
   struct command *cmd = lookup_command(ctx.commands, argv[0]);
   if (cmd != NULL) {
     return execute_command(cmd, ctx.commands, ctx.active_window, ctx.buffers,

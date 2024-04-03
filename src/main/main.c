@@ -310,7 +310,7 @@ int main(int argc, char *argv[]) {
   struct keymap *current_keymap = NULL;
   init_bindings();
 
-  init_completion(&buflist);
+  init_completion(&buflist, &commands);
   timers_init();
 
   float frame_time = 0.f;
