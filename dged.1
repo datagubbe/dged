@@ -125,6 +125,9 @@ Write the active buffer to
 Open a file in a new buffer, relative to current working directory.
 .It find-file-relative
 Open a file in a new buffer, relative to the active buffer.
+.It kill-buffer
+Close the buffer and remove it from the editor. Does nothing to the
+file on disk.
 .It switch-buffer
 Switch to another open buffer.
 .It buffer-list
@@ -160,6 +163,12 @@ described in
 invoke-command
 .It C-g
 abort
+.It C-x C-f
+find-file
+.It C-x C-g
+find-file-relative
+.It C-k
+kill-buffer
 .It C-x-0
 window-close
 .It C-x-1

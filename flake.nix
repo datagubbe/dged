@@ -10,8 +10,11 @@
         pkgs = nixpkgs.legacyPackages."${system}";
       in
       {
-        packages.default = pkgs.callPackage ./dged.nix { };
-        packages.clang = pkgs.callPackage ./dged.nix { stdenv = pkgs.clangStdenv; };
+        packages = rec {
+          default = pkgs.callPackage ./dged.nix { };
+          gcc = default;
+          clang = pkgs.callPackage ./dged.nix { stdenv = pkgs.clangStdenv; };
+        };
       }
     );
 }

@@ -1,0 +1,22 @@
+:root {
+  --bg-color: #222;
+  --fg-color: #ddd;
+
+  --link-color: #eee;
+  --link-color-hover: #aaa;
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--fg-color);
+  padding-left: 2em;
+  max-width: 72em;
+}
+
+a {
+  color: var(--link-color);
+}
+
+a:hover {
+  color: var(--link-color-hover);
+}
