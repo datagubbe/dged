@@ -21,7 +21,7 @@ jobs:
     - name: Build Man Page to HTML
       run: |
         mkdir -p dist
-        nix run -L nixpkgs#mandoc -- -T html -O style=mandoc.css ./dged.1 > dist/dged.1.html
+        nix run -L nixpkgs#mandoc -- -T html -O style=mandoc.css ./dged.1 > dist/index.html
         cp mandoc.css dist/
 
     - name: Upload Artifact
