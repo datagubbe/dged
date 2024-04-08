@@ -1,10 +1,9 @@
 name: Manpage
 
 on:
-  - push
-#  push:
-#    branches:
-#      - trunk
+  push:
+    branches:
+      - trunk
 
 jobs:
   build:
