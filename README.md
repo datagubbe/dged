@@ -7,7 +7,10 @@ GNU Emacs and only implement the things I need to be productive.
 
 The editor was created as a learning exercise and to create something that I
 can use as a daily driver. If anyone else happens to find it useful I will
-be flattered and suprised.
+be very flattered and surprised.
+
+DGED is in early development so bugs and breaking changes are to be
+expected pre-1.0.0.
 
 ## Features
 
@@ -17,6 +20,7 @@ be flattered and suprised.
 - [x] Absolutely no plugin system
 - [x] Terminal only
 - [x] Mouse-free editing
+- [x] Naive and incorrect unicode handling
 - [ ] LSP Client implementation
 
 ## Contributing
@@ -25,7 +29,7 @@ Contributions are of course welcome. Please open a PR on the Github repository.
 
 ## Development Setup
 
-The editor is built using BSD make so that needs to be installed.
+The editor is built using BSD make (specifically bmake) so that needs to be installed.
 
 To enable syntax highlighting (default) you will also need the tree-sitter library
 installed.
@@ -36,12 +40,19 @@ needed dependencies, issue:
 ```
 $ nix develop
 ```
+
 Currently, tree-sitter grammars can only be automatically fetched when using the Nix setup.
 
 To build the editor, first create the build folder
 
 ```
 $ mkdir -p build
+```
+
+or
+
+```
+$ mkdir -p obj
 ```
 
 Then call make
@@ -72,7 +83,7 @@ followed by
 # make install
 ```
 
-Optionally, you can set `prefix` to a value of your liking.
+Optionally, you can set `prefix` (and `DESTDIR`) to a value of your liking.
 
 ## Documentation
 

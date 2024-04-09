@@ -31,6 +31,7 @@
 #include "bindings.h"
 #include "cmds.h"
 #include "completion.h"
+#include "version.h"
 
 static struct frame_allocator frame_allocator;
 
@@ -121,16 +122,21 @@ void update_file_watches(struct reactor *reactor) {
   }
 }
 
-void usage() {
+static void usage() {
   printf("dged - a text editor for datagubbar/datagummor!\n");
   printf("usage: dged [-l/--line line_number] [-e/--end] [-h/--help] "
          "[filename]\n");
+}
+
+static void version() {
+  printf("dged - %s\n© Albert Cervin 2024\n", DGED_VERSION);
 }
 
 int main(int argc, char *argv[]) {
 
   static struct option longopts[] = {{"line", required_argument, NULL, 'l'},
                                      {"end", no_argument, NULL, 'e'},
+                                     {"version", no_argument, NULL, 'V'},
                                      {"help", no_argument, NULL, 'h'},
                                      {NULL, 0, NULL, 0}};
 
@@ -138,8 +144,12 @@ int main(int argc, char *argv[]) {
   uint32_t jumpline = 1;
   bool goto_end = false;
   char ch;
-  while ((ch = getopt_long(argc, argv, "hel:", longopts, NULL)) != -1) {
+  while ((ch = getopt_long(argc, argv, "Vhel:", longopts, NULL)) != -1) {
     switch (ch) {
+    case 'V':
+      version();
+      return 0;
+      break;
     case 'l':
       jumpline = atoi(optarg);
       break;

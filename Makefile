@@ -29,12 +29,13 @@ TEST_SOURCES = test/assert.c test/buffer.c test/text.c test/utf8.c test/main.c \
 	test/minibuffer.c test/undo.c test/settings.c test/container.c
 
 prefix ?= /usr/local
-datadir = $(prefix)/share/dged
+DESTDIR ?= $(prefix)
+datadir = share/dged
 
 .SUFFIXES:
 .SUFFIXES: .c .o .d
 
-CFLAGS += -Werror -g -O2 -std=c99 -I $(.CURDIR)/src -I $(.CURDIR)/src/main -DDATADIR="$(datadir)"
+CFLAGS += -Werror -g -O2 -std=c99 -I $(.CURDIR)/src -I $(.CURDIR)/src/main -DDATADIR="$(prefix)/$(datadir)"
 
 ASAN ?= false
 
@@ -121,14 +122,14 @@ clean:
 	rm -rf $(.OBJDIR)/grammars
 
 install: dged
-	install -d $(prefix)/bin
-	install -m 755 $(.OBJDIR)/dged $(prefix)/bin/dged
+	install -d $(DESTDIR)/bin
+	install -m 755 $(.OBJDIR)/dged $(DESTDIR)/bin/dged
 
-	install -d $(prefix)/share/man/man1
-	install -m 644 $(.CURDIR)/dged.1 $(prefix)/share/man/man1/dged.1
+	install -d $(DESTDIR)/share/man/man1
+	install -m 644 $(.CURDIR)/dged.1 $(DESTDIR)/share/man/man1/dged.1
 
-	install -d $(datadir)/grammars
-	cp -rL $(.OBJDIR)/grammars "$(datadir)/"
+	install -d $(DESTDIR)/$(datadir)/grammars
+	cp -rL $(.OBJDIR)/grammars "$(DESTDIR)/$(datadir)/"
 
 docs:
 	doxygen $(.CURDIR)/Doxyfile
