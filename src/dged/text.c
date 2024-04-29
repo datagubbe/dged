@@ -389,8 +389,8 @@ void text_delete(struct text *text, uint32_t start_line, uint32_t start_col,
     // in this case we can "overwrite"
     uint32_t dstbytei =
         utf8_nbytes(firstline->data, firstline->nbytes, start_col);
-    memcpy(firstline->data + dstbytei, lastline->data + bytei,
-           lastline->nbytes - bytei);
+    memmove(firstline->data + dstbytei, lastline->data + bytei,
+            lastline->nbytes - bytei);
   } else {
     // otherwise we actually have to copy from the last line
     insert_at(text, start_line, start_col, lastline->data + bytei,

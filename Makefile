@@ -1,9 +1,10 @@
-# Makefile for bmake
+# Makefile for bmake/openbsd make
+
+default: dged
+
 .PHONY: default clean check run debug debug-tests install format
 .OBJDIR: ./build
 SYNTAX_ENABLE ?= true
-
-default: dged
 
 build:
 	mkdir -p build
@@ -35,7 +36,10 @@ datadir = share/dged
 .SUFFIXES:
 .SUFFIXES: .c .o .d
 
-CFLAGS += -Werror -g -O2 -std=c99 -I $(.CURDIR)/src -I $(.CURDIR)/src/main -DDATADIR="$(prefix)/$(datadir)"
+CFLAGS += -Werror -g -O2 -std=c99 \
+	-I $(.CURDIR)/src \
+	-I $(.CURDIR)/src/main \
+	-DDATADIR="$(prefix)/$(datadir)"
 
 ASAN ?= false
 
@@ -69,7 +73,13 @@ PLATFORM_OBJS = $(PLATFORM_SOURCES:.c=.o)
 MAIN_OBJS = $(MAIN_SOURCES:.c=.o)
 TEST_OBJS = $(TEST_SOURCES:.c=.o)
 
-FILES = $(DEPS) $(MAIN_OBJS) $(OBJS) dged libdged.a $(TEST_OBJS) $(PLATFORM_OBJS)
+FILES = $(DEPS) \
+		$(MAIN_OBJS) \
+		$(OBJS) \
+		$(TEST_OBJS) \
+		$(PLATFORM_OBJS) \
+		dged \
+		libdged.a
 
 # dependency generation
 .c.d:
@@ -101,7 +111,12 @@ run-tests: $(TEST_OBJS) $(OBJS)
 	$(CC) $(LDFLAGS) $(TEST_OBJS) $(OBJS) -lm -o run-tests
 
 check: run-tests
-	$(FORMAT_TOOL) --dry-run --Werror $(SOURCES:%.c=../%.c) $(MAIN_SOURCES:%.c=../%.c) $(TEST_SOURCES:%c=../%c) $(HEADERS:%.h=../%.h)
+	$(FORMAT_TOOL) --dry-run --Werror \
+		$(SOURCES:%.c=../%.c) \
+		$(PLATFORM_SOURCES:%.c=../%.c) \
+		$(MAIN_SOURCES:%.c=../%.c) \
+		$(TEST_SOURCES:%c=../%c) \
+		$(HEADERS:%.h=../%.h)
 	./run-tests
 
 run: dged
@@ -114,7 +129,12 @@ debug-tests: run-tests
 	gdb ./run-tests
 
 format:
-	$(FORMAT_TOOL) -i $(SOURCES:%.c=../%.c) $(MAIN_SOURCES:%.c=../%.c) $(TEST_SOURCES:%c=../%c) $(HEADERS:%.h=../%.h)
+	$(FORMAT_TOOL) -i \
+		$(SOURCES:%.c=../%.c)  \
+		$(MAIN_SOURCES:%.c=../%.c) \
+		$(PLATFORM_SOURCES:%.c=../%.c) \
+		$(TEST_SOURCES:%c=../%c) \
+		$(HEADERS:%.h=../%.h)
 
 clean:
 	rm -f $(FILES)
@@ -129,7 +149,7 @@ install: dged
 	install -m 644 $(.CURDIR)/dged.1 $(DESTDIR)/share/man/man1/dged.1
 
 	install -d $(DESTDIR)/$(datadir)/grammars
-	cp -rL $(.OBJDIR)/grammars "$(DESTDIR)/$(datadir)/"
+	cp -RL $(.OBJDIR)/grammars "$(DESTDIR)/$(datadir)/"
 
 docs:
 	doxygen $(.CURDIR)/Doxyfile

@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <getopt.h>
 #include <locale.h>
 #include <signal.h>
@@ -93,17 +94,7 @@ void reload_buffer(struct buffer *buffer) {
 }
 
 void update_file_watches(struct reactor *reactor) {
-  // first, find invalid file watches and try to update them
-  VEC_FOR_EACH(&g_watched_files, struct watched_file * w) {
-    if (w->watch_id == INVALID_WATCH) {
-      message("re-watching: %s", w->buffer->filename);
-      w->watch_id =
-          reactor_watch_file(reactor, w->buffer->filename, FileWritten);
-      reload_buffer(w->buffer);
-    }
-  }
-
-  // then pick up any events we might have
+  // first, pick up any events we might have
   struct file_event ev;
   while (reactor_next_file_event(reactor, &ev)) {
     // find the buffer we need to reload
@@ -118,6 +109,16 @@ void update_file_watches(struct reactor *reactor) {
         reload_buffer(w->buffer);
         break;
       }
+    }
+  }
+
+  // then, find invalid file watches and try to update them
+  VEC_FOR_EACH(&g_watched_files, struct watched_file * w) {
+    if (w->watch_id == INVALID_WATCH) {
+      message("re-watching: %s", w->buffer->filename);
+      w->watch_id =
+          reactor_watch_file(reactor, w->buffer->filename, FileWritten);
+      reload_buffer(w->buffer);
     }
   }
 }
@@ -218,8 +219,17 @@ int main(int argc, char *argv[]) {
   frame_allocator = frame_allocator_create(16 * 1024 * 1024);
 
   struct reactor *reactor = reactor_create();
+  if (reactor == NULL) {
+    fprintf(stderr, "Failed to create event reactor: %s\n", strerror(errno));
+    return 8;
+  }
 
   display = display_create();
+  if (display == NULL) {
+    fprintf(stderr, "Failed to set up display: %s\n", strerror(errno));
+    return 9;
+  }
+
   display_clear(display);
   signal(SIGWINCH, resized);
 

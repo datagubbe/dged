@@ -99,13 +99,17 @@ struct display *display_create() {
 
   // save old settings
   struct termios orig_term;
-  tcgetattr(0, &orig_term);
+  if (tcgetattr(0, &orig_term) < 0) {
+    return NULL;
+  }
 
   // set terminal to raw mode
-  struct termios term = {0};
+  struct termios term = orig_term;
   cfmakeraw(&term);
 
-  tcsetattr(0, TCSADRAIN, &term);
+  if (tcsetattr(0, TCSADRAIN, &term) < 0) {
+    return NULL;
+  }
 
   struct display *d = calloc(1, sizeof(struct display));
   d->orig_term = orig_term;
