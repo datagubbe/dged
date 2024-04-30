@@ -14,7 +14,7 @@ HEADERS = src/dged/settings.h src/dged/minibuffer.h src/dged/keyboard.h src/dged
 	src/dged/vec.h src/dged/window.h src/dged/hash.h src/dged/undo.h src/dged/lang.h \
 	src/dged/settings-parse.h src/dged/utf8.h src/main/cmds.h src/main/bindings.h \
 	src/main/search-replace.h src/dged/location.h src/dged/buffer_view.h src/main/completion.h \
-	src/dged/timers.h src/dged/s8.h
+	src/dged/timers.h src/dged/s8.h src/main/version.h
 
 SOURCES = src/dged/binding.c src/dged/buffer.c src/dged/command.c src/dged/display.c \
 	src/dged/keyboard.c src/dged/minibuffer.c src/dged/text.c \
