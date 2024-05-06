@@ -189,7 +189,9 @@ void timer_to_list_line(const struct timer *timer, void *userdata) {
   const char *name = timer_name(timer);
   size_t namelen = strlen(name);
   size_t len =
-      snprintf(buf, 128, "%s - %.2f ms", name, (timer_average(timer) / 1e6));
+      snprintf(buf, 128, "%s - %.2f ms (min: %.2f, max: %.2f)", name,
+               (timer_average(timer) / 1e6), timer_min(timer) / (float)1e6,
+               timer_max(timer) / (float)1e6);
   buffer_add(target, buffer_end(target), (uint8_t *)buf, len);
 }
 

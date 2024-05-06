@@ -31,15 +31,19 @@ struct keyboard keyboard_create_fd(struct reactor *reactor, int fd) {
 
 void parse_keys(uint8_t *bytes, uint32_t nbytes, struct key *out_keys,
                 uint32_t *out_nkeys) {
-  // TODO: can be optimized if "bytes" contains no special chars
   uint32_t nkps = 0;
   for (uint32_t bytei = 0; bytei < nbytes; ++bytei) {
     uint8_t b = bytes[bytei];
     bool has_more = bytei + 1 < nbytes;
     uint8_t next = has_more ? bytes[bytei + 1] : 0;
 
+    struct key *prev_kp = nkps > 0 ? &out_keys[nkps - 1] : NULL;
     struct key *kp = &out_keys[nkps];
     if (b == 0x1b) { // meta
+      // meta key is special since it records as its own
+      // key press so only set some state of the key press
+      // and do not advance to the next since it is
+      // not done yet
       kp->start = bytei;
       kp->mod = Meta;
     } else if (has_more && isalnum(next) && kp->mod & Meta &&
@@ -47,6 +51,7 @@ void parse_keys(uint8_t *bytes, uint32_t nbytes, struct key *out_keys,
                 b == '0')) { // special char (function keys, pgdn, etc)
       kp->mod = Spec;
     } else if (b == 0x7f) { // ?
+      // For some reason, delete is not a control char
       kp->mod |= Ctrl;
       kp->key = '?';
       kp->start = bytei;
@@ -59,31 +64,35 @@ void parse_keys(uint8_t *bytes, uint32_t nbytes, struct key *out_keys,
       kp->end = bytei + 1;
       ++nkps;
     } else {
-      if (kp->mod & Spec && b == '~') {
+      if ((kp->mod & Spec) && b == '~') {
         // skip tilde in special chars
         kp->end = bytei + 1;
         ++nkps;
-      } else if (kp->mod & Meta || kp->mod & Spec) {
+      } else if ((kp->mod & Meta) || (kp->mod & Spec)) {
+        // handle the key press following meta or spec.
         kp->key = b;
         kp->end = bytei + 1;
-
         if (kp->mod & Meta || (kp->mod & Spec && next != '~')) {
           ++nkps;
         }
       } else if (utf8_byte_is_unicode_continuation(b)) {
         // do nothing for these
-      } else if (utf8_byte_is_unicode_start(b)) { // unicode char
-        kp->mod = None;
-        kp->key = 0;
-        kp->start = bytei;
-        kp->end = bytei + utf8_nbytes(bytes + bytei, nbytes - bytei, 1);
-        ++nkps;
-      } else { // normal ASCII char
-        kp->mod = None;
-        kp->key = b;
-        kp->start = bytei;
-        kp->end = bytei + 1;
-        ++nkps;
+      } else { // ascii char or unicode start byte (self-inserting)
+        uint32_t nb = utf8_byte_is_unicode_start(b)
+                          ? utf8_nbytes(bytes + bytei, nbytes - bytei, 1)
+                          : 1;
+
+        // "compress" number of keys if previous key was also a
+        // "simple" key
+        if (prev_kp != NULL && prev_kp->mod == None) {
+          prev_kp->end += nb;
+        } else {
+          kp->mod = None;
+          kp->key = b;
+          kp->start = bytei;
+          kp->end = bytei + nb;
+          ++nkps;
+        }
       }
     }
   }

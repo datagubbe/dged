@@ -20,6 +20,7 @@
 #include "s8.h"
 #include "settings.h"
 #include "text.h"
+#include "timers.h"
 #include "vec.h"
 
 static char *treesitter_path[256] = {0};
@@ -481,6 +482,7 @@ static void buffer_reloaded(struct buffer *buffer, void *userdata) {
 static void text_inserted(struct buffer *buffer, struct region inserted,
                           uint32_t begin_idx, uint32_t end_idx,
                           void *userdata) {
+  struct timer *text_inserted = timer_start("syntax.txt-inserted");
   struct highlight *h = (struct highlight *)userdata;
 
   TSPoint begin = {.row = inserted.begin.line,
@@ -512,6 +514,8 @@ static void text_inserted(struct buffer *buffer, struct region inserted,
     ts_tree_delete(h->tree);
     h->tree = new_tree;
   }
+
+  timer_stop(text_inserted);
 }
 
 static void create_parser(struct buffer *buffer, void *userdata) {

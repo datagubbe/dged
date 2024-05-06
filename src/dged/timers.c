@@ -10,6 +10,8 @@
 
 struct timer {
   char name[32];
+  uint64_t max;
+  uint64_t min;
   uint64_t samples[NUM_FRAME_SAMPLES];
   struct timespec started_at;
 };
@@ -50,7 +52,8 @@ struct timer *timer_start(const char *name) {
     namelen = namelen >= 32 ? 31 : namelen;
     memcpy(new_timer->name, name, namelen);
     new_timer->name[namelen] = '\0';
-
+    new_timer->max = 0;
+    new_timer->min = (uint64_t)-1;
     memset(new_timer->samples, 0, sizeof(uint64_t) * NUM_FRAME_SAMPLES);
 
     t = new_timer;
@@ -60,14 +63,23 @@ struct timer *timer_start(const char *name) {
   return t;
 }
 
-void timer_stop(struct timer *timer) {
+uint64_t timer_stop(struct timer *timer) {
   struct timespec end;
   clock_gettime(CLOCK_MONOTONIC, &end);
   uint64_t elapsed = ((uint64_t)end.tv_sec * 1e9 + (uint64_t)end.tv_nsec) -
                      ((uint64_t)timer->started_at.tv_sec * 1e9 +
                       (uint64_t)timer->started_at.tv_nsec);
 
+  if (elapsed > timer->max) {
+    timer->max = elapsed;
+  }
+
+  if (elapsed < timer->min) {
+    timer->min = elapsed;
+  }
+
   timer->samples[g_timers.frame_index] += elapsed;
+  return elapsed;
 }
 
 struct timer *timer_get(const char *name) {
@@ -82,8 +94,11 @@ float timer_average(const struct timer *timer) {
   }
 
   return (float)sum / NUM_FRAME_SAMPLES;
-  return 0.f;
 }
+
+uint64_t timer_max(const struct timer *timer) { return timer->max; }
+
+uint64_t timer_min(const struct timer *timer) { return timer->min; }
 
 const char *timer_name(const struct timer *timer) { return timer->name; }
 

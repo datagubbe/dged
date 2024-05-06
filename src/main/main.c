@@ -429,6 +429,7 @@ int main(int argc, char *argv[]) {
         }
         }
       } else if (k->mod == 0) {
+        // self-inserting chars
         buffer_view_add(window_buffer_view(active_window),
                         &kbd_upd.raw[k->start], k->end - k->start);
       } else {
@@ -453,6 +454,7 @@ int main(int argc, char *argv[]) {
     frame_time = timer_average(update_windows) +
                  timer_average(update_keyboard) + timer_average(update_display);
 
+    timers_end_frame();
     frame_allocator_clear(&frame_allocator);
   }
 
