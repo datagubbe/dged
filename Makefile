@@ -111,12 +111,13 @@ run-tests: $(TEST_OBJS) $(OBJS)
 	$(CC) $(LDFLAGS) $(TEST_OBJS) $(OBJS) -lm -o run-tests
 
 check: run-tests
-	$(FORMAT_TOOL) --dry-run --Werror \
-		$(SOURCES:%.c=../%.c) \
-		$(PLATFORM_SOURCES:%.c=../%.c) \
-		$(MAIN_SOURCES:%.c=../%.c) \
-		$(TEST_SOURCES:%c=../%c) \
-		$(HEADERS:%.h=../%.h)
+	@echo "Running $(FORMAT_TOOL) (--dry-run --Werror)..."
+	@$(FORMAT_TOOL) --dry-run --Werror \
+		$(SOURCES:%.c=$(.CURDIR)/%.c) \
+		$(PLATFORM_SOURCES:%.c=$(.CURDIR)/%.c) \
+		$(MAIN_SOURCES:%.c=$(.CURDIR)/%.c) \
+		$(TEST_SOURCES:%c=$(.CURDIR)/%c) \
+		$(HEADERS:%.h=$(.CURDIR)/%.h)
 	./run-tests
 
 run: dged
@@ -129,12 +130,13 @@ debug-tests: run-tests
 	gdb ./run-tests
 
 format:
-	$(FORMAT_TOOL) -i \
-		$(SOURCES:%.c=../%.c)  \
-		$(MAIN_SOURCES:%.c=../%.c) \
-		$(PLATFORM_SOURCES:%.c=../%.c) \
-		$(TEST_SOURCES:%c=../%c) \
-		$(HEADERS:%.h=../%.h)
+	@echo "Formatting with '$(FORMAT_TOOL) -i'..."
+	@$(FORMAT_TOOL) -i \
+		$(SOURCES:%.c=$(.CURDIR)/%.c) \
+		$(MAIN_SOURCES:%.c=$(.CURDIR)/%.c) \
+		$(PLATFORM_SOURCES:%.c=$(.CURDIR)/%.c) \
+		$(TEST_SOURCES:%c=$(.CURDIR)/%c) \
+		$(HEADERS:%.h=$(.CURDIR)/%.h)
 
 clean:
 	rm -f $(FILES)
