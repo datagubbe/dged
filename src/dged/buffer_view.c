@@ -313,8 +313,9 @@ static uint32_t render_line_numbers(struct buffer_view *view,
   uint32_t relline = 0;
 
   for (; relline < height && line < nlines_buf; ++line, ++relline) {
-    command_list_set_index_color_bg(commands, 8);
-    command_list_set_index_color_fg(commands, line == view->dot.line ? 15 : 7);
+    command_list_set_index_color_bg(commands, Color_BrightBlack);
+    command_list_set_index_color_fg(
+        commands, line == view->dot.line ? Color_BrightWhite : Color_White);
     uint32_t chars = snprintf(buf, 16, "%*d", longest_nchars + 1, line + 1);
     command_list_draw_text_copy(commands, 0, relline, (uint8_t *)buf, chars);
     command_list_reset_color(commands);
@@ -322,8 +323,8 @@ static uint32_t render_line_numbers(struct buffer_view *view,
   }
 
   for (; relline < height; ++relline) {
-    command_list_set_index_color_bg(commands, 8);
-    command_list_set_index_color_fg(commands, 7);
+    command_list_set_index_color_bg(commands, Color_BrightBlack);
+    command_list_set_index_color_fg(commands, Color_White);
     command_list_draw_repeated(commands, 0, relline, ' ', longest_nchars + 1);
     command_list_reset_color(commands);
     command_list_draw_repeated(commands, longest_nchars + 1, relline, ' ', 1);
@@ -363,7 +364,8 @@ static void render_modeline(struct modeline *modeline, struct buffer_view *view,
     modeline->buffer[len] = '\0';
   }
 
-  command_list_set_index_color_bg(commands, 8);
+  command_list_set_index_color_bg(commands, Color_BrightBlack);
+  command_list_set_index_color_fg(commands, Color_White);
   command_list_draw_text(commands, 0, height - 1, modeline->buffer,
                          strlen((char *)modeline->buffer));
   command_list_reset_color(commands);

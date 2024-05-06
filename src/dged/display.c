@@ -351,6 +351,13 @@ void command_list_set_color_bg(struct command_list *list, uint8_t red,
   cmd->len = snprintf((char *)cmd->fmt, 64, "48;2;%d;%d;%d", red, green, blue);
 }
 
+void command_list_set_inverted_colors(struct command_list *list) {
+  struct push_fmt_cmd *cmd =
+      add_command(list, RenderCommand_PushFormat)->push_fmt;
+  cmd->fmt[0] = '7';
+  cmd->len = 1;
+}
+
 void command_list_reset_color(struct command_list *list) {
   add_command(list, RenderCommand_ClearFormat);
 }

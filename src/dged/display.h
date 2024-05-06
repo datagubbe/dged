@@ -187,6 +187,13 @@ void command_list_set_color_fg(struct command_list *list, uint8_t red,
                                uint8_t green, uint8_t blue);
 
 /**
+ * Set colors to be inverted.
+ *
+ * Sets background as foreground and vice versa.
+ */
+void command_list_set_inverted_colors(struct command_list *list);
+
+/**
  * Reset the color and styling information.
  *
  * The following draw commands will have their formatting reset to the default.
