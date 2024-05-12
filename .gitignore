@@ -2,6 +2,10 @@
 /build/
 /obj/
 
+# generated files
+/config.mk
+/src/config.h
+
 # clangd things
 /compile_commands.json
 

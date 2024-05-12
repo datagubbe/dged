@@ -21,7 +21,7 @@ struct location {
  * @param [in] location The location to test.
  * @param [in] l1 The first location.
  * @param [in] l2 The other location.
- * @returns True if @ref location is between @ref l1 and @ref l2.
+ * @returns True if @p location is between @p l1 and @p l2.
  */
 bool location_is_between(struct location location, struct location l1,
                          struct location l2);
@@ -32,8 +32,8 @@ bool location_is_between(struct location location, struct location l1,
  * @param [in] l1 The first location.
  * @param [in] l2 The second location.
  *
- * @returns -1 if @ref l1 is before @ref l2, 0 if @ref l1 is equal to @ref l2
- *          and +1 if @ref l1 is after @ref l2.
+ * @returns -1 if @p l1 is before @p l2, 0 if @p l1 is equal to @p l2
+ *          and +1 if @p l1 is after @p l2.
  */
 int location_compare(struct location l1, struct location l2);
 
@@ -72,7 +72,7 @@ bool region_has_size(struct region region);
  *
  * @param [in] region The region to test.
  * @param [in] location The location to test.
- * @returns True if @ref location is inside @ref region.
+ * @returns True if @p location is inside @p region.
  */
 bool region_is_inside(struct region region, struct location location);
 

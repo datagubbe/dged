@@ -52,8 +52,31 @@ enum binding_type {
     .keymap = keymap_                                                          \
   }
 
+/**
+ * Define a key binding.
+ *
+ * Used like BINDING((mod), key, "<command-name>") where
+ * the key modifier is optional.
+ */
 #define BINDING(...) BINDING_INNER(__VA_ARGS__)
+
+/**
+ * Define a prefix (a keybinding for a keymap).
+ *
+ * Used like PREFIX((mod), key, <ptr-to-keymap>) where
+ * the key modifier is optional.
+ */
 #define PREFIX(...) PREFIX_INNER(__VA_ARGS__)
+
+/**
+ * Define an anonymous binding, i.e. a binding directly to a function.
+ *
+ * Note the function that this key binds to cannot usually be
+ * executed dynamically (with M-x).
+ *
+ * Used like ANONYMOUS_BINDING((mod), key, <ptr-to-command>) where
+ * the key modifier is optional.
+ */
 #define ANONYMOUS_BINDING(...) ANONYMOUS_BINDING_INNER(__VA_ARGS__)
 
 /**
@@ -110,7 +133,7 @@ struct keymap keymap_create(const char *name, uint32_t capacity);
  *
  * @param keymap The keymap to bind keys in.
  * @param bindings Bindings to add.
- * @param nbindings Number of bindings in @ref bindings.
+ * @param nbindings Number of bindings in @p bindings.
  */
 void keymap_bind_keys(struct keymap *keymap, struct binding *bindings,
                       uint32_t nbindings);
@@ -127,7 +150,7 @@ void keymap_destroy(struct keymap *keymap);
  * Lookup the binding for a key in a set of keymaps.
  *
  * @param keymaps The keymaps to look in.
- * @param nkeymaps The number of keymaps in @ref keymaps.
+ * @param nkeymaps The number of keymaps in @p keymaps.
  * @param key The keystroke to look up bindings for.
  * @param commands Available commands for lookup.
  * @returns A @ref lookup_result with the result of the lookup.

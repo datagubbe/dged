@@ -113,12 +113,15 @@ struct command_list *command_list_create(uint32_t capacity,
 /**
  * Enable/disable rendering of whitespace characters.
  *
- * ' ' will be rendered with a dot and '\t' as an arrow.
+ * ' ' will be rendered with a dot and '\\t' as an arrow.
  * @param list Command list to record command in.
  * @param show True if whitespace chars should be displayed, false otherwise.
  */
 void command_list_set_show_whitespace(struct command_list *list, bool show);
 
+/**
+ * Names for the first 16 colors.
+ */
 enum colors {
   Color_Black = 0,
   Color_Red,

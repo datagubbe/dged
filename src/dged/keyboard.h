@@ -105,6 +105,8 @@ struct keyboard keyboard_create_fd(struct reactor *reactor, int fd);
  *
  * @param kbd The @ref keyboard to update.
  * @param reactor The @ref reactor used when creating the @ref keyboard.
+ * @param frame_alloc Allocation function to use for creating the keyboard
+ * update buffer.
  * @returns An instance of @ref keyboard_update representing the result of the
  * update operation.
  */

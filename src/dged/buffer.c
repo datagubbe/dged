@@ -129,6 +129,11 @@ uint32_t buffer_add_destroy_hook(struct buffer *buffer,
                              userdata);
 }
 
+void buffer_remove_destroy_hook(struct buffer *buffer, uint32_t hook_id,
+                                remove_hook_cb callback) {
+  remove_destroy_hook(&buffer->hooks->destroy_hooks, hook_id, callback);
+}
+
 void buffer_static_init() {
   VEC_INIT(&g_create_hooks, 8);
 
@@ -996,10 +1001,10 @@ void buffer_remove_update_hook(struct buffer *buffer, uint32_t hook_id,
   remove_update_hook(&buffer->hooks->update_hooks, hook_id, callback);
 }
 
-uint32_t buffer_add_render_hook(struct buffer *buffer, render_hook_cb hook,
+uint32_t buffer_add_render_hook(struct buffer *buffer, render_hook_cb callback,
                                 void *userdata) {
   return insert_render_hook(&buffer->hooks->render_hooks,
-                            &buffer->hooks->render_hook_id, hook, userdata);
+                            &buffer->hooks->render_hook_id, callback, userdata);
 }
 
 void buffer_remove_render_hook(struct buffer *buffer, uint32_t hook_id,
@@ -1007,10 +1012,10 @@ void buffer_remove_render_hook(struct buffer *buffer, uint32_t hook_id,
   remove_render_hook(&buffer->hooks->render_hooks, hook_id, callback);
 }
 
-uint32_t buffer_add_reload_hook(struct buffer *buffer, reload_hook_cb hook,
+uint32_t buffer_add_reload_hook(struct buffer *buffer, reload_hook_cb callback,
                                 void *userdata) {
   return insert_reload_hook(&buffer->hooks->reload_hooks,
-                            &buffer->hooks->reload_hook_id, hook, userdata);
+                            &buffer->hooks->reload_hook_id, callback, userdata);
 }
 
 void buffer_remove_reload_hook(struct buffer *buffer, uint32_t hook_id,

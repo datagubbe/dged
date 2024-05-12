@@ -67,7 +67,6 @@ struct settings {
  * Initialize the global collection of settings.
  *
  * @param initial_capacity Initial capacity of the settings collection.
- * @returns Nothing, the settings collection is a global instance.
  */
 void settings_init(uint32_t initial_capacity);
 
@@ -80,7 +79,7 @@ void settings_destroy();
  * Retrieve a single setting by path.
  *
  * @param path The exact path of the setting on
- * the form <category>.<sub-category>.<setting-name>.
+ * the form @code <category>.<sub-category>.<setting-name> @endcode.
  * @returns A pointer to the setting if found, NULL otherwise.
  */
 struct setting *settings_get(const char *path);
@@ -101,7 +100,7 @@ void settings_get_prefix(const char *prefix, struct setting **settings_out[],
  * Set a value for a setting.
  *
  * @param path The exact path of the setting on
- * the form <category>.<sub-category>.<setting-name>.
+ * the form @code <category>.<sub-category>.<setting-name> @endcode.
  * @param value The new value of the setting. The type has to match the declared
  * type for the setting. If not, the new value is ignored.
  */
@@ -114,7 +113,7 @@ void settings_set(const char *path, struct setting_value value);
  * will not overwrite the value if the setting already has one.
  *
  * @param path The exact path of the setting on
- * the form <category>.<sub-category>.<setting-name>.
+ * the form @code <category>.<sub-category>.<setting-name> @code.
  * @param value The new value of the setting. The type has to match the declared
  * type for the setting. If not, the new value is ignored.
  */
@@ -124,7 +123,7 @@ void settings_set_default(const char *path, struct setting_value value);
  * Set a value for a setting.
  *
  * @param setting Pointer to a setting to set.
- * @param value The new value of the setting. The type has to match the declared
+ * @param val The new value of the setting. The type has to match the declared
  * type for the setting. If not, the new value is ignored.
  */
 void setting_set_value(struct setting *setting, struct setting_value val);
@@ -134,7 +133,7 @@ void setting_set_value(struct setting *setting, struct setting_value val);
  *
  * @param setting Pointer to a setting to turn into a string.
  * @param buf Character buffer to store resulting string in.
- * @param n Size in bytes of @ref buf.
+ * @param n Size in bytes of @p buf.
  */
 void setting_to_string(struct setting *setting, char *buf, size_t n);
 
@@ -147,18 +146,17 @@ const char *setting_join_key(const char *initial, const char *setting);
  * @param errmsgs Pointer to a string array where error messages will be placed.
  * These messages must be freed after use.
  * @returns 0 on success, n > 0 where n denotes the number of error messages in
- * @ref errmsgs
+ * @p errmsgs
  */
 int32_t settings_from_string(const char *toml, char **errmsgs[]);
 
 /**
  * Parse settings from a file in TOML format.
  *
- * @param toml Pointer to a NULL-terminated string describing a path to a TOML
- * file with settings.
+ * @param path Path to a TOML file containing settings.
  * @param errmsgs Pointer to a string array where error messages will be placed.
  * These messages must be freed after use.
  * @returns 0 on success, n > 0 where n denotes the number of error messages in
- * @ref errmsgs
+ * @p errmsgs
  */
 int32_t settings_from_file(const char *path, char **errmsgs[]);

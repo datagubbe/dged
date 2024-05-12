@@ -45,6 +45,7 @@ stdenv.mkDerivation {
         '';
       });
       "rust" = tree-sitter-rust;
+      "hcl" = tree-sitter-hcl;
       "nix" = tree-sitter-nix;
       "python" = tree-sitter-python;
       "make" = tree-sitter-make;
@@ -73,6 +74,10 @@ stdenv.mkDerivation {
         postInstall = ''
           cd ..
           cp -r queries $out
+
+          echo "" >> "$out"/queries/highlights.scm
+          echo ";; Inserted from javascript" >> "$out"/queries/highlights.scm
+          cat "${javascript}"/queries/highlights.scm >> "$out"/queries/highlights.scm
         '';
       };
       "qmljs" = tree-sitter.buildGrammar {
@@ -89,10 +94,6 @@ stdenv.mkDerivation {
         postInstall = ''
           unlink "$out/queries/highlights-javascript.scm"
           unlink "$out/queries/highlights-typescript.scm"
-
-          echo "" >> "$out"/queries/highlights.scm
-          echo ";; Inserted from javascript" >> "$out"/queries/highlights.scm
-          cat "${javascript}"/queries/highlights.scm >> "$out"/queries/highlights.scm
 
           echo "" >> "$out"/queries/highlights.scm
           echo ";; Inserted from typescript" >> "$out"/queries/highlights.scm

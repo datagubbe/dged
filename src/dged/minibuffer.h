@@ -14,7 +14,8 @@ struct keymap;
  *
  * Note that the minibuffer is a global instance and this function will do
  * nothing if called more than once.
- * @param buffer underlying buffer to use for text IO in the minibuffer.
+ * @param buffer Underlying buffer to use for text IO in the minibuffer.
+ * @param buffers Buffer list used to create and store messages buffer.
  */
 void minibuffer_init(struct buffer *buffer, struct buffers *buffers);
 
@@ -40,7 +41,7 @@ void message(const char *fmt, ...);
 void minibuffer_echo(const char *fmt, ...);
 
 /**
- * Echo a message to the minibuffer that disappears after @ref timeout.
+ * Echo a message to the minibuffer that disappears after @p timeout.
  *
  * @param timeout The timeout in seconds after which the message should
  * disappear.

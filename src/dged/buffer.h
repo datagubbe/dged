@@ -16,6 +16,13 @@
 struct command_list;
 struct hooks;
 
+/** @file buffer.h
+ * A buffer of text.
+ *
+ * The buffer is one of the fundamental types of DGED. Most
+ * of the text editing operations are implemented here.
+ */
+
 /**
  * A buffer of text that can be modified, read from and written to disk.
  *
@@ -70,7 +77,7 @@ struct buffer buffer_create(const char *name);
  * Create a new buffer from a file path.
  *
  * @param [in] path Path to the file to load into the new buffer.
- * @returns A new buffer with @ref path loaded.
+ * @returns A new buffer with @p path loaded.
  */
 struct buffer buffer_from_file(const char *path);
 
@@ -188,7 +195,7 @@ bool buffer_is_backed(struct buffer *buffer);
  *
  * @param [in] buffer The buffer to use.
  * @param [in] dot The location to start from.
- * @returns The location in front of the previous char given @ref dot.
+ * @returns The location in front of the previous char given @p dot.
  */
 struct location buffer_previous_char(struct buffer *buffer,
                                      struct location dot);
@@ -198,7 +205,7 @@ struct location buffer_previous_char(struct buffer *buffer,
  *
  * @param [in] buffer The buffer to look in.
  * @param [in] dot The location to start from.
- * @returns The location at the start of the previous word, given @ref dot.
+ * @returns The location at the start of the previous word, given @p dot.
  */
 struct location buffer_previous_word(struct buffer *buffer,
                                      struct location dot);
@@ -209,7 +216,7 @@ struct location buffer_previous_word(struct buffer *buffer,
  * @param [in] buffer The buffer to look in.
  * @param [in] dot The location to start from.
  * @returns The location at the start of the line above the current one (the one
- * @ref dot is on). If @ref dot is on the first line, the location (0, 0) is
+ * @p dot is on). If @p dot is on the first line, the location (0, 0) is
  * returned.
  */
 struct location buffer_previous_line(struct buffer *buffer,
@@ -220,7 +227,7 @@ struct location buffer_previous_line(struct buffer *buffer,
  *
  * @param [in] buffer The buffer to use.
  * @param [in] dot The location to start from.
- * @returns The location in front of the next char given @ref dot.
+ * @returns The location in front of the next char given @p dot.
  */
 struct location buffer_next_char(struct buffer *buffer, struct location dot);
 
@@ -229,7 +236,7 @@ struct location buffer_next_char(struct buffer *buffer, struct location dot);
  *
  * @param [in] buffer The buffer to look in.
  * @param [in] dot The location to start from.
- * @returns The location at the start of the next word, given @ref dot.
+ * @returns The location at the start of the next word, given @p dot.
  */
 struct location buffer_next_word(struct buffer *buffer, struct location dot);
 
@@ -239,13 +246,13 @@ struct location buffer_next_word(struct buffer *buffer, struct location dot);
  * @param [in] buffer The buffer to look in.
  * @param [in] dot The location to start from.
  * @returns The location at the start of the line above the current one (the one
- * @ref dot is on). If @ref dot is on the last line, the last location in the
+ * @p dot is on). If @p dot is on the last line, the last location in the
  * buffer is returned.
  */
 struct location buffer_next_line(struct buffer *buffer, struct location dot);
 
 /**
- * Get the extents of the word located at @ref at.
+ * Get the extents of the word located at @p at.
  *
  * @param [in] buffer The buffer to look in.
  * @param [in] at The location to start from.
@@ -258,7 +265,7 @@ struct region buffer_word_at(struct buffer *buffer, struct location at);
 /**
  * Clamp a buffer position to the boundaries of the buffer.
  *
- * Note that both @ref line and @ref col can be negative or bigger than the
+ * Note that both @ref line and @p col can be negative or bigger than the
  * buffer.
  *
  * @param [in] buffer The buffer to use for clamping.
@@ -338,7 +345,7 @@ struct location buffer_undo(struct buffer *buffer, struct location dot);
  * @param [in] buffer The buffer to search in.
  * @param [in] pattern The substring to search for.
  * @param [out] matches The pointer passed in is modified to point at the
- * resulting matches. This pointer should be freed using @ref free.
+ * resulting matches. This pointer should be freed using @c free.
  * @param [nmatches] nmatches The pointer passed in is modified to point at the
  * number of resulting matches.
  */
@@ -410,21 +417,48 @@ struct text_chunk buffer_line(struct buffer *buffer, uint32_t line);
  */
 struct text_chunk buffer_region(struct buffer *buffer, struct region region);
 
+/**
+ * Add a text property to a region of the buffer.
+ *
+ * @param buffer The buffer to add a text property to.
+ * @param start The start of the region to set the property for.
+ * @param end The end of the region to set the property for.
+ * @param property The text property to set.
+ */
 void buffer_add_text_property(struct buffer *buffer, struct location start,
                               struct location end,
                               struct text_property property);
 
+/**
+ * Get active text properties at @p location in @p buffer.
+ *
+ * @param buffer The buffer to get properties for.
+ * @param location The location to get properties at.
+ * @param properties Caller-provided array of properties set by this function.
+ * @param max_nproperties Max num properties to put in @p properties.
+ * @param nproperties Number of properties that got stored in @p properties.
+ */
 void buffer_get_text_properties(struct buffer *buffer, struct location location,
                                 struct text_property **properties,
                                 uint32_t max_nproperties,
                                 uint32_t *nproperties);
 
+/**
+ * Clear any text properties for @p buffer.
+ *
+ * @param buffer The buffer to clear properties for.
+ */
 void buffer_clear_text_properties(struct buffer *buffer);
 
 /** Callback when removing hooks to clean up userdata */
 typedef void (*remove_hook_cb)(void *userdata);
 
-/** Buffer update hook callback function */
+/**
+ * Buffer update hook callback function.
+ *
+ * @param buffer The buffer.
+ * @param userdata Userdata pointer passed in to @ref buffer_add_update_hook.
+ */
 typedef void (*update_hook_cb)(struct buffer *buffer, void *userdata);
 
 /**
@@ -438,56 +472,198 @@ typedef void (*update_hook_cb)(struct buffer *buffer, void *userdata);
 uint32_t buffer_add_update_hook(struct buffer *buffer, update_hook_cb hook,
                                 void *userdata);
 
+/**
+ * Remove a buffer update hook.
+ *
+ * @param [in] buffer The buffer to remove the hook from.
+ * @param [in] hook_id The hook id as returned from @ref buffer_add_update_hook.
+ * @param [in] callback A function called with the userdata pointer to do
+ * cleanup.
+ */
 void buffer_remove_update_hook(struct buffer *buffer, uint32_t hook_id,
                                remove_hook_cb callback);
 
-/** Buffer render hook callback function */
+/**
+ * Buffer render hook callback function.
+ *
+ * @param buffer The buffer.
+ * @param userdata Userdata sent in when registering the hook.
+ * @param origin The upper left corner of the region of the buffer
+ *   currently rendering.
+ * @param width The width of the rendered region.
+ * @param height The height of the rendered region.
+ */
 typedef void (*render_hook_cb)(struct buffer *buffer, void *userdata,
                                struct location origin, uint32_t width,
                                uint32_t height);
 
-uint32_t buffer_add_render_hook(struct buffer *buffer, render_hook_cb hook,
+/**
+ * Add a buffer render hook.
+ *
+ * @param [in] buffer The buffer to add the hook to.
+ * @param [in] callback The render hook callback.
+ * @param [in] userdata Data that is passed unmodified to the render hook.
+ * @returns The hook id.
+ */
+uint32_t buffer_add_render_hook(struct buffer *buffer, render_hook_cb callback,
                                 void *userdata);
+
+/**
+ * Remove a buffer render hook.
+ *
+ * @param [in] buffer The buffer to remove the hook from.
+ * @param [in] hook_id The hook id as returned from @ref buffer_add_render_hook.
+ * @param [in] callback A function called with the userdata pointer to do
+ * cleanup.
+ */
 void buffer_remove_render_hook(struct buffer *buffer, uint32_t hook_id,
                                remove_hook_cb callback);
 
-/** Buffer reload hook callback function */
+/**
+ * Buffer reload hook callback function.
+ *
+ * @param buffer The buffer.
+ * @param userdata The userdata as sent in to @ref buffer_add_reload_hook.
+ */
 typedef void (*reload_hook_cb)(struct buffer *buffer, void *userdata);
-uint32_t buffer_add_reload_hook(struct buffer *buffer, reload_hook_cb hook,
+
+/**
+ * Add a reload hook, called when the buffer is reloaded from disk.
+ *
+ * Since this is called when the buffer is reloaded from disk it is
+ * only useful for buffers that are backed by a file on disk.
+ *
+ * @param buffer The buffer to add a reload hook to.
+ * @param callback The function to call when @p buffer is reloaded.
+ * @param userdata Data that is passed unmodified to the reload hook.
+ * @returns The hook id.
+ */
+uint32_t buffer_add_reload_hook(struct buffer *buffer, reload_hook_cb callback,
                                 void *userdata);
+
+/**
+ * Remove a buffer reload hook.
+ *
+ * @param [in] buffer The buffer to remove the hook from.
+ * @param [in] hook_id The hook id as returned from @ref buffer_add_reload_hook.
+ * @param [in] callback A function called with the userdata pointer to do
+ * cleanup.
+ */
 void buffer_remove_reload_hook(struct buffer *buffer, uint32_t hook_id,
                                remove_hook_cb callback);
 
-/** Buffer insert hook callback function */
+/**
+ * Buffer insert hook callback function.
+ *
+ * @param buffer The buffer.
+ * @param inserted The position in the @p buffer where text was inserted.
+ * @param begin_idx The global byte offset to the start of where text was
+ * inserted.
+ * @param end_idx The global byte offset to the end of where text was inserted.
+ * @param userdata The userdata as sent in to @ref buffer_add_insert_hook.
+ */
 typedef void (*insert_hook_cb)(struct buffer *buffer, struct region inserted,
                                uint32_t begin_idx, uint32_t end_idx,
                                void *userdata);
 
+/**
+ * Add an insert hook, called when text is inserted into the @p buffer.
+ *
+ * @param buffer The buffer to add an insert hook to.
+ * @param callback The function to call when text is inserted into @p buffer.
+ * @param userdata Data that is passed unmodified to the insert hook.
+ * @returns The hook id.
+ */
 uint32_t buffer_add_insert_hook(struct buffer *buffer, insert_hook_cb callback,
                                 void *userdata);
+
+/**
+ * Remove a buffer insert hook.
+ *
+ * @param [in] buffer The buffer to remove the hook from.
+ * @param [in] hook_id The hook id as returned from @ref buffer_add_insert_hook.
+ * @param [in] callback A function called with the userdata pointer to do
+ * cleanup.
+ */
 void buffer_remove_insert_hook(struct buffer *buffer, uint32_t hook_id,
                                remove_hook_cb callback);
 
-/** Buffer delete hook callback function */
+/**
+ * Buffer delete hook callback function
+ *
+ * @param buffer The buffer.
+ * @param removed The region that was removed from the @p buffer.
+ * @param begin_idx The global byte offset to the start of the removed text.
+ * @param end_idx The global byte offset to the end of the removed text.
+ * @param userdata The userdata as sent in to @ref buffer_add_delete_hook.
+ */
 typedef void (*delete_hook_cb)(struct buffer *buffer, struct region removed,
                                uint32_t begin_idx, uint32_t end_idx,
                                void *userdata);
 
+/**
+ * Add a delete hook, called when text is removed from the @p buffer.
+ *
+ * @param buffer The buffer to add a delete hook to.
+ * @param callback The function to call when text is removed from @p buffer.
+ * @param userdata Data that is passed unmodified to the delete hook.
+ * @returns The hook id.
+ */
 uint32_t buffer_add_delete_hook(struct buffer *buffer, delete_hook_cb callback,
                                 void *userdata);
+
+/**
+ * Remove a buffer delete hook.
+ *
+ * @param [in] buffer The buffer to remove the hook from.
+ * @param [in] hook_id The hook id as returned from @ref buffer_add_delete_hook.
+ * @param [in] callback A function called with the userdata pointer to do
+ * cleanup.
+ */
 void buffer_remove_delete_hook(struct buffer *buffer, uint32_t hook_id,
                                remove_hook_cb callback);
 
-/** Buffer destroy hook callback function */
+/**
+ * Buffer destroy hook callback function.
+ *
+ * @param buffer The buffer.
+ * @param userdata The userdata as sent in to @ref buffer_add_destroy_hook.
+ */
 typedef void (*destroy_hook_cb)(struct buffer *buffer, void *userdata);
+
+/**
+ * Add a destroy hook, called when @p buffer is destroyed.
+ *
+ * @param buffer The buffer to add a destroy hook to.
+ * @param callback The function to call @p buffer is destroyed.
+ * @param userdata Data that is passed unmodified to the destroy hook.
+ * @returns The hook id.
+ */
 uint32_t buffer_add_destroy_hook(struct buffer *buffer,
                                  destroy_hook_cb callback, void *userdata);
 
-/** Buffer create hook callback function */
+/**
+ * Remove a buffer destroy hook.
+ *
+ * @param [in] buffer The buffer to remove the hook from.
+ * @param [in] hook_id The hook id as returned from @ref
+ * buffer_add_destroy_hook.
+ * @param [in] callback A function called with the userdata pointer to do
+ * cleanup.
+ */
+void buffer_remove_destroy_hook(struct buffer *buffer, uint32_t hook_id,
+                                remove_hook_cb callback);
+
+/**
+ * Buffer create hook callback function.
+ *
+ * @param buffer The newly created buffer.
+ * @param userdata The userdata as sent in to @ref buffer_add_create_hook.
+ */
 typedef void (*create_hook_cb)(struct buffer *buffer, void *userdata);
 
 /**
- * Add a buffer create hook.
+ * Add a buffer create hook, called everytime a new buffer is created.
  *
  * @param [in] callback Create hook callback.
  * @param [in] userdata Pointer to data that is passed unmodified to the update
@@ -496,6 +672,13 @@ typedef void (*create_hook_cb)(struct buffer *buffer, void *userdata);
  */
 uint32_t buffer_add_create_hook(create_hook_cb callback, void *userdata);
 
+/**
+ * Remove a buffer create hook.
+ *
+ * @param [in] hook_id The hook id as returned from @ref buffer_add_create_hook.
+ * @param [in] callback A function called with the userdata pointer to do
+ * cleanup.
+ */
 void buffer_remove_create_hook(uint32_t hook_id, remove_hook_cb callback);
 
 /**
@@ -526,7 +709,7 @@ struct buffer_render_params {
  *
  * @param [in] buffer The buffer to update.
  * @param [inout] params The parameters for the update. The @ref commands field
- * in @ref params will be modified with the rendering commands needed for this
+ * in @p params will be modified with the rendering commands needed for this
  * buffer.
  */
 void buffer_update(struct buffer *buffer, struct buffer_update_params *params);

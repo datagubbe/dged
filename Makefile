@@ -9,13 +9,19 @@ SYNTAX_ENABLE ?= true
 build:
 	mkdir -p build
 
+.if ! exists(${.CURDIR}/config.mk)
+.  error "Please run ./configure first"
+.endif
+
+.include "config.mk"
+
 HEADERS = src/dged/settings.h src/dged/minibuffer.h src/dged/keyboard.h src/dged/binding.h \
 	src/dged/buffers.h src/dged/text.h src/dged/display.h src/dged/hashmap.h src/dged/path.h \
 	src/dged/buffer.h src/dged/btree.h src/dged/command.h src/dged/allocator.h src/dged/reactor.h \
 	src/dged/vec.h src/dged/window.h src/dged/hash.h src/dged/undo.h src/dged/lang.h \
 	src/dged/settings-parse.h src/dged/utf8.h src/main/cmds.h src/main/bindings.h \
 	src/main/search-replace.h src/dged/location.h src/dged/buffer_view.h src/main/completion.h \
-	src/dged/timers.h src/dged/s8.h src/main/version.h
+	src/dged/timers.h src/dged/s8.h src/main/version.h src/config.h
 
 SOURCES = src/dged/binding.c src/dged/buffer.c src/dged/command.c src/dged/display.c \
 	src/dged/keyboard.c src/dged/minibuffer.c src/dged/text.c \
@@ -24,6 +30,13 @@ SOURCES = src/dged/binding.c src/dged/buffer.c src/dged/command.c src/dged/displ
 	src/dged/buffer_view.c src/dged/timers.c src/dged/s8.c
 
 MAIN_SOURCES = src/main/main.c src/main/cmds.c src/main/bindings.c src/main/search-replace.c src/main/completion.c
+
+.if $(HAS_EPOLL) == true && !make(run-tests)
+  MAIN_SOURCES += src/dged/reactor-epoll.c
+.elif $(HAS_KQUEUE) == true && !make() && !make(run-tests)
+  MAIN_SOURCES += src/dged/reactor-kqueue.c
+.endif
+
 
 TEST_SOURCES = test/assert.c test/buffer.c test/text.c test/utf8.c test/main.c \
 	test/command.c test/keyboard.c test/fake-reactor.c test/allocator.c \
@@ -44,19 +57,19 @@ CFLAGS += -Werror -g -O2 -std=c99 \
 ASAN ?= false
 
 .if $(ASAN) == true
-CFLAGS += -fsanitize=address -fno-omit-frame-pointer
-LDFLAGS += -fsanitize=address
+  CFLAGS += -fsanitize=address -fno-omit-frame-pointer
+  LDFLAGS += -fsanitize=address
 .endif
 
 .if $(SYNTAX_ENABLE) == true
-HEADERS += src/dged/syntax.h
-SOURCES += src/dged/syntax.c
+  HEADERS += src/dged/syntax.h
+  SOURCES += src/dged/syntax.c
 
-treesitterflags != pkg-config tree-sitter --cflags
-CFLAGS += ${treesitterflags} -DSYNTAX_ENABLE
+  treesitterflags != pkg-config tree-sitter --cflags
+  CFLAGS += ${treesitterflags} -DSYNTAX_ENABLE
 
-treesitterld != pkg-config tree-sitter --libs
-LDFLAGS += ${treesitterld}
+  treesitterld != pkg-config tree-sitter --libs
+  LDFLAGS += ${treesitterld}
 .endif
 
 UNAME_S != uname -s | tr '[:upper:]' '[:lower:]'
@@ -64,12 +77,15 @@ UNAME_S != uname -s | tr '[:upper:]' '[:lower:]'
 .  include "$(.CURDIR)/$(UNAME_S).mk"
 .endif
 
+# add a define like LINUX/OPENBSD
+UNAME_UPPER != uname -s | tr '[:lower:]' '[:upper:]'
+CFLAGS += -D$(UNAME_UPPER)
+
 FORMAT_TOOL ?= clang-format
 
 DEPS = $(SOURCES:.c=.d) $(MAIN_SOURCES:.c=.d) $(TEST_SOURCES:.c=.d)
 
 OBJS = $(SOURCES:.c=.o)
-PLATFORM_OBJS = $(PLATFORM_SOURCES:.c=.o)
 MAIN_OBJS = $(MAIN_SOURCES:.c=.o)
 TEST_OBJS = $(TEST_SOURCES:.c=.o)
 
@@ -77,7 +93,6 @@ FILES = $(DEPS) \
 		$(MAIN_OBJS) \
 		$(OBJS) \
 		$(TEST_OBJS) \
-		$(PLATFORM_OBJS) \
 		dged \
 		libdged.a
 
@@ -104,8 +119,8 @@ grammars:
 dged: $(MAIN_OBJS) libdged.a grammars
 	$(CC) $(LDFLAGS) $(MAIN_OBJS) libdged.a -o dged -lm
 
-libdged.a: $(OBJS) $(PLATFORM_OBJS)
-	$(AR) -rc libdged.a $(OBJS) $(PLATFORM_OBJS)
+libdged.a: $(OBJS)
+	$(AR) -rc libdged.a $(OBJS)
 
 run-tests: $(TEST_OBJS) $(OBJS)
 	$(CC) $(LDFLAGS) $(TEST_OBJS) $(OBJS) -lm -o run-tests
@@ -114,7 +129,6 @@ check: run-tests
 	@echo "Running $(FORMAT_TOOL) (--dry-run --Werror)..."
 	@$(FORMAT_TOOL) --dry-run --Werror \
 		$(SOURCES:%.c=$(.CURDIR)/%.c) \
-		$(PLATFORM_SOURCES:%.c=$(.CURDIR)/%.c) \
 		$(MAIN_SOURCES:%.c=$(.CURDIR)/%.c) \
 		$(TEST_SOURCES:%c=$(.CURDIR)/%c) \
 		$(HEADERS:%.h=$(.CURDIR)/%.h)
@@ -134,7 +148,6 @@ format:
 	@$(FORMAT_TOOL) -i \
 		$(SOURCES:%.c=$(.CURDIR)/%.c) \
 		$(MAIN_SOURCES:%.c=$(.CURDIR)/%.c) \
-		$(PLATFORM_SOURCES:%.c=$(.CURDIR)/%.c) \
 		$(TEST_SOURCES:%c=$(.CURDIR)/%c) \
 		$(HEADERS:%.h=$(.CURDIR)/%.h)
 
@@ -154,7 +167,7 @@ install: dged
 	cp -RL $(.OBJDIR)/grammars "$(DESTDIR)/$(datadir)/"
 
 docs:
-	doxygen $(.CURDIR)/Doxyfile
+	CURDIR=$(.CURDIR) doxygen $(.CURDIR)/Doxyfile
 
 depend: $(DEPS)
 	@:
