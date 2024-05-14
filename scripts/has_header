@@ -1,2 +1,2 @@
 #!/bin/sh
-echo "#include <$1>" | cc -E - 2>&1 >/dev/null
+echo "#include <$1>" | cc -E - >/dev/null 2>&1

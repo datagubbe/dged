@@ -31,9 +31,9 @@ SOURCES = src/dged/binding.c src/dged/buffer.c src/dged/command.c src/dged/displ
 
 MAIN_SOURCES = src/main/main.c src/main/cmds.c src/main/bindings.c src/main/search-replace.c src/main/completion.c
 
-.if $(HAS_EPOLL) == true && !make(run-tests)
+.if $(HAS_EPOLL) == true
   MAIN_SOURCES += src/dged/reactor-epoll.c
-.elif $(HAS_KQUEUE) == true && !make() && !make(run-tests)
+.elif $(HAS_KQUEUE) == true
   MAIN_SOURCES += src/dged/reactor-kqueue.c
 .endif
 
