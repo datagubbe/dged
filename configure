@@ -5,6 +5,7 @@ _usage="./configure -- configure the DGED build.
 Options:
   --[enable|disable]-syntax    Enable or disable syntax highlighting support.
   --enable-asan                Build DGED with address sanitizer enabled.
+  --prefix=<PREFIX>            Set the build prefix path to <PREFIX>, default: /usr/local.
   -h/--help                    Show this help text.
 "
 
