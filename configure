@@ -10,6 +10,7 @@ Options:
 
 enable_syntax=1
 enable_asan=0
+prefix=
 while [ "$#" -gt 0 ]; do
     case $1 in
          --disable-syntax)
@@ -24,6 +25,16 @@ while [ "$#" -gt 0 ]; do
 
         --enable-asan)
             enable_asan=1
+            shift 1
+            ;;
+
+        --prefix)
+            prefix="$2"
+            shift 2
+            ;;
+
+        --prefix=*)
+            prefix="${1#*=}"
             shift 1
             ;;
 
@@ -76,6 +87,10 @@ if [ "$enable_asan" -ne 0 ]; then
     echo "ASAN = true" >> config.mk
 fi
 
+if [ -n "$prefix" ]; then
+    echo "setting prefix to \"$prefix\""
+    echo "prefix = $prefix" >> config.mk
+fi
 
 echo "#endif" >> src/config.h
 echo "wrote src/config.h"
