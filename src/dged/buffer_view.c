@@ -140,11 +140,27 @@ void buffer_view_newline(struct buffer_view *view) {
 }
 
 void buffer_view_indent(struct buffer_view *view) {
-  view->dot = buffer_indent(view->buffer, view->dot);
+  struct region reg = region_new(view->dot, view->mark);
+  if (view->mark_set && region_has_size(reg)) {
+    for (uint32_t line = reg.begin.line; line <= reg.end.line; ++line) {
+      view->dot = buffer_indent(view->buffer,
+                                (struct location){.line = line, .col = 0});
+    }
+  } else {
+    view->dot = buffer_indent(view->buffer, view->dot);
+  }
 }
 
 void buffer_view_indent_alt(struct buffer_view *view) {
-  view->dot = buffer_indent_alt(view->buffer, view->dot);
+  struct region reg = region_new(view->dot, view->mark);
+  if (view->mark_set && region_has_size(reg)) {
+    for (uint32_t line = reg.begin.line; line <= reg.end.line; ++line) {
+      view->dot = buffer_indent_alt(view->buffer,
+                                    (struct location){.line = line, .col = 0});
+    }
+  } else {
+    view->dot = buffer_indent_alt(view->buffer, view->dot);
+  }
 }
 
 void buffer_view_copy(struct buffer_view *view) {
