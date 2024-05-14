@@ -4,7 +4,6 @@ default: dged
 
 .PHONY: default clean check run debug debug-tests install format
 .OBJDIR: ./build
-SYNTAX_ENABLE ?= true
 
 build:
 	mkdir -p build
@@ -14,6 +13,7 @@ build:
 .endif
 
 .include "config.mk"
+SYNTAX_ENABLE ?= true
 
 HEADERS = src/dged/settings.h src/dged/minibuffer.h src/dged/keyboard.h src/dged/binding.h \
 	src/dged/buffers.h src/dged/text.h src/dged/display.h src/dged/hashmap.h src/dged/path.h \
@@ -97,12 +97,12 @@ FILES = $(DEPS) \
 		libdged.a
 
 # dependency generation
-.c.d:
+.c.d: config.mk
 	@mkdir -p $(@D)
 	$(CC) -MM $(CFLAGS) -MT $*.o $< > $@
 	@sed -i 's,\($*\)\.o[ :]*,\1.o $@ : ,g' $@
 
-.c.o:
+.c.o: config.mk
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) -c $< -o $@
 

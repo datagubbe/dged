@@ -29,7 +29,7 @@ Contributions are of course welcome. Please open a PR on the Github repository.
 
 ## Development Setup
 
-The editor is built using BSD make (specifically bmake) so that needs to be installed.
+The editor is built using BSD make so that needs to be installed (preinstalled on BSD and bmake on Linux).
 
 To enable syntax highlighting (default) you will also need the tree-sitter library
 installed.
@@ -55,7 +55,13 @@ or
 $ mkdir -p obj
 ```
 
-Then call make
+Then call configure (see available options by passing `--help` to `./configure`)
+
+```
+$ ./configure
+```
+
+followed by (you guessed it!) make
 
 ```
 $ bmake
