@@ -12,9 +12,20 @@
 #include "bindings.h"
 #include "search-replace.h"
 
+enum replace_state {
+  Todo,
+  Replaced,
+  Skipped,
+};
+
+struct match {
+  struct region region;
+  enum replace_state state;
+};
+
 static struct replace {
   char *replace;
-  struct region *matches;
+  struct match *matches;
   uint32_t nmatches;
   uint32_t current_match;
   buffer_keymap_id keymap_id;
@@ -48,13 +59,17 @@ uint64_t matchdist(struct region *match, struct location loc) {
   return (linedist * linedist) * 1e6 + coldist * coldist;
 }
 
-static void highlight_matches(struct buffer *buffer, struct region *matches,
+static void highlight_matches(struct buffer *buffer, struct match *matches,
                               uint32_t nmatches, uint32_t current) {
   for (uint32_t matchi = 0; matchi < nmatches; ++matchi) {
-    struct region *m = &matches[matchi];
+    struct match *m = &matches[matchi];
+    if (m->state != Todo) {
+      continue;
+    }
+
     if (matchi == current) {
       buffer_add_text_property(
-          buffer, m->begin, m->end,
+          buffer, m->region.begin, m->region.end,
           (struct text_property){.type = TextProperty_Colors,
                                  .colors = (struct text_property_colors){
                                      .set_bg = true,
@@ -65,7 +80,7 @@ static void highlight_matches(struct buffer *buffer, struct region *matches,
 
     } else {
       buffer_add_text_property(
-          buffer, m->begin, m->end,
+          buffer, m->region.begin, m->region.end,
           (struct text_property){.type = TextProperty_Colors,
                                  .colors = (struct text_property_colors){
                                      .set_bg = true,
@@ -81,23 +96,49 @@ static int32_t replace_next(struct command_ctx ctx, int argc,
                             const char *argv[]) {
   struct replace *state = &g_current_replace;
   struct buffer_view *buffer_view = window_buffer_view(state->window);
+  struct buffer *buffer = buffer_view->buffer;
 
-  struct region *m = &state->matches[state->current_match];
-  buffer_view_set_mark_at(buffer_view, (struct location){.line = m->begin.line,
-                                                         .col = m->begin.col});
-  buffer_view_goto(buffer_view, (struct location){.line = m->end.line,
-                                                  .col = m->end.col + 1});
-  buffer_view_add(buffer_view, (uint8_t *)state->replace,
-                  strlen(state->replace));
+  struct match *match = &state->matches[state->current_match];
 
+  // buffer_delete is not inclusive
+  struct region to_delete = match->region;
+  ++to_delete.end.col;
+
+  struct location loc = buffer_delete(buffer, to_delete);
+  struct location after = buffer_add(buffer, loc, (uint8_t *)state->replace,
+                                     strlen(state->replace));
+  match->state = Replaced;
+
+  // update all following matches
+  int64_t linedelta = (int64_t)after.line - (int64_t)to_delete.end.line;
+  int64_t coldelta = linedelta == 0
+                         ? (int64_t)after.col - (int64_t)to_delete.end.col
+                         : (int64_t)after.col;
+  for (uint32_t matchi = state->current_match; matchi < state->nmatches;
+       ++matchi) {
+    struct match *m = &state->matches[matchi];
+
+    m->region.begin.line += linedelta;
+    m->region.end.line += linedelta;
+
+    if (after.line == m->region.begin.line) {
+      m->region.begin.col += coldelta;
+    }
+
+    if (after.line == m->region.end.line) {
+      m->region.end.col += coldelta;
+    }
+  }
+
+  // advance to the next match
   ++state->current_match;
-
   if (state->current_match == state->nmatches) {
     abort_replace();
   } else {
-    m = &state->matches[state->current_match];
-    buffer_view_goto(buffer_view, (struct location){.line = m->begin.line,
-                                                    .col = m->begin.col});
+    struct match *m = &state->matches[state->current_match];
+    buffer_view_goto(buffer_view,
+                     (struct location){.line = m->region.begin.line,
+                                       .col = m->region.begin.col});
     highlight_matches(buffer_view->buffer, state->matches, state->nmatches,
                       state->current_match);
   }
@@ -109,9 +150,11 @@ static int32_t skip_next(struct command_ctx ctx, int argc, const char *argv[]) {
   struct replace *state = &g_current_replace;
 
   struct buffer_view *buffer_view = window_buffer_view(state->window);
-  struct region *m = &state->matches[state->current_match];
-  buffer_view_goto(buffer_view, (struct location){.line = m->end.line,
-                                                  .col = m->end.col + 1});
+  struct match *m = &state->matches[state->current_match];
+  buffer_view_goto(buffer_view,
+                   (struct location){.line = m->region.end.line,
+                                     .col = m->region.end.col + 1});
+  m->state = Skipped;
 
   ++state->current_match;
 
@@ -119,8 +162,9 @@ static int32_t skip_next(struct command_ctx ctx, int argc, const char *argv[]) {
     abort_replace();
   } else {
     m = &state->matches[state->current_match];
-    buffer_view_goto(buffer_view, (struct location){.line = m->begin.line,
-                                                    .col = m->begin.col});
+    buffer_view_goto(buffer_view,
+                     (struct location){.line = m->region.begin.line,
+                                       .col = m->region.begin.col});
     highlight_matches(buffer_view->buffer, state->matches, state->nmatches,
                       state->current_match);
   }
@@ -150,8 +194,8 @@ static int cmp_matches(const void *m1, const void *m2) {
     return 1;
   } else if (score1 > 0 && score2 < 0) {
     return -1;
-  } else { // both matches are behind dot
-    return score1 < score2 ? 1 : score1 > score2 ? -1 : 0;
+  } else {
+    return score1 < score2 ? -1 : score1 > score2 ? 1 : 0;
   }
 }
 
@@ -179,15 +223,23 @@ static int32_t replace(struct command_ctx ctx, int argc, const char *argv[]) {
   // sort matches
   qsort(matches, nmatches, sizeof(struct region), cmp_matches);
 
+  struct match *match_states = calloc(nmatches, sizeof(struct match));
+  for (uint32_t matchi = 0; matchi < nmatches; ++matchi) {
+    match_states[matchi].region = matches[matchi];
+    match_states[matchi].state = Todo;
+  }
+  free(matches);
+
   g_current_replace = (struct replace){
       .replace = strdup(argv[1]),
-      .matches = matches,
+      .matches = match_states,
       .nmatches = nmatches,
       .current_match = 0,
       .window = ctx.active_window,
   };
 
-  struct region *m = &g_current_replace.matches[0];
+  // goto first match
+  struct region *m = &g_current_replace.matches[0].region;
   buffer_view_goto(buffer_view, (struct location){.line = m->begin.line,
                                                   .col = m->begin.col});
   highlight_matches(buffer_view->buffer, g_current_replace.matches,

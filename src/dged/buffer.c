@@ -880,7 +880,7 @@ struct location buffer_cut(struct buffer *buffer, struct region region) {
 struct location buffer_delete(struct buffer *buffer, struct region region) {
   if (buffer->readonly) {
     minibuffer_echo_timeout(4, "buffer is read-only");
-    return region.end;
+    return region.begin;
   }
 
   if (!region_has_size(region)) {
