@@ -9,6 +9,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "config.h"
+
 #include "dged/allocator.h"
 #include "dged/binding.h"
 #include "dged/buffer.h"
@@ -27,6 +29,10 @@
 
 #define xstr(s) str(s)
 #define str(s) #s
+#endif
+
+#ifdef LSP_ENABLE
+#include "lsp.h"
 #endif
 
 #include "bindings.h"
@@ -48,11 +54,16 @@ void *frame_alloc(size_t sz) {
 
 static bool running = true;
 
-void terminate() { running = false; }
+void terminate(void) { running = false; }
+void terminate2(int sig) {
+  (void)sig;
+  running = false;
+}
 
 static struct display *display = NULL;
 static bool display_resized = false;
-void resized() {
+void resized(int sig) {
+  (void)sig;
   if (display != NULL) {
     display_resize(display);
   }
@@ -61,7 +72,9 @@ void resized() {
   signal(SIGWINCH, resized);
 }
 
-void segfault() {
+void segfault(int sig) {
+  (void)sig;
+
   // make an effort to restore the
   // terminal to its former glory
   if (display != NULL) {
@@ -73,7 +86,7 @@ void segfault() {
   abort();
 }
 
-#define INVALID_WATCH -1
+#define INVALID_WATCH (uint32_t) - 1
 
 static void clear_buffer_props(struct buffer *buffer, void *userdata) {
   (void)userdata;
@@ -139,13 +152,13 @@ void update_file_watches(struct reactor *reactor) {
   }
 }
 
-static void usage() {
+static void usage(void) {
   printf("dged - a text editor for datagubbar/datagummor!\n");
   printf("usage: dged [-l/--line line_number] [-e/--end] [-h/--help] "
          "[filename]\n");
 }
 
-static void version() {
+static void version(void) {
   printf("dged - %s\n© Albert Cervin 2024\n", DGED_VERSION);
 }
 
@@ -194,7 +207,7 @@ int main(int argc, char *argv[]) {
 
   setlocale(LC_ALL, "");
 
-  signal(SIGTERM, terminate);
+  signal(SIGTERM, terminate2);
   signal(SIGSEGV, segfault);
 
   struct commands commands = command_registry_create(32);
@@ -212,7 +225,8 @@ int main(int argc, char *argv[]) {
     int32_t ret = settings_from_file(settings_file_abs, &errmsgs);
     if (ret > 0) {
       fprintf(stderr, "Error reading settings from %s:\n", settings_file_abs);
-      for (uint32_t erri = 0; erri < ret; ++erri) {
+      uint32_t nerrors = (uint32_t)ret;
+      for (uint32_t erri = 0; erri < nerrors; ++erri) {
         fprintf(stderr, "  - %s", errmsgs[erri]);
         free(errmsgs[erri]);
       }
@@ -266,7 +280,7 @@ int main(int argc, char *argv[]) {
   struct setting *path_setting = settings_get("editor.grammars-path");
   char *settings_path = NULL;
   if (path_setting != NULL && path_setting->value.type == Setting_String) {
-    settings_path = path_setting->value.string_value;
+    settings_path = path_setting->value.data.string_value;
   }
   const char *builtin_path = join_path(xstr(DATADIR), "grammars");
 
@@ -307,6 +321,10 @@ int main(int argc, char *argv[]) {
     free((void *)settings_path);
   }
   free((void *)builtin_path);
+#endif
+
+#ifdef LSP_ENABLE
+  lang_servers_init(reactor, &buflist);
 #endif
 
   struct buffer initial_buffer = buffer_create("welcome");
@@ -394,7 +412,6 @@ int main(int argc, char *argv[]) {
     struct keyboard_update kbd_upd =
         keyboard_update(&kbd, reactor, frame_alloc);
 
-    uint32_t input_data_idx = 0;
     for (uint32_t ki = 0; ki < kbd_upd.nkeys; ++ki) {
       struct key *k = &kbd_upd.keys[ki];
 
@@ -416,15 +433,15 @@ int main(int argc, char *argv[]) {
       if (res.found) {
         switch (res.type) {
         case BindingType_Command: {
-          if (res.command == NULL) {
+          if (res.data.command == NULL) {
             minibuffer_echo_timeout(
                 4, "binding found for key %s but not command", k);
           } else {
-            int32_t ec = execute_command(res.command, &commands, active_window,
-                                         &buflist, 0, NULL);
+            int32_t ec = execute_command(res.data.command, &commands,
+                                         active_window, &buflist, 0, NULL);
             if (ec != 0 && !minibuffer_displaying()) {
               minibuffer_echo_timeout(4, "command %s failed with exit code %d",
-                                      res.command->name, ec);
+                                      res.data.command->name, ec);
             }
           }
           current_keymap = NULL;
@@ -443,7 +460,7 @@ int main(int argc, char *argv[]) {
             minibuffer_echo("%s", keyname);
           }
 
-          current_keymap = res.keymap;
+          current_keymap = res.data.keymap;
           break;
         }
         }
@@ -469,6 +486,10 @@ int main(int argc, char *argv[]) {
 
     update_file_watches(reactor);
 
+#if defined(LSP_ENABLE)
+    lang_servers_update();
+#endif
+
     // calculate frame time
     frame_time = timer_average(update_windows) +
                  timer_average(update_keyboard) + timer_average(update_display);
@@ -487,6 +508,10 @@ int main(int argc, char *argv[]) {
 
 #ifdef SYNTAX_ENABLE
   syntax_teardown();
+#endif
+
+#ifdef LSP_ENABLE
+  lang_servers_teardown();
 #endif
 
   display_clear(display);

@@ -97,10 +97,10 @@ struct completion_trigger_input {
 struct completion_trigger {
   /** Type of trigger. */
   enum completion_trigger_kind kind;
-  union {
+  union completion_trigger_data {
     uint32_t c;
     struct completion_trigger_input input;
-  };
+  } data;
 };
 
 /**
@@ -114,12 +114,12 @@ void init_completion(struct buffers *buffers, struct commands *commands);
 /**
  * Tear down the completion system.
  */
-void destroy_completion();
+void destroy_completion(void);
 
 /**
  * Callback for completion inserted.
  */
-typedef void (*insert_cb)();
+typedef void (*insert_cb)(void);
 
 /**
  * Enable completions in the buffer @p source.
@@ -141,7 +141,7 @@ void enable_completion(struct buffer *source, struct completion_trigger trigger,
  * This provider completes filesystem paths.
  * @returns A filesystem path @ref completion_provider.
  */
-struct completion_provider path_provider();
+struct completion_provider path_provider(void);
 
 /**
  * Create a new buffer completion provider.
@@ -150,7 +150,7 @@ struct completion_provider path_provider();
  * buffer list.
  * @returns A buffer name @ref completion_provider.
  */
-struct completion_provider buffer_provider();
+struct completion_provider buffer_provider(void);
 
 /**
  * Create a new command completion provider.
@@ -158,19 +158,19 @@ struct completion_provider buffer_provider();
  * This provider completes registered command names.
  * @returns A command name @ref completion_provider.
  */
-struct completion_provider commands_provider();
+struct completion_provider commands_provider(void);
 
 /**
  * Abort any active completion.
  */
-void abort_completion();
+void abort_completion(void);
 
 /**
  * Is a completion currently showing?
  *
  * @returns True if the completion window is showing completions.
  */
-bool completion_active();
+bool completion_active(void);
 
 /**
  * Disable completion for @ref buffer.

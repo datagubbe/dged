@@ -386,8 +386,7 @@ void buffer_view_update(struct buffer_view *view,
 
   struct timer *buffer_update_timer =
       timer_start("update-windows.buffer-update");
-  struct buffer_update_params update_params = {};
-  buffer_update(view->buffer, &update_params);
+  buffer_update(view->buffer);
   timer_stop(buffer_update_timer);
 
   uint32_t height = params->height;
@@ -446,7 +445,7 @@ void buffer_view_update(struct buffer_view *view,
       buffer_add_text_property(view->buffer, reg.begin, reg.end,
                                (struct text_property){
                                    .type = TextProperty_Colors,
-                                   .colors =
+                                   .data.colors =
                                        (struct text_property_colors){
                                            .set_bg = true,
                                            .bg = 5,

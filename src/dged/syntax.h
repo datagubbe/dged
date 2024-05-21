@@ -4,6 +4,6 @@
 #include <stdint.h>
 
 void syntax_init(uint32_t grammar_path_len, const char *grammar_path[]);
-void syntax_teardown();
+void syntax_teardown(void);
 
 #endif

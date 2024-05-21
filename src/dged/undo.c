@@ -18,9 +18,9 @@ void undo_clear(struct undo_stack *undo) {
 
 void undo_destroy(struct undo_stack *undo) {
   VEC_FOR_EACH(&undo->records, struct undo_record * rec) {
-    if (rec->type == Undo_Delete && rec->delete.data != NULL &&
-        rec->delete.nbytes > 0) {
-      free(rec->delete.data);
+    if (rec->type == Undo_Delete && rec->data.delete.data != NULL &&
+        rec->data.delete.nbytes > 0) {
+      free(rec->data.delete.data);
     }
   }
 
@@ -35,15 +35,15 @@ uint32_t undo_push_boundary(struct undo_stack *undo,
   // we can only have one save point
   if (boundary.save_point) {
     VEC_FOR_EACH(&undo->records, struct undo_record * rec) {
-      if (rec->type == Undo_Boundary && rec->boundary.save_point) {
-        rec->boundary.save_point = false;
+      if (rec->type == Undo_Boundary && rec->data.boundary.save_point) {
+        rec->data.boundary.save_point = false;
       }
     }
   }
 
   VEC_APPEND(&undo->records, struct undo_record * rec);
   rec->type = Undo_Boundary;
-  rec->boundary = boundary;
+  rec->data.boundary = boundary;
 
   if (!undo->undo_in_progress) {
     undo->top = VEC_SIZE(&undo->records) - 1;
@@ -61,12 +61,12 @@ uint32_t undo_push_add(struct undo_stack *undo, struct undo_add add) {
   // "compress"
   if (!VEC_EMPTY(&undo->records) &&
       VEC_BACK(&undo->records)->type == Undo_Add &&
-      pos_equal(&VEC_BACK(&undo->records)->add.end, &add.begin)) {
-    VEC_BACK(&undo->records)->add.end = add.end;
+      pos_equal(&VEC_BACK(&undo->records)->data.add.end, &add.begin)) {
+    VEC_BACK(&undo->records)->data.add.end = add.end;
   } else {
     VEC_APPEND(&undo->records, struct undo_record * rec);
     rec->type = Undo_Add;
-    rec->add = add;
+    rec->data.add = add;
   }
 
   if (!undo->undo_in_progress) {
@@ -79,7 +79,7 @@ uint32_t undo_push_add(struct undo_stack *undo, struct undo_add add) {
 uint32_t undo_push_delete(struct undo_stack *undo, struct undo_delete delete) {
   VEC_APPEND(&undo->records, struct undo_record * rec);
   rec->type = Undo_Delete;
-  rec->delete = delete;
+  rec->data.delete = delete;
 
   if (!undo->undo_in_progress) {
     undo->top = VEC_SIZE(&undo->records) - 1;
@@ -150,15 +150,15 @@ size_t rec_to_str(struct undo_record *rec, char *buffer, size_t n) {
   switch (rec->type) {
   case Undo_Add:
     return snprintf(buffer, n, "add { begin: (%d, %d) end: (%d, %d)}",
-                    rec->add.begin.row, rec->add.begin.col, rec->add.end.row,
-                    rec->add.end.col);
+                    rec->data.add.begin.row, rec->data.add.begin.col,
+                    rec->data.add.end.row, rec->data.add.end.col);
   case Undo_Delete:
     return snprintf(buffer, n, "delete { pos: (%d, %d), ptr: 0x%p, nbytes: %d}",
-                    rec->delete.pos.row, rec->delete.pos.col, rec->delete.data,
-                    rec->delete.nbytes);
+                    rec->data.delete.pos.row, rec->data.delete.pos.col,
+                    (void *)rec->data.delete.data, rec->data.delete.nbytes);
   default:
     return snprintf(buffer, n, "boundary { save_point: %s }",
-                    rec->boundary.save_point ? "yes" : "no");
+                    rec->data.boundary.save_point ? "yes" : "no");
   }
 }
 

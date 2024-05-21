@@ -38,7 +38,7 @@ struct completion_state {
 
 static struct buffer *g_target_buffer = NULL;
 
-static void hide_completion();
+static void hide_completion(void);
 
 static bool is_space(const struct codepoint *c) {
   // TODO: utf8 whitespace and other whitespace
@@ -67,15 +67,15 @@ static struct completion_provider g_commands_provider = {
     .userdata = NULL,
 };
 
-struct completion_provider path_provider() {
+struct completion_provider path_provider(void) {
   return g_path_provider;
 }
 
-struct completion_provider buffer_provider() {
+struct completion_provider buffer_provider(void) {
   return g_buffer_provider;
 }
 
-struct completion_provider commands_provider() {
+struct completion_provider commands_provider(void) {
   return g_commands_provider;
 }
 
@@ -89,6 +89,10 @@ VEC(struct active_completion) g_active_completions;
 
 static int32_t goto_next_completion(struct command_ctx ctx, int argc,
                                     const char *argv[]) {
+  (void)ctx;
+  (void)argc;
+  (void)argv;
+
   if (g_state.current_completion < g_state.ncompletions - 1) {
     ++g_state.current_completion;
   }
@@ -104,6 +108,10 @@ static int32_t goto_next_completion(struct command_ctx ctx, int argc,
 
 static int32_t goto_prev_completion(struct command_ctx ctx, int argc,
                                     const char *argv[]) {
+  (void)ctx;
+  (void)argc;
+  (void)argv;
+
   if (g_state.current_completion > 0) {
     --g_state.current_completion;
   }
@@ -119,6 +127,10 @@ static int32_t goto_prev_completion(struct command_ctx ctx, int argc,
 
 static int32_t insert_completion(struct command_ctx ctx, int argc,
                                  const char *argv[]) {
+  (void)ctx;
+  (void)argc;
+  (void)argv;
+
   // is it in the popup?
   struct completion *comp = &g_state.completions[g_state.current_completion];
   bool done = comp->complete;
@@ -135,7 +147,7 @@ static int32_t insert_completion(struct command_ctx ctx, int argc,
   return 0;
 }
 
-static void clear_completions() {
+static void clear_completions(void) {
   for (uint32_t ci = 0; ci < g_state.ncompletions; ++ci) {
     free((void *)g_state.completions[ci].display);
     free((void *)g_state.completions[ci].insert);
@@ -146,9 +158,9 @@ static void clear_completions() {
   g_state.ncompletions = 0;
 }
 
-COMMAND_FN("next-completion", next_completion, goto_next_completion, NULL);
-COMMAND_FN("prev-completion", prev_completion, goto_prev_completion, NULL);
-COMMAND_FN("insert-completion", insert_completion, insert_completion, NULL);
+COMMAND_FN("next-completion", next_completion, goto_next_completion, NULL)
+COMMAND_FN("prev-completion", prev_completion, goto_prev_completion, NULL)
+COMMAND_FN("insert-completion", insert_completion, insert_completion, NULL)
 
 static void update_completions(struct buffer *buffer,
                                struct active_completion_ctx *ctx,
@@ -246,7 +258,7 @@ static void on_buffer_insert(struct buffer *buffer,
 
       ctx->trigger_current_nchars += nchars;
 
-      if (ctx->trigger_current_nchars < ctx->trigger.input.nchars) {
+      if (ctx->trigger_current_nchars < ctx->trigger.data.input.nchars) {
         return;
       }
 
@@ -267,6 +279,9 @@ static void on_buffer_insert(struct buffer *buffer,
 }
 
 static void update_completion_buffer(struct buffer *buffer, void *userdata) {
+  (void)buffer;
+  (void)userdata;
+
   buffer_add_text_property(
       g_target_buffer,
       (struct location){.line = g_state.current_completion, .col = 0},
@@ -274,7 +289,7 @@ static void update_completion_buffer(struct buffer *buffer, void *userdata) {
                         .col = buffer_line_length(g_target_buffer,
                                                   g_state.current_completion)},
       (struct text_property){.type = TextProperty_Colors,
-                             .colors = (struct text_property_colors){
+                             .data.colors = (struct text_property_colors){
                                  .set_bg = false,
                                  .bg = 0,
                                  .set_fg = true,
@@ -352,7 +367,7 @@ void enable_completion(struct buffer *source, struct completion_trigger trigger,
 
   // do we want to trigger initially?
   if (ctx->trigger.kind == CompletionTrigger_Input &&
-      ctx->trigger.input.trigger_initially) {
+      ctx->trigger.data.input.trigger_initially) {
     struct oneshot_completion *comp =
         calloc(1, sizeof(struct oneshot_completion));
     comp->ctx = ctx;
@@ -361,7 +376,7 @@ void enable_completion(struct buffer *source, struct completion_trigger trigger,
   }
 }
 
-static void hide_completion() {
+static void hide_completion(void) {
   windows_close_popup();
   if (g_state.active) {
     buffer_remove_keymap(g_state.keymap_id);
@@ -369,13 +384,13 @@ static void hide_completion() {
   }
 }
 
-void abort_completion() {
+void abort_completion(void) {
   hide_completion();
   g_state.active = false;
   clear_completions();
 }
 
-bool completion_active() {
+bool completion_active(void) {
   return popup_window_visible() &&
          window_buffer(popup_window()) == g_target_buffer && g_state.active;
 }
@@ -391,7 +406,7 @@ static void cleanup_active_comp_ctx(void *userdata) {
   free(ctx);
 }
 
-static void do_nothing(void *userdata) {}
+static void do_nothing(void *userdata) { (void)userdata; }
 
 static void cleanup_active_completion(struct active_completion *comp) {
   buffer_remove_delete_hook(comp->buffer, comp->remove_hook_id, do_nothing);
@@ -410,7 +425,7 @@ void disable_completion(struct buffer *buffer) {
   }
 }
 
-void destroy_completion() {
+void destroy_completion(void) {
   // clean up any active completions we might have
   VEC_FOR_EACH(&g_active_completions, struct active_completion * comp) {
     cleanup_active_completion(comp);
@@ -429,10 +444,10 @@ static int cmp_completions(const void *comp_a, const void *comp_b) {
 }
 
 static uint32_t complete_path(struct completion_context ctx, void *userdata) {
+  (void)userdata;
 
   // obtain path from the buffer
   struct text_chunk txt = {0};
-  uint32_t start_idx = 0;
   if (ctx.buffer == minibuffer_buffer()) {
     txt = minibuffer_content();
   } else {
@@ -455,7 +470,6 @@ static uint32_t complete_path(struct completion_context ctx, void *userdata) {
 
   uint32_t n = 0;
   char *p1 = to_abspath(path);
-  size_t len = strlen(p1);
   char *p2 = strdup(p1);
 
   size_t inlen = strlen(path);
@@ -553,7 +567,6 @@ static uint32_t complete_buffers(struct completion_context ctx,
   }
 
   struct text_chunk txt = {0};
-  uint32_t start_idx = 0;
   if (ctx.buffer == minibuffer_buffer()) {
     txt = minibuffer_content();
   } else {
@@ -608,7 +621,6 @@ static uint32_t complete_commands(struct completion_context ctx,
     return 0;
   }
   struct text_chunk txt = {0};
-  uint32_t start_idx = 0;
   if (ctx.buffer == minibuffer_buffer()) {
     txt = minibuffer_content();
   } else {

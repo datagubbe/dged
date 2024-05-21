@@ -1,11 +1,11 @@
+#ifndef _HASH_H
+#define _HASH_H
+
 #include <stdint.h>
 
-static uint32_t hash_name(const char *s) {
-  unsigned long hash = 5381;
-  int c;
+#include "s8.h"
 
-  while ((c = *s++))
-    hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+uint32_t hash_name(const char *s);
+uint32_t hash_name_s8(struct s8 s);
 
-  return hash;
-}
+#endif

@@ -19,17 +19,19 @@ void define_lang(const char *name, const char *id, const char *pattern,
   _lang_setting_set_default(
       id, "name",
       (struct setting_value){.type = Setting_String,
-                             .string_value = (char *)name});
+                             .data.string_value = (char *)name});
   _lang_setting_set_default(
       id, "pattern",
       (struct setting_value){.type = Setting_String,
-                             .string_value = (char *)pattern});
-  _lang_setting_set_default(id, "tab-width",
-                            (struct setting_value){.type = Setting_Number,
-                                                   .number_value = tab_width});
+                             .data.string_value = (char *)pattern});
+  _lang_setting_set_default(
+      id, "tab-width",
+      (struct setting_value){.type = Setting_Number,
+                             .data.number_value = tab_width});
   _lang_setting_set_default(
       id, "use-tabs",
-      (struct setting_value){.type = Setting_Bool, .bool_value = use_tabs});
+      (struct setting_value){.type = Setting_Bool,
+                             .data.bool_value = use_tabs});
 }
 
 static struct language g_fundamental = {
@@ -65,27 +67,13 @@ bool lang_is_fundamental(const struct language *lang) {
 
 static struct language lang_from_settings(const char *id) {
   struct setting *name = _lang_setting(id, "name");
-  const char *name_value = name != NULL ? name->value.string_value : "Unknown";
+  const char *name_value =
+      name != NULL ? name->value.data.string_value : "Unknown";
 
   return (struct language){
       .id = strdup(id),
       .name = name_value,
   };
-}
-
-static void next_ext(const char *curr, const char **nxt, const char **end) {
-  if (curr == NULL) {
-    *nxt = *end = NULL;
-    return;
-  }
-
-  *nxt = curr;
-  *end = curr + strlen(curr);
-
-  const char *spc = strchr(curr, ' ');
-  if (spc != NULL) {
-    *end = spc;
-  }
 }
 
 void lang_settings(struct language *lang, struct setting **settings[],
@@ -159,7 +147,7 @@ struct language lang_from_filename(const char *filename) {
     struct setting *setting = settings[i];
     char *setting_name = strrchr(setting->path, '.');
     if (setting_name != NULL && strncmp(setting_name + 1, "pattern", 5) == 0) {
-      const char *val = setting->value.string_value;
+      const char *val = setting->value.data.string_value;
       regex_t regex;
       if (regcomp(&regex, val, REG_EXTENDED) == 0 &&
           regexec(&regex, filename, 0, NULL, 0) == 0) {

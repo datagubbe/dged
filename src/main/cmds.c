@@ -20,7 +20,12 @@
 #include "completion.h"
 #include "search-replace.h"
 
-int32_t _abort(struct command_ctx ctx, int argc, const char *argv[]) {
+static void (*g_terminate_cb)(void) = NULL;
+
+static int32_t _abort(struct command_ctx ctx, int argc, const char *argv[]) {
+  (void)argc;
+  (void)argv;
+
   abort_replace();
   abort_search();
   abort_completion();
@@ -33,16 +38,27 @@ int32_t _abort(struct command_ctx ctx, int argc, const char *argv[]) {
 
 int32_t unimplemented_command(struct command_ctx ctx, int argc,
                               const char *argv[]) {
+  (void)argc;
+  (void)argv;
   minibuffer_echo("TODO: %s is not implemented", (const char *)ctx.userdata);
   return 0;
 }
 
-int32_t exit_editor(struct command_ctx ctx, int argc, const char *argv[]) {
-  ((void (*)())ctx.userdata)();
+static int32_t exit_editor(struct command_ctx ctx, int argc,
+                           const char *argv[]) {
+  (void)ctx;
+  (void)argc;
+  (void)argv;
+
+  if (g_terminate_cb != NULL) {
+    g_terminate_cb();
+  }
+
   return 0;
 }
 
-int32_t write_file(struct command_ctx ctx, int argc, const char *argv[]) {
+static int32_t write_file(struct command_ctx ctx, int argc,
+                          const char *argv[]) {
   const char *pth = NULL;
   if (argc == 0) {
     return minibuffer_prompt(ctx, "write to file: ");
@@ -55,7 +71,7 @@ int32_t write_file(struct command_ctx ctx, int argc, const char *argv[]) {
   return 0;
 }
 
-static void run_interactive_comp_inserted() { minibuffer_execute(); }
+static void run_interactive_comp_inserted(void) { minibuffer_execute(); }
 
 int32_t run_interactive(struct command_ctx ctx, int argc, const char *argv[]) {
   if (argc == 0) {
@@ -63,7 +79,7 @@ int32_t run_interactive(struct command_ctx ctx, int argc, const char *argv[]) {
     enable_completion(minibuffer_buffer(),
                       ((struct completion_trigger){
                           .kind = CompletionTrigger_Input,
-                          .input =
+                          .data.input =
                               (struct completion_trigger_input){
                                   .nchars = 0, .trigger_initially = false}}),
                       providers, 1, run_interactive_comp_inserted);
@@ -106,9 +122,9 @@ int32_t do_switch_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
   }
 }
 
-COMMAND_FN("do-switch-buffer", do_switch_buffer, do_switch_buffer, NULL);
+COMMAND_FN("do-switch-buffer", do_switch_buffer, do_switch_buffer, NULL)
 
-static void switch_buffer_comp_inserted() { minibuffer_execute(); }
+static void switch_buffer_comp_inserted(void) { minibuffer_execute(); }
 
 int32_t switch_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
   if (argc == 0) {
@@ -117,7 +133,7 @@ int32_t switch_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
     enable_completion(minibuffer_buffer(),
                       ((struct completion_trigger){
                           .kind = CompletionTrigger_Input,
-                          .input =
+                          .data.input =
                               (struct completion_trigger_input){
                                   .nchars = 0, .trigger_initially = false}}),
                       providers, 1, switch_buffer_comp_inserted);
@@ -156,9 +172,9 @@ int32_t do_kill_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
   }
 }
 
-COMMAND_FN("do-kill-buffer", do_kill_buffer, do_kill_buffer, NULL);
+COMMAND_FN("do-kill-buffer", do_kill_buffer, do_kill_buffer, NULL)
 
-static void kill_buffer_comp_inserted() { minibuffer_execute(); }
+static void kill_buffer_comp_inserted(void) { minibuffer_execute(); }
 
 int32_t kill_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
   if (argc == 0) {
@@ -167,7 +183,7 @@ int32_t kill_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
     enable_completion(minibuffer_buffer(),
                       ((struct completion_trigger){
                           .kind = CompletionTrigger_Input,
-                          .input =
+                          .data.input =
                               (struct completion_trigger_input){
                                   .nchars = 0, .trigger_initially = false}}),
                       providers, 1, kill_buffer_comp_inserted);
@@ -188,7 +204,6 @@ void timer_to_list_line(const struct timer *timer, void *userdata) {
 
   static char buf[128];
   const char *name = timer_name(timer);
-  size_t namelen = strlen(name);
   size_t len =
       snprintf(buf, 128, "%s - %.2f ms (min: %.2f, max: %.2f)", name,
                (timer_average(timer) / 1e6), timer_min(timer) / (float)1e6,
@@ -197,6 +212,8 @@ void timer_to_list_line(const struct timer *timer, void *userdata) {
 }
 
 void timers_refresh(struct buffer *buffer, void *userdata) {
+  (void)userdata;
+
   buffer_set_readonly(buffer, false);
   buffer_clear(buffer);
   timers_for_each(timer_to_list_line, buffer);
@@ -208,6 +225,9 @@ void timers_refresh(struct buffer *buffer, void *userdata) {
 }
 
 int32_t timers(struct command_ctx ctx, int argc, const char *argv[]) {
+  (void)argc;
+  (void)argv;
+
   struct buffer *b = buffers_find(ctx.buffers, "*timers*");
   if (b == NULL) {
     b = buffers_add(ctx.buffers, buffer_create("*timers*"));
@@ -236,7 +256,7 @@ void buffer_to_list_line(struct buffer *buffer, void *userdata) {
         listbuf, begin,
         (struct location){.line = begin.line, .col = begin.col + nchars},
         (struct text_property){.type = TextProperty_Colors,
-                               .colors = (struct text_property_colors){
+                               .data.colors = (struct text_property_colors){
                                    .set_bg = false,
                                    .set_fg = true,
                                    .fg = Color_Green,
@@ -249,7 +269,7 @@ void buffer_to_list_line(struct buffer *buffer, void *userdata) {
         (struct location){.line = begin.line,
                           .col = begin.col + 24 + nchars_path},
         (struct text_property){.type = TextProperty_Colors,
-                               .colors = (struct text_property_colors){
+                               .data.colors = (struct text_property_colors){
                                    .set_bg = false,
                                    .set_fg = true,
                                    .fg = Color_Blue,
@@ -259,12 +279,16 @@ void buffer_to_list_line(struct buffer *buffer, void *userdata) {
         listbuf, (struct location){.line = begin.line, .col = 0},
         (struct location){.line = begin.line,
                           .col = buffer_line_length(listbuf, begin.line)},
-        (struct text_property){.type = TextProperty_Data, .userdata = buffer});
+        (struct text_property){.type = TextProperty_Data,
+                               .data.userdata = buffer});
   }
 }
 
 int32_t buflist_visit_cmd(struct command_ctx ctx, int argc,
                           const char *argv[]) {
+  (void)argc;
+  (void)argv;
+
   struct window *w = ctx.active_window;
 
   struct buffer_view *bv = window_buffer_view(w);
@@ -275,7 +299,7 @@ int32_t buflist_visit_cmd(struct command_ctx ctx, int argc,
   for (uint32_t propi = 0; propi < nprops; ++propi) {
     struct text_property *p = props[propi];
     if (p->type == TextProperty_Data) {
-      window_set_buffer(w, p->userdata);
+      window_set_buffer(w, p->data.userdata);
       return 0;
     }
   }
@@ -300,6 +324,8 @@ void buflist_refresh(struct buffer *buffer, void *userdata) {
 
 int32_t buflist_refresh_cmd(struct command_ctx ctx, int argc,
                             const char *argv[]) {
+  (void)argc;
+  (void)argv;
   buflist_refresh(window_buffer(ctx.active_window), ctx.buffers);
   return 0;
 }
@@ -310,6 +336,9 @@ static struct command buflist_refresh_command = {
 };
 
 int32_t buflist_kill_cmd(struct command_ctx ctx, int argc, const char *argv[]) {
+  (void)argc;
+  (void)argv;
+
   struct window *w = ctx.active_window;
 
   struct buffer_view *bv = window_buffer_view(w);
@@ -333,6 +362,9 @@ int32_t buflist_kill_cmd(struct command_ctx ctx, int argc, const char *argv[]) {
 }
 
 int32_t buffer_list(struct command_ctx ctx, int argc, const char *argv[]) {
+  (void)argc;
+  (void)argv;
+
   struct buffer *b = buffers_find(ctx.buffers, "*buffers*");
   if (b == NULL) {
     b = buffers_add(ctx.buffers, buffer_create("*buffers*"));
@@ -373,7 +405,7 @@ int32_t buffer_list(struct command_ctx ctx, int argc, const char *argv[]) {
   return 0;
 }
 
-static void find_file_comp_inserted() { minibuffer_execute(); }
+static void find_file_comp_inserted(void) { minibuffer_execute(); }
 
 static int32_t open_file(struct buffers *buffers, struct window *active_window,
                          const char *pth) {
@@ -412,14 +444,13 @@ static int32_t open_file(struct buffers *buffers, struct window *active_window,
 }
 
 int32_t find_file(struct command_ctx ctx, int argc, const char *argv[]) {
-  const char *pth = NULL;
   if (argc == 0) {
     minibuffer_clear();
     struct completion_provider providers[] = {path_provider()};
     enable_completion(minibuffer_buffer(),
                       ((struct completion_trigger){
                           .kind = CompletionTrigger_Input,
-                          .input =
+                          .data.input =
                               (struct completion_trigger_input){
                                   .nchars = 0, .trigger_initially = true}}),
                       providers, 1, find_file_comp_inserted);
@@ -432,7 +463,7 @@ int32_t find_file(struct command_ctx ctx, int argc, const char *argv[]) {
   return 0;
 }
 
-COMMAND_FN("find-file-internal", find_file, find_file, NULL);
+COMMAND_FN("find-file-internal", find_file, find_file, NULL)
 int32_t find_file_relative(struct command_ctx ctx, int argc,
                            const char *argv[]) {
   struct buffer *b = window_buffer(ctx.active_window);
@@ -450,7 +481,7 @@ int32_t find_file_relative(struct command_ctx ctx, int argc,
     enable_completion(minibuffer_buffer(),
                       ((struct completion_trigger){
                           .kind = CompletionTrigger_Input,
-                          .input =
+                          .data.input =
                               (struct completion_trigger_input){
                                   .nchars = 0, .trigger_initially = true}}),
                       providers, 1, find_file_comp_inserted);
@@ -481,7 +512,8 @@ int32_t find_file_relative(struct command_ctx ctx, int argc,
 }
 
 void register_global_commands(struct commands *commands,
-                              void (*terminate_cb)()) {
+                              void (*terminate_cb)(void)) {
+  g_terminate_cb = terminate_cb;
   struct command global_commands[] = {
       {.name = "find-file", .fn = find_file},
       {.name = "find-file-relative", .fn = find_file_relative},
@@ -492,7 +524,7 @@ void register_global_commands(struct commands *commands,
       {.name = "abort", .fn = _abort},
       {.name = "timers", .fn = timers},
       {.name = "buffer-list", .fn = buffer_list},
-      {.name = "exit", .fn = exit_editor, .userdata = terminate_cb}};
+      {.name = "exit", .fn = exit_editor}};
 
   register_commands(commands, global_commands,
                     sizeof(global_commands) / sizeof(global_commands[0]));
@@ -505,6 +537,8 @@ void teardown_global_commands(void) { cleanup_search_replace(); }
 #define BUFFER_VIEW_WRAPCMD(fn)                                                \
   static int32_t fn##_cmd(struct command_ctx ctx, int argc,                    \
                           const char *argv[]) {                                \
+    (void)argc;                                                                \
+    (void)argv;                                                                \
     buffer_view_##fn(window_buffer_view(ctx.active_window));                   \
     return 0;                                                                  \
   }
@@ -512,51 +546,59 @@ void teardown_global_commands(void) { cleanup_search_replace(); }
 #define BUFFER_WRAPCMD(fn)                                                     \
   static int32_t fn##_cmd(struct command_ctx ctx, int argc,                    \
                           const char *argv[]) {                                \
+    (void)argc;                                                                \
+    (void)argv;                                                                \
     buffer_##fn(window_buffer(ctx.active_window));                             \
     return 0;                                                                  \
   }
 
-BUFFER_WRAPCMD(to_file);
-BUFFER_WRAPCMD(reload);
-BUFFER_VIEW_WRAPCMD(kill_line);
-BUFFER_VIEW_WRAPCMD(forward_delete_char);
-BUFFER_VIEW_WRAPCMD(backward_delete_char);
-BUFFER_VIEW_WRAPCMD(delete_word);
-BUFFER_VIEW_WRAPCMD(backward_char);
-BUFFER_VIEW_WRAPCMD(backward_word);
-BUFFER_VIEW_WRAPCMD(forward_char);
-BUFFER_VIEW_WRAPCMD(forward_word);
-BUFFER_VIEW_WRAPCMD(backward_line);
-BUFFER_VIEW_WRAPCMD(forward_line);
-BUFFER_VIEW_WRAPCMD(goto_end_of_line);
-BUFFER_VIEW_WRAPCMD(goto_beginning_of_line);
-BUFFER_VIEW_WRAPCMD(newline);
-BUFFER_VIEW_WRAPCMD(indent);
-BUFFER_VIEW_WRAPCMD(indent_alt);
-BUFFER_VIEW_WRAPCMD(set_mark);
-BUFFER_VIEW_WRAPCMD(clear_mark);
-BUFFER_VIEW_WRAPCMD(copy);
-BUFFER_VIEW_WRAPCMD(cut);
-BUFFER_VIEW_WRAPCMD(paste);
-BUFFER_VIEW_WRAPCMD(paste_older);
-BUFFER_VIEW_WRAPCMD(goto_beginning);
-BUFFER_VIEW_WRAPCMD(goto_end);
-BUFFER_VIEW_WRAPCMD(undo);
-BUFFER_VIEW_WRAPCMD(sort_lines);
+BUFFER_WRAPCMD(to_file)
+BUFFER_WRAPCMD(reload)
+BUFFER_VIEW_WRAPCMD(kill_line)
+BUFFER_VIEW_WRAPCMD(forward_delete_char)
+BUFFER_VIEW_WRAPCMD(backward_delete_char)
+BUFFER_VIEW_WRAPCMD(delete_word)
+BUFFER_VIEW_WRAPCMD(backward_char)
+BUFFER_VIEW_WRAPCMD(backward_word)
+BUFFER_VIEW_WRAPCMD(forward_char)
+BUFFER_VIEW_WRAPCMD(forward_word)
+BUFFER_VIEW_WRAPCMD(backward_line)
+BUFFER_VIEW_WRAPCMD(forward_line)
+BUFFER_VIEW_WRAPCMD(goto_end_of_line)
+BUFFER_VIEW_WRAPCMD(goto_beginning_of_line)
+BUFFER_VIEW_WRAPCMD(newline)
+BUFFER_VIEW_WRAPCMD(indent)
+BUFFER_VIEW_WRAPCMD(indent_alt)
+BUFFER_VIEW_WRAPCMD(set_mark)
+BUFFER_VIEW_WRAPCMD(clear_mark)
+BUFFER_VIEW_WRAPCMD(copy)
+BUFFER_VIEW_WRAPCMD(cut)
+BUFFER_VIEW_WRAPCMD(paste)
+BUFFER_VIEW_WRAPCMD(paste_older)
+BUFFER_VIEW_WRAPCMD(goto_beginning)
+BUFFER_VIEW_WRAPCMD(goto_end)
+BUFFER_VIEW_WRAPCMD(undo)
+BUFFER_VIEW_WRAPCMD(sort_lines)
 
 static int32_t scroll_up_cmd(struct command_ctx ctx, int argc,
                              const char *argv[]) {
+  (void)argc;
+  (void)argv;
+
   buffer_view_backward_nlines(window_buffer_view(ctx.active_window),
                               window_height(ctx.active_window) - 1);
   return 0;
-};
+}
 
 static int32_t scroll_down_cmd(struct command_ctx ctx, int argc,
                                const char *argv[]) {
+  (void)argc;
+  (void)argv;
+
   buffer_view_forward_nlines(window_buffer_view(ctx.active_window),
                              window_height(ctx.active_window) - 1);
   return 0;
-};
+}
 
 static int32_t goto_line(struct command_ctx ctx, int argc, const char *argv[]) {
   // don't want to goto line in minibuffer
@@ -574,7 +616,7 @@ static int32_t goto_line(struct command_ctx ctx, int argc, const char *argv[]) {
   if (line < 0) {
     uint32_t nlines = buffer_num_lines(v->buffer);
     line = -line;
-    line = line >= nlines ? 0 : nlines - line;
+    line = (uint32_t)line >= nlines ? 0 : nlines - line;
   } else if (line > 0) {
     line = line - 1;
   }
@@ -623,12 +665,18 @@ void register_buffer_commands(struct commands *commands) {
 
 static int32_t window_close_cmd(struct command_ctx ctx, int argc,
                                 const char *argv[]) {
+  (void)argc;
+  (void)argv;
+
   window_close(ctx.active_window);
   return 0;
 }
 
 static int32_t window_split_cmd(struct command_ctx ctx, int argc,
                                 const char *argv[]) {
+  (void)argc;
+  (void)argv;
+
   struct window *resa, *resb;
   window_split(ctx.active_window, &resa, &resb);
   return 0;
@@ -636,6 +684,9 @@ static int32_t window_split_cmd(struct command_ctx ctx, int argc,
 
 static int32_t window_hsplit_cmd(struct command_ctx ctx, int argc,
                                  const char *argv[]) {
+  (void)argc;
+  (void)argv;
+
   struct window *resa, *resb;
   window_hsplit(ctx.active_window, &resa, &resb);
   return 0;
@@ -643,6 +694,9 @@ static int32_t window_hsplit_cmd(struct command_ctx ctx, int argc,
 
 static int32_t window_vsplit_cmd(struct command_ctx ctx, int argc,
                                  const char *argv[]) {
+  (void)argc;
+  (void)argv;
+
   struct window *resa, *resb;
   window_vsplit(ctx.active_window, &resa, &resb);
   return 0;
@@ -650,12 +704,19 @@ static int32_t window_vsplit_cmd(struct command_ctx ctx, int argc,
 
 static int32_t window_close_others_cmd(struct command_ctx ctx, int argc,
                                        const char *argv[]) {
+  (void)argc;
+  (void)argv;
+
   window_close_others(ctx.active_window);
   return 0;
 }
 
 static int32_t window_focus_next_cmd(struct command_ctx ctx, int argc,
                                      const char *argv[]) {
+  (void)ctx;
+  (void)argc;
+  (void)argv;
+
   windows_focus_next();
   return 0;
 }
@@ -676,6 +737,9 @@ static int32_t window_focus_cmd(struct command_ctx ctx, int argc,
 
 static int32_t window_focus_n_cmd(struct command_ctx ctx, int argc,
                                   const char *argv[]) {
+  (void)argc;
+  (void)argv;
+
   char *window_id = (char *)ctx.userdata;
   const char *argv_[] = {window_id};
   return window_focus_cmd(ctx, 1, argv_);
@@ -730,15 +794,15 @@ int32_t settings_set_cmd(struct command_ctx ctx, int argc, const char *argv[]) {
     struct setting_value new_value = {.type = setting->value.type};
     switch (setting->value.type) {
     case Setting_Bool:
-      new_value.bool_value = strncmp("true", value, 4) == 0 ||
-                             strncmp("yes", value, 3) == 0 ||
-                             strncmp("on", value, 2) == 0;
+      new_value.data.bool_value = strncmp("true", value, 4) == 0 ||
+                                  strncmp("yes", value, 3) == 0 ||
+                                  strncmp("on", value, 2) == 0;
       break;
     case Setting_Number:
-      new_value.number_value = atol(value);
+      new_value.data.number_value = atol(value);
       break;
     case Setting_String:
-      new_value.string_value = (char *)value;
+      new_value.data.string_value = (char *)value;
       break;
     }
 

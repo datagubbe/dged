@@ -8,14 +8,14 @@
 #include "stdio.h"
 #include "test.h"
 
-void assert_line_eq(struct text_chunk line, const char *txt, const char *msg) {
+static void assert_line_eq(struct text_chunk line, const char *txt,
+                           const char *msg) {
   ASSERT(strncmp((const char *)line.text, txt, line.nbytes) == 0, msg);
 }
 
-void assert_line_equal(struct text_chunk *line) {}
-
-void test_add_text() {
+void test_add_text(void) {
   uint32_t lines_added;
+
   /* use a silly small initial capacity to test re-alloc */
   struct text *t = text_create(1);
 
@@ -65,7 +65,7 @@ void test_add_text() {
   text_destroy(t);
 }
 
-void test_delete_text() {
+void test_delete_text(void) {
   uint32_t lines_added;
   struct text *t = text_create(10);
   const char *txt = "This is line 1";
@@ -128,7 +128,7 @@ void test_delete_text() {
   text_destroy(t4);
 }
 
-void run_text_tests() {
+void run_text_tests(void) {
   run_test(test_add_text);
   run_test(test_delete_text);
 }

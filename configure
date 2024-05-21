@@ -3,13 +3,15 @@
 _usage="./configure -- configure the DGED build.
 
 Options:
-  --[enable|disable]-syntax    Enable or disable syntax highlighting support.
-  --enable-asan                Build DGED with address sanitizer enabled.
-  --prefix=<PREFIX>            Set the build prefix path to <PREFIX>, default: /usr/local.
+  --[enable|disable]-syntax    Enable or disable syntax highlighting support. Default: enabled.
+  --[enable|disable]-lsp       Enable or disable Language Server Protocol support. Default: disabled (experimental).
+  --enable-asan                Build DGED with address sanitizer enabled. Default: disabled.
+  --prefix=<PREFIX>            Set the build prefix path to <PREFIX>. Default: /usr/local.
   -h/--help                    Show this help text.
 "
 
 enable_syntax=1
+enable_lsp=0
 enable_asan=0
 prefix=
 while [ "$#" -gt 0 ]; do
@@ -21,6 +23,16 @@ while [ "$#" -gt 0 ]; do
 
         --enable-syntax)
             enable_syntax=1
+            shift 1
+            ;;
+
+        --enable-lsp)
+            enable_lsp=1
+            shift 1
+            ;;
+
+        --disable-lsp)
+            enable_lsp=0
             shift 1
             ;;
 
@@ -75,21 +87,42 @@ else
     echo "none."
 fi
 
-if [ "$enable_syntax" -ne 0 ]; then
-    echo "enabling syntax highlighting"
-    echo "SYNTAX_ENABLE = true" >> config.mk
+echo -n "detecting process model..."
+if ./scripts/has_header "unistd.h"; then
+    echo "posix."
+    echo "#define PROCESS_MODEL posix" >> src/config.h
+    echo "PROCESS_MODEL ?= posix" >> config.mk
 else
-    echo "disabling syntax highlighting"
+    echo "unknown."
+fi
+
+if [ "$enable_syntax" -ne 0 ]; then
+    echo "enabling syntax highlighting."
+    echo "SYNTAX_ENABLE = true" >> config.mk
+    echo "#define SYNTAX_ENABLE 1" >> src/config.h
+else
+    echo "disabling syntax highlighting."
     echo "SYNTAX_ENABLE = false" >> config.mk
+    echo "#undef SYNTAX_ENABLE" >> src/config.h
+fi
+
+if [ "$enable_lsp" -ne 0 ]; then
+    echo "enabling language server support."
+    echo "LSP_ENABLE = true" >> config.mk
+    echo "#define LSP_ENABLE 1" >> src/config.h
+else
+    echo "disabling language server support."
+    echo "LSP_ENABLE = false" >> config.mk
+    echo "#undef LSP_ENABLE" >> src/config.h
 fi
 
 if [ "$enable_asan" -ne 0 ]; then
-    echo "enabling address sanitizer"
+    echo "enabling address sanitizer."
     echo "ASAN = true" >> config.mk
 fi
 
 if [ -n "$prefix" ]; then
-    echo "setting prefix to \"$prefix\""
+    echo "setting prefix to \"$prefix\"."
     echo "prefix = $prefix" >> config.mk
 fi
 

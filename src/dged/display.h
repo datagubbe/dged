@@ -13,7 +13,7 @@ struct command_list;
  * The only implementation of this is currently a termios one.
  * @returns A pointer to the display.
  */
-struct display *display_create();
+struct display *display_create(void);
 
 /**
  * Resize the display

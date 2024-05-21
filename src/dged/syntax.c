@@ -48,6 +48,8 @@ struct highlight {
 };
 
 static void delete_parser(struct buffer *buffer, void *userdata) {
+  (void)buffer;
+
   struct highlight *highlight = (struct highlight *)userdata;
 
   if (highlight->query != NULL) {
@@ -72,6 +74,7 @@ static void delete_parser(struct buffer *buffer, void *userdata) {
 
 static const char *read_text(void *payload, uint32_t byte_offset,
                              TSPoint position, uint32_t *bytes_read) {
+  (void)byte_offset;
 
   struct text *text = (struct text *)payload;
 
@@ -97,7 +100,7 @@ static const char *read_text(void *payload, uint32_t byte_offset,
 static const char *grammar_name_from_buffer(struct buffer *buffer) {
   struct setting *s = lang_setting(&buffer->lang, "grammar");
   if (s != NULL && s->value.type == Setting_String) {
-    return s->value.string_value;
+    return s->value.data.string_value;
   }
 
   return buffer->lang.name;
@@ -124,6 +127,10 @@ static const char *lang_folder(struct buffer *buffer, const char *path) {
 
 static bool eval_eq(struct s8 capname, uint32_t argc, struct s8 argv[],
                     struct s8 value, void *data) {
+  (void)capname;
+  (void)argc;
+  (void)argv;
+
   const struct s8 *cmp_to = (const struct s8 *)data;
   if (data == NULL) {
     return false;
@@ -143,6 +150,10 @@ static void cleanup_eq(void *data) {
 
 static bool eval_match(struct s8 capname, uint32_t argc, struct s8 argv[],
                        struct s8 value, void *data) {
+  (void)capname;
+  (void)argc;
+  (void)argv;
+
   regex_t *regex = (regex_t *)data;
   if (regex == NULL) {
     return false;
@@ -325,6 +336,8 @@ static void update_parser(struct buffer *buffer, void *userdata,
                           struct location origin, uint32_t width,
                           uint32_t height) {
 
+  (void)width;
+
   struct highlight *h = (struct highlight *)userdata;
 
   if (h->query == NULL) {
@@ -411,7 +424,7 @@ static void update_parser(struct buffer *buffer, void *userdata,
                         end.column > 0 ? end.column - 1 : 0,
                         (struct text_property){
                             .type = TextProperty_Colors,
-                            .colors =
+                            .data.colors =
                                 (struct text_property_colors){
                                     .set_fg = true,
                                     .fg = color,
@@ -509,8 +522,9 @@ static void text_inserted(struct buffer *buffer, struct edit_location inserted,
 }
 
 static void create_parser(struct buffer *buffer, void *userdata) {
+  (void)userdata;
 
-  TSLanguage *(*langsym)() = NULL;
+  TSLanguage *(*langsym)(void) = NULL;
   const char *lang_root = NULL, *langname = NULL;
   void *h = NULL;
 
@@ -601,7 +615,7 @@ void syntax_init(uint32_t grammar_path_len, const char *grammar_path[]) {
     lang_setting_set_default(
         &l, "grammar",
         (struct setting_value){.type = Setting_String,
-                               .string_value = "gitcommit"});
+                               .data.string_value = "gitcommit"});
     lang_destroy(&l);
   }
 
@@ -609,14 +623,15 @@ void syntax_init(uint32_t grammar_path_len, const char *grammar_path[]) {
   if (!lang_is_fundamental(&l)) {
     lang_setting_set_default(
         &l, "grammar",
-        (struct setting_value){.type = Setting_String, .string_value = "cpp"});
+        (struct setting_value){.type = Setting_String,
+                               .data.string_value = "cpp"});
     lang_destroy(&l);
   }
 
   buffer_add_create_hook(create_parser, NULL);
 }
 
-void syntax_teardown() {
+void syntax_teardown(void) {
   for (uint32_t i = 0; i < treesitter_path_len; ++i) {
     free((void *)treesitter_path[i]);
   }

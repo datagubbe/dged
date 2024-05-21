@@ -24,11 +24,11 @@ void minibuffer_init(struct buffer *buffer, struct buffers *buffers);
  *
  * Note that this does not release the buffer used.
  */
-void minibuffer_destroy();
+void minibuffer_destroy(void);
 
-struct text_chunk minibuffer_content();
+struct text_chunk minibuffer_content(void);
 
-struct buffer *minibuffer_buffer();
+struct buffer *minibuffer_buffer(void);
 
 void message(const char *fmt, ...);
 
@@ -74,14 +74,14 @@ uint32_t minibuffer_draw_prompt(struct command_list *commands);
  *
  * @returns zero on success, non-zero to indicate failure
  */
-int32_t minibuffer_execute();
+int32_t minibuffer_execute(void);
 
 /**
  * Abort the current minibuffer prompt.
  *
  * This returns focus to the previously focused window.
  */
-void minibuffer_abort_prompt();
+void minibuffer_abort_prompt(void);
 
 /**
  * Minibuffer prompt args
@@ -94,22 +94,22 @@ struct minibuffer_prompt_args {
 /**
  * Clear the current text in the minibuffer.
  */
-void minibuffer_clear();
+void minibuffer_clear(void);
 
-bool minibuffer_empty();
+bool minibuffer_empty(void);
 
 /**
  * Is the minibuffer currently displaying something?
  *
  * @returns True if the minibuffer is displaying anything, false otherwise.
  */
-bool minibuffer_displaying();
+bool minibuffer_displaying(void);
 
 /**
  * Is the minibuffer currently focused?
  *
  * @returns True if the minibuffer is currently focused, receiving user input.
  */
-bool minibuffer_focused();
+bool minibuffer_focused(void);
 
-struct window *minibuffer_target_window();
+struct window *minibuffer_target_window(void);

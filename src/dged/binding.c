@@ -50,21 +50,22 @@ struct lookup_result lookup_key(struct keymap *keymaps, uint32_t nkeymaps,
           return (struct lookup_result){
               .found = true,
               .type = BindingType_Command,
-              .command = lookup_command_by_hash(commands, binding->command),
+              .data.command =
+                  lookup_command_by_hash(commands, binding->data.command),
           };
         }
         case BindingType_Keymap: {
           return (struct lookup_result){
               .found = true,
               .type = BindingType_Keymap,
-              .keymap = binding->keymap,
+              .data.keymap = binding->data.keymap,
           };
         }
         case BindingType_DirectCommand:
           return (struct lookup_result){
               .found = true,
               .type = BindingType_Command,
-              .command = binding->direct_command,
+              .data.command = binding->data.direct_command,
           };
         }
       }

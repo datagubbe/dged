@@ -52,8 +52,8 @@ static void delete_callback(struct buffer *buffer, struct edit_location removed,
 static void test_delete(void) {
   struct buffer b = buffer_create("test-buffer-delete");
   const char *txt = "we are adding some text\ntwo lines to be exact";
-  struct location loc = buffer_add(&b, (struct location){.line = 0, .col = 0},
-                                   (uint8_t *)txt, strlen(txt));
+  buffer_add(&b, (struct location){.line = 0, .col = 0}, (uint8_t *)txt,
+             strlen(txt));
 
   ASSERT(buffer_line_length(&b, 0) == 23,
          "Expected line 1 to be 23 chars before deletion");
@@ -132,7 +132,8 @@ static void test_char_movement(void) {
          "Expected a double width char to result in a 2 column move");
 
   next = buffer_next_char(&b, (struct location){.line = 0, .col = 16});
-  uint64_t tab_width = settings_get("editor.tab-width")->value.number_value;
+  uint64_t tab_width =
+      settings_get("editor.tab-width")->value.data.number_value;
   ASSERT(next.col == 16 + tab_width,
          "Expected a tab to result in a move the width of a tab");
 
@@ -225,7 +226,7 @@ void run_buffer_tests(void) {
   settings_init(10);
   settings_set_default(
       "editor.tab-width",
-      (struct setting_value){.type = Setting_Number, .number_value = 4});
+      (struct setting_value){.type = Setting_Number, .data.number_value = 4});
 
   run_test(test_add);
   run_test(test_delete);

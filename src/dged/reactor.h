@@ -18,7 +18,7 @@ struct file_event {
 
 struct reactor;
 
-struct reactor *reactor_create();
+struct reactor *reactor_create(void);
 void reactor_destroy(struct reactor *reactor);
 void reactor_update(struct reactor *reactor);
 bool reactor_poll_event(struct reactor *reactor, uint32_t ev_id);

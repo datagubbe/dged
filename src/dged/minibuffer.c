@@ -39,7 +39,7 @@ uint32_t minibuffer_draw_prompt(struct command_list *commands) {
 
 static void minibuffer_abort_prompt_internal(bool clear);
 
-int32_t minibuffer_execute() {
+int32_t minibuffer_execute(void) {
   if (g_minibuffer.prompt_active) {
     struct command_ctx *c = &g_minibuffer.prompt_command_ctx;
 
@@ -50,7 +50,7 @@ int32_t minibuffer_execute() {
 
     // propagate any saved arguments
     char *argv[64];
-    for (uint32_t i = 0; i < c->saved_argc; ++i) {
+    for (uint32_t i = 0; i < (uint32_t)c->saved_argc; ++i) {
       argv[i] = (char *)c->saved_argv[i];
     }
     argv[c->saved_argc] = l;
@@ -79,6 +79,8 @@ int32_t minibuffer_execute() {
 }
 
 void update(struct buffer *buffer, void *userdata) {
+  (void)buffer;
+
   struct timespec current;
   struct minibuffer *mb = (struct minibuffer *)userdata;
   clock_gettime(CLOCK_MONOTONIC, &current);
@@ -143,15 +145,15 @@ void message(const char *fmt, ...) {
              nbytes > 2048 ? 2048 : nbytes);
 }
 
-void minibuffer_destroy() {
+void minibuffer_destroy(void) {
   command_ctx_free(&g_minibuffer.prompt_command_ctx);
 }
 
-struct text_chunk minibuffer_content() {
+struct text_chunk minibuffer_content(void) {
   return buffer_line(g_minibuffer.buffer, 0);
 }
 
-struct buffer *minibuffer_buffer() {
+struct buffer *minibuffer_buffer(void) {
   return g_minibuffer.buffer;
 }
 
@@ -245,22 +247,22 @@ static void minibuffer_abort_prompt_internal(bool clear) {
   g_minibuffer.prompt_active = false;
 }
 
-void minibuffer_abort_prompt() { minibuffer_abort_prompt_internal(true); }
+void minibuffer_abort_prompt(void) { minibuffer_abort_prompt_internal(true); }
 
-bool minibuffer_empty() { return !minibuffer_displaying(); }
+bool minibuffer_empty(void) { return !minibuffer_displaying(); }
 
-bool minibuffer_displaying() {
+bool minibuffer_displaying(void) {
   return g_minibuffer.buffer != NULL && !buffer_is_empty(g_minibuffer.buffer);
 }
 
-void minibuffer_clear() {
+void minibuffer_clear(void) {
   g_minibuffer.expires.tv_sec = 0;
   g_minibuffer.expires.tv_nsec = 0;
   buffer_clear(g_minibuffer.buffer);
 }
 
-bool minibuffer_focused() { return g_minibuffer.prompt_active; }
+bool minibuffer_focused(void) { return g_minibuffer.prompt_active; }
 
-struct window *minibuffer_target_window() {
+struct window *minibuffer_target_window(void) {
   return g_minibuffer.prev_window;
 }

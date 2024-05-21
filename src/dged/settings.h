@@ -26,7 +26,7 @@ struct setting_value {
   /** Type of setting. */
   enum setting_type type;
 
-  union {
+  union setting_data {
     /** String setting. */
     char *string_value;
 
@@ -35,7 +35,7 @@ struct setting_value {
 
     /** Boolean setting value. */
     bool bool_value;
-  };
+  } data;
 };
 
 /**
@@ -73,7 +73,7 @@ void settings_init(uint32_t initial_capacity);
 /**
  * Destroy the global collection of settings.
  */
-void settings_destroy();
+void settings_destroy(void);
 
 /**
  * Retrieve a single setting by path.

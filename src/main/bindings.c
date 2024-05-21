@@ -72,6 +72,10 @@ void set_default_buffer_bindings(struct keymap *keymap) {
 }
 
 int32_t execute(struct command_ctx ctx, int argc, const char *argv[]) {
+  (void)ctx;
+  (void)argc;
+  (void)argv;
+
   // TODO: this should be more lib-like
   return minibuffer_execute();
 }
@@ -82,7 +86,7 @@ static struct command execute_minibuffer_command = {
     .userdata = NULL,
 };
 
-void init_bindings() {
+void init_bindings(void) {
   g_global_keymap = keymap_create("global", 32);
   g_ctrlx_map = keymap_create("c-x", 32);
   g_windows_keymap = keymap_create("c-x w", 32);
@@ -203,7 +207,7 @@ uint32_t buffer_keymaps(struct buffer *buffer, struct keymap *keymaps[],
   return nkeymaps;
 }
 
-void destroy_bindings() {
+void destroy_bindings(void) {
   keymap_destroy(&g_windows_keymap);
   keymap_destroy(&g_global_keymap);
   keymap_destroy(&g_ctrlx_map);

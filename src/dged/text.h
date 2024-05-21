@@ -66,10 +66,10 @@ struct text_property_colors {
 
 struct text_property {
   enum text_property_type type;
-  union {
+  union property_data {
     struct text_property_colors colors;
     void *userdata;
-  };
+  } data;
 };
 
 void text_add_property(struct text *text, uint32_t start_line,

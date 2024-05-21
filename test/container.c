@@ -5,7 +5,7 @@
 #include "assert.h"
 #include "test.h"
 
-void test_empty_bintree() {
+void test_empty_bintree(void) {
   BINTREE_ENTRY_TYPE(node, int);
   BINTREE(node) tree;
 
@@ -29,7 +29,7 @@ void test_empty_bintree() {
   BINTREE_FREE_NODES(BINTREE_ROOT(&tree), node);
 }
 
-void test_bintree_iter() {
+void test_bintree_iter(void) {
   BINTREE_ENTRY_TYPE(node, char);
   BINTREE(node) tree;
   BINTREE_INIT(&tree);
@@ -96,7 +96,7 @@ void test_bintree_iter() {
   BINTREE_FREE_NODES(root, node);
 }
 
-void run_container_tests() {
+void run_container_tests(void) {
   run_test(test_empty_bintree);
   run_test(test_bintree_iter);
 }

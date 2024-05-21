@@ -31,7 +31,7 @@ static struct kill_ring {
   uint32_t curr_idx;
   uint32_t paste_idx;
 } g_kill_ring = {.curr_idx = 0,
-                 .buffer = {0},
+                 .buffer = {{0}},
                  .last_paste = {0},
                  .paste_idx = 0,
                  .paste_up_to_date = false};
@@ -58,7 +58,7 @@ static struct kill_ring {
                                                                                \
   static void remove_##name##_hook(vec_type *hooks, uint32_t id,               \
                                    remove_hook_cb callback) {                  \
-    uint64_t found_at = -1;                                                    \
+    uint64_t found_at = (uint64_t)-1;                                          \
     VEC_FOR_EACH_INDEXED(hooks, struct name##_hook *h, idx) {                  \
       if (h->id == id) {                                                       \
         if (callback != NULL) {                                                \
@@ -68,11 +68,12 @@ static struct kill_ring {
         break;                                                                 \
       }                                                                        \
     }                                                                          \
-    if (found_at != -1) {                                                      \
+    if (found_at != (uint64_t)-1) {                                            \
       if (found_at < VEC_SIZE(hooks) - 1) {                                    \
         VEC_SWAP(hooks, found_at, VEC_SIZE(hooks) - 1);                        \
       }                                                                        \
       VEC_POP(hooks, struct name##_hook removed);                              \
+      (void)removed;                                                           \
     }                                                                          \
   }
 
@@ -84,13 +85,13 @@ typedef VEC(struct reload_hook) reload_hook_vec;
 typedef VEC(struct delete_hook) delete_hook_vec;
 typedef VEC(struct render_hook) render_hook_vec;
 
-DECLARE_HOOK(create, create_hook_cb, create_hook_vec);
-DECLARE_HOOK(destroy, destroy_hook_cb, destroy_hook_vec);
-DECLARE_HOOK(insert, insert_hook_cb, insert_hook_vec);
-DECLARE_HOOK(update, update_hook_cb, update_hook_vec);
-DECLARE_HOOK(reload, reload_hook_cb, reload_hook_vec);
-DECLARE_HOOK(render, render_hook_cb, render_hook_vec);
-DECLARE_HOOK(delete, delete_hook_cb, delete_hook_vec);
+DECLARE_HOOK(create, create_hook_cb, create_hook_vec)
+DECLARE_HOOK(destroy, destroy_hook_cb, destroy_hook_vec)
+DECLARE_HOOK(insert, insert_hook_cb, insert_hook_vec)
+DECLARE_HOOK(update, update_hook_cb, update_hook_vec)
+DECLARE_HOOK(reload, reload_hook_cb, reload_hook_vec)
+DECLARE_HOOK(render, render_hook_cb, render_hook_vec)
+DECLARE_HOOK(delete, delete_hook_cb, delete_hook_vec)
 
 static create_hook_vec g_create_hooks;
 uint32_t g_create_hook_id;
@@ -136,19 +137,19 @@ void buffer_remove_destroy_hook(struct buffer *buffer, uint32_t hook_id,
   remove_destroy_hook(&buffer->hooks->destroy_hooks, hook_id, callback);
 }
 
-void buffer_static_init() {
+void buffer_static_init(void) {
   VEC_INIT(&g_create_hooks, 8);
 
   settings_set_default(
       "editor.tab-width",
-      (struct setting_value){.type = Setting_Number, .number_value = 4});
+      (struct setting_value){.type = Setting_Number, .data.number_value = 4});
 
   settings_set_default(
       "editor.show-whitespace",
-      (struct setting_value){.type = Setting_Bool, .bool_value = true});
+      (struct setting_value){.type = Setting_Bool, .data.bool_value = true});
 }
 
-void buffer_static_teardown() {
+void buffer_static_teardown(void) {
   VEC_DESTROY(&g_create_hooks);
   for (uint32_t i = 0; i < KILL_RING_SZ; ++i) {
     if (g_kill_ring.buffer[i].allocated) {
@@ -165,7 +166,7 @@ static uint32_t get_tab_width(struct buffer *buffer) {
 
   uint32_t tab_width = 4;
   if (tw != NULL && tw->value.type == Setting_Number) {
-    tab_width = tw->value.number_value;
+    tab_width = tw->value.data.number_value;
   }
   return tab_width;
 }
@@ -178,7 +179,7 @@ static bool use_tabs(struct buffer *buffer) {
 
   bool use_tabs = false;
   if (ut != NULL && ut->value.type == Setting_Bool) {
-    use_tabs = ut->value.bool_value;
+    use_tabs = ut->value.data.bool_value;
   }
 
   return use_tabs;
@@ -664,14 +665,14 @@ struct location buffer_previous_word(struct buffer *buffer,
 
 struct location buffer_previous_line(struct buffer *buffer,
                                      struct location dot) {
-  if (dot.line == 0) {
+  (void)buffer;
+
+  if (dot.line <= 0) {
+    dot.line = 0;
     return dot;
   }
 
   --dot.line;
-  uint32_t nchars = buffer_line_length(buffer, dot.line);
-  uint32_t new_col = dot.col > nchars ? nchars : dot.col;
-
   return dot;
 }
 
@@ -842,7 +843,7 @@ struct location buffer_undo(struct buffer *buffer, struct location dot) {
     switch (rec->type) {
 
     case Undo_Boundary: {
-      struct undo_boundary *b = &rec->boundary;
+      struct undo_boundary *b = &rec->data.boundary;
       if (b->save_point) {
         buffer->modified = false;
       }
@@ -850,7 +851,7 @@ struct location buffer_undo(struct buffer *buffer, struct location dot) {
     }
 
     case Undo_Add: {
-      struct undo_add *add = &rec->add;
+      struct undo_add *add = &rec->data.add;
 
       pos = buffer_delete(buffer,
                           (struct region){
@@ -864,7 +865,7 @@ struct location buffer_undo(struct buffer *buffer, struct location dot) {
     }
 
     case Undo_Delete: {
-      struct undo_delete *del = &rec->delete;
+      struct undo_delete *del = &rec->data.delete;
       pos = buffer_add(buffer,
                        (struct location){
                            .line = del->pos.row,
@@ -934,7 +935,7 @@ void buffer_find(struct buffer *buffer, const char *pattern,
 
 struct location buffer_copy(struct buffer *buffer, struct region region) {
   if (region_has_size(region)) {
-    struct text_chunk *curr = copy_region(buffer, region);
+    copy_region(buffer, region);
   }
 
   return region.begin;
@@ -1024,7 +1025,6 @@ struct location buffer_paste_older(struct buffer *buffer, struct location at) {
   if (g_kill_ring.paste_up_to_date) {
 
     // remove previous paste
-    struct text_chunk *curr = &g_kill_ring.buffer[g_kill_ring.curr_idx];
     buffer_delete(buffer, region_new(g_kill_ring.last_paste, at));
 
     // paste older
@@ -1124,7 +1124,7 @@ static void apply_properties(struct command_list *cmds,
 
     switch (prop->type) {
     case TextProperty_Colors: {
-      struct text_property_colors *colors = &prop->colors;
+      struct text_property_colors *colors = &prop->data.colors;
       if (colors->set_bg) {
         command_list_set_index_color_bg(cmds, colors->bg);
       }
@@ -1221,7 +1221,7 @@ void render_line(struct text_chunk *line, void *userdata) {
   }
 }
 
-void buffer_update(struct buffer *buffer, struct buffer_update_params *params) {
+void buffer_update(struct buffer *buffer) {
   VEC_FOR_EACH(&buffer->hooks->update_hooks, struct update_hook * h) {
     h->callback(buffer, h->userdata);
   }
@@ -1244,7 +1244,7 @@ void buffer_render(struct buffer *buffer, struct buffer_render_params *params) {
       .origin = params->origin,
       .width = params->width,
       .height = params->height,
-      .show_ws = (show_ws != NULL ? show_ws->value.bool_value : true) &&
+      .show_ws = (show_ws != NULL ? show_ws->value.data.bool_value : true) &&
                  !buffer->force_show_ws_off,
       .buffer = buffer,
   };

@@ -3,7 +3,7 @@ struct commands;
 /**
  * Abort a replace currently in progress.
  */
-void abort_replace();
+void abort_replace(void);
 
 /**
  * Abort a search currently in progress.

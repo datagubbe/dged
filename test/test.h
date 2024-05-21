@@ -9,15 +9,16 @@
   fn();                                                                        \
   printf("\033[32mok!\033[0m\n");
 
-void run_buffer_tests();
-void run_utf8_tests();
-void run_text_tests();
-void run_undo_tests();
-void run_command_tests();
-void run_keyboard_tests();
-void run_allocator_tests();
-void run_minibuffer_tests();
-void run_settings_tests();
-void run_container_tests();
+void run_buffer_tests(void);
+void run_utf8_tests(void);
+void run_text_tests(void);
+void run_undo_tests(void);
+void run_command_tests(void);
+void run_keyboard_tests(void);
+void run_allocator_tests(void);
+void run_minibuffer_tests(void);
+void run_settings_tests(void);
+void run_container_tests(void);
+void run_json_tests(void);
 
 #endif

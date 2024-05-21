@@ -66,16 +66,16 @@
   }                                                                            \
   var = res != NULL ? &(res->value) : NULL;
 
-#define HASHMAP_CONTAINS_KEY(map, key)                                         \
-  uint32_t needle = (map)->hash_fn(key);                                       \
+#define HASHMAP_CONTAINS_KEY(map, type, k, var)                                \
+  uint32_t needle = (map)->hash_fn(k);                                         \
   bool exists = false;                                                         \
-  VEC_FOR_EACH((map)->entries, struct pair *pair) {                            \
+  VEC_FOR_EACH(&(map)->entries, type *pair) {                                  \
     if (needle == pair->key) {                                                 \
       exists = true;                                                           \
       break;                                                                   \
     }                                                                          \
   }                                                                            \
-  exists
+  var = exists;
 
 #define HASHMAP_FOR_EACH(map, var) VEC_FOR_EACH_INDEXED(&(map)->entries, var, i)
 

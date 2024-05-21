@@ -22,15 +22,15 @@ struct events {
   uint32_t nevents;
 };
 
-struct reactor *reactor_create() {
+struct reactor *reactor_create(void) {
   int epollfd = epoll_create1(0);
   if (epollfd == -1) {
-    perror("epoll_create1");
+    return NULL;
   }
 
   int inotifyfd = inotify_init1(IN_NONBLOCK);
   if (inotifyfd == -1) {
-    perror("inotify_init1");
+    return NULL;
   }
 
   struct reactor *r = (struct reactor *)calloc(1, sizeof(struct reactor));
@@ -55,7 +55,6 @@ uint32_t reactor_register_interest(struct reactor *reactor, int fd,
   ev.events |= (interest & WriteInterest) != 0 ? EPOLLOUT : 0;
   ev.data.fd = fd;
   if (epoll_ctl(reactor->epoll_fd, EPOLL_CTL_ADD, fd, &ev) < 0) {
-    perror("epoll_ctl");
     return -1;
   }
 
@@ -71,7 +70,7 @@ bool reactor_poll_event(struct reactor *reactor, uint32_t ev_id) {
   for (uint32_t ei = 0; ei < events->nevents; ++ei) {
     struct epoll_event *ev = &events->events[ei];
 
-    if (ev->data.fd == ev_id) {
+    if ((uint32_t)ev->data.fd == ev_id) {
       return true;
     }
   }
@@ -118,7 +117,8 @@ void reactor_update(struct reactor *reactor) {
   int nfds = epoll_wait(reactor->epoll_fd, events->events, 10, -1);
 
   if (nfds == -1) {
-    // TODO: log failure
+    events->nevents = 0;
+    message("failed update epoll reactor: %s", strerror(errno));
   }
 
   events->nevents = nfds;

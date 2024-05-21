@@ -20,11 +20,11 @@ void settings_init(uint32_t initial_capacity) {
   HASHMAP_INIT(&g_settings.settings, initial_capacity, hash_name);
 }
 
-void settings_destroy() {
+void settings_destroy(void) {
   HASHMAP_FOR_EACH(&g_settings.settings, struct setting_entry * entry) {
     struct setting *setting = &entry->value;
     if (setting->value.type == Setting_String) {
-      free(setting->value.string_value);
+      free(setting->value.data.string_value);
     }
   }
 
@@ -33,8 +33,9 @@ void settings_destroy() {
 
 void setting_set_value(struct setting *setting, struct setting_value val) {
   if (setting->value.type == val.type) {
-    if (setting->value.type == Setting_String && val.string_value != NULL) {
-      setting->value.string_value = strdup(val.string_value);
+    if (setting->value.type == Setting_String &&
+        val.data.string_value != NULL) {
+      setting->value.data.string_value = strdup(val.data.string_value);
     } else {
       setting->value = val;
     }
@@ -99,13 +100,13 @@ void settings_set_default(const char *path, struct setting_value value) {
 void setting_to_string(struct setting *setting, char *buf, size_t n) {
   switch (setting->value.type) {
   case Setting_Bool:
-    snprintf(buf, n, "%s", setting->value.bool_value ? "true" : "false");
+    snprintf(buf, n, "%s", setting->value.data.bool_value ? "true" : "false");
     break;
   case Setting_Number:
-    snprintf(buf, n, "%" PRId64, setting->value.number_value);
+    snprintf(buf, n, "%" PRId64, setting->value.data.number_value);
     break;
   case Setting_String:
-    snprintf(buf, n, "%s", setting->value.string_value);
+    snprintf(buf, n, "%s", setting->value.data.string_value);
     break;
   }
 }
@@ -113,7 +114,6 @@ void setting_to_string(struct setting *setting, char *buf, size_t n) {
 static int32_t parse_toml(struct parser *state, char **errmsgs[]) {
   char *curtbl = NULL;
   char *curkey = NULL;
-  uint32_t errcnt = 0;
 
   VEC(char *) errs;
   VEC_INIT(&errs, 16);
@@ -160,20 +160,20 @@ static int32_t parse_toml(struct parser *state, char **errmsgs[]) {
     case Token_IntValue:
       i = *((int64_t *)t.data);
       settings_set(curkey, (struct setting_value){.type = Setting_Number,
-                                                  .number_value = i});
+                                                  .data.number_value = i});
       break;
 
     case Token_BoolValue:
       b = *((bool *)t.data);
       settings_set(curkey, (struct setting_value){.type = Setting_Bool,
-                                                  .bool_value = b});
+                                                  .data.bool_value = b});
       break;
 
     case Token_StringValue:
       v = calloc(t.len + 1, 1);
       strncpy(v, (char *)t.data, t.len);
       settings_set(curkey, (struct setting_value){.type = Setting_String,
-                                                  .string_value = v});
+                                                  .data.string_value = v});
       free(v);
       break;
 

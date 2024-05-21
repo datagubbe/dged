@@ -31,14 +31,14 @@ struct undo_delete {
 struct undo_record {
   enum undo_record_type type;
 
-  union {
+  union undo_record_data {
     struct undo_boundary boundary;
     struct undo_add add;
     struct undo_delete delete;
-  };
+  } data;
 };
 
-#define INVALID_TOP -1
+#define INVALID_TOP (uint32_t) - 1
 
 struct undo_stack {
   VEC(struct undo_record) records;

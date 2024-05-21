@@ -5,8 +5,8 @@
 
 struct timer;
 
-void timers_init();
-void timers_start_frame();
+void timers_init(void);
+void timers_start_frame(void);
 
 struct timer *timer_start(const char *name);
 uint64_t timer_stop(struct timer *timer);
@@ -19,7 +19,7 @@ const char *timer_name(const struct timer *timer);
 typedef void (*timer_callback)(const struct timer *timer, void *userdata);
 void timers_for_each(timer_callback callback, void *userdata);
 
-void timers_end_frame();
-void timers_destroy();
+void timers_end_frame(void);
+void timers_destroy(void);
 
 #endif

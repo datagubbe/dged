@@ -16,6 +16,8 @@ struct call_count {
 };
 
 bool fake_poll(void *userdata, uint32_t ev_id) {
+  (void)ev_id;
+
   if (userdata != NULL) {
     struct call_count *cc = (struct call_count *)userdata;
     ++cc->poll;
@@ -24,6 +26,9 @@ bool fake_poll(void *userdata, uint32_t ev_id) {
 }
 uint32_t fake_register_interest(void *userdata, int fd,
                                 enum interest interest) {
+  (void)fd;
+  (void)interest;
+
   if (userdata != NULL) {
     struct call_count *cc = (struct call_count *)userdata;
     ++cc->reg;
@@ -32,6 +37,8 @@ uint32_t fake_register_interest(void *userdata, int fd,
 }
 
 void fake_unregister_interest(void *userdata, uint32_t ev_id) {
+  (void)ev_id;
+
   if (userdata != NULL) {
     struct call_count *cc = (struct call_count *)userdata;
     ++cc->unreg;
@@ -75,7 +82,7 @@ void fake_keyboard_destroy(struct fake_keyboard *kbd) {
   reactor_destroy(kbd->reactor);
 }
 
-void simple_key() {
+void simple_key(void) {
   struct call_count cc = {0};
   struct fake_reactor_impl fake = {
       .poll_event = fake_poll,
@@ -99,7 +106,7 @@ void simple_key() {
   free(upd.raw);
 }
 
-void ctrl_key() {
+void ctrl_key(void) {
   struct fake_reactor_impl fake = {
       .poll_event = fake_poll,
       .register_interest = fake_register_interest,
@@ -122,7 +129,7 @@ void ctrl_key() {
   free(upd.raw);
 }
 
-void meta_key() {
+void meta_key(void) {
   struct fake_reactor_impl fake = {
       .poll_event = fake_poll,
       .register_interest = fake_register_interest,
@@ -147,7 +154,7 @@ void meta_key() {
   free(upd.raw);
 }
 
-void spec_key() {
+void spec_key(void) {
   struct fake_reactor_impl fake = {
       .poll_event = fake_poll,
       .register_interest = fake_register_interest,
@@ -170,7 +177,7 @@ void spec_key() {
   free(upd.raw);
 }
 
-void test_utf8() {
+void test_utf8(void) {
   struct fake_reactor_impl fake = {
       .poll_event = fake_poll,
       .register_interest = fake_register_interest,
@@ -192,7 +199,7 @@ void test_utf8() {
   free(upd.raw);
 }
 
-void test_key_equal() {
+void test_key_equal(void) {
   struct key k1 = {.mod = Ctrl, .key = 'A'};
   ASSERT(key_equal(&k1, &k1), "Expected key to be equal to itself");
   ASSERT(key_equal_char(&k1, Ctrl, 'A'), "Expected key to be c-a");
@@ -203,7 +210,7 @@ void test_key_equal() {
          "Expected yet another different key to not be the same");
 }
 
-void run_keyboard_tests() {
+void run_keyboard_tests(void) {
   run_test(simple_key);
   run_test(ctrl_key);
   run_test(meta_key);

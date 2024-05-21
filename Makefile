@@ -14,6 +14,7 @@ build:
 
 .include "config.mk"
 SYNTAX_ENABLE ?= true
+LSP_ENABLE ?= true
 
 HEADERS = src/dged/settings.h src/dged/minibuffer.h src/dged/keyboard.h src/dged/binding.h \
 	src/dged/buffers.h src/dged/text.h src/dged/display.h src/dged/hashmap.h src/dged/path.h \
@@ -21,22 +22,27 @@ HEADERS = src/dged/settings.h src/dged/minibuffer.h src/dged/keyboard.h src/dged
 	src/dged/vec.h src/dged/window.h src/dged/hash.h src/dged/undo.h src/dged/lang.h \
 	src/dged/settings-parse.h src/dged/utf8.h src/main/cmds.h src/main/bindings.h \
 	src/main/search-replace.h src/dged/location.h src/dged/buffer_view.h src/main/completion.h \
-	src/dged/timers.h src/dged/s8.h src/main/version.h src/config.h
+	src/dged/timers.h src/dged/s8.h src/main/version.h src/config.h src/dged/process.h
 
 SOURCES = src/dged/binding.c src/dged/buffer.c src/dged/command.c src/dged/display.c \
 	src/dged/keyboard.c src/dged/minibuffer.c src/dged/text.c \
 	src/dged/utf8.c src/dged/buffers.c src/dged/window.c src/dged/allocator.c src/dged/undo.c \
 	src/dged/settings.c src/dged/lang.c src/dged/settings-parse.c src/dged/location.c \
-	src/dged/buffer_view.c src/dged/timers.c src/dged/s8.c
+	src/dged/buffer_view.c src/dged/timers.c src/dged/s8.c src/dged/path.c src/dged/hash.c
 
 MAIN_SOURCES = src/main/main.c src/main/cmds.c src/main/bindings.c src/main/search-replace.c src/main/completion.c
 
+# HACK: added to MAIN_SOURCES to not be picked up in tests
+# since they have their own implementation
 .if "$(HAS_EPOLL)" == true
   MAIN_SOURCES += src/dged/reactor-epoll.c
 .elif "$(HAS_KQUEUE)" == true
   MAIN_SOURCES += src/dged/reactor-kqueue.c
 .endif
 
+.if "$(PROCESS_MODEL)" == posix
+  SOURCES += src/dged/process-posix.c
+.endif
 
 TEST_SOURCES = test/assert.c test/buffer.c test/text.c test/utf8.c test/main.c \
 	test/command.c test/keyboard.c test/fake-reactor.c test/allocator.c \
@@ -49,9 +55,9 @@ datadir = share/dged
 .SUFFIXES:
 .SUFFIXES: .c .o .d
 
-CFLAGS += -Werror -g -O2 -std=c99 \
-	-I $(.CURDIR)/src \
-	-I $(.CURDIR)/src/main \
+CFLAGS += -Werror -Wall -Wextra -g -O2 -std=c99\
+	-I $(.CURDIR)/src\
+	-I $(.CURDIR)/src/main\
 	-DDATADIR="$(prefix)/$(datadir)"
 
 ASAN ?= false
@@ -66,10 +72,18 @@ ASAN ?= false
   SOURCES += src/dged/syntax.c
 
   treesitterflags != pkg-config tree-sitter --cflags
-  CFLAGS += ${treesitterflags} -DSYNTAX_ENABLE
+  CFLAGS += ${treesitterflags}
 
   treesitterld != pkg-config tree-sitter --libs
   LDFLAGS += ${treesitterld}
+.endif
+
+.if $(LSP_ENABLE) == true
+  HEADERS += src/dged/lsp.h src/main/lsp.h src/dged/json.h
+  SOURCES += src/dged/lsp.c src/dged/json.c
+  MAIN_SOURCES += src/main/lsp.c
+  TEST_SOURCES += test/json.c
+  CFLAGS += -DLSP_ENABLED
 .endif
 
 UNAME_S != uname -s | tr '[:upper:]' '[:lower:]'
@@ -138,7 +152,7 @@ run: dged
 	./dged
 
 debug: dged
-	gdb ./dged
+	gdb -ex "cd $(.CURDIR)" ./dged
 
 debug-tests: run-tests
 	gdb ./run-tests

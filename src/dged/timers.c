@@ -23,21 +23,21 @@ static struct timers {
   HASHMAP(struct timer_entry) timers;
 } g_timers;
 
-void timers_init() {
+void timers_init(void) {
   HASHMAP_INIT(&g_timers.timers, 32, hash_name);
   g_timers.frame_index = 0;
 }
 
-void timers_destroy() { HASHMAP_DESTROY(&g_timers.timers); }
+void timers_destroy(void) { HASHMAP_DESTROY(&g_timers.timers); }
 
-void timers_start_frame() {
+void timers_start_frame(void) {
   HASHMAP_FOR_EACH(&g_timers.timers, struct timer_entry * entry) {
     struct timer *timer = &entry->value;
     timer->samples[g_timers.frame_index] = 0;
   }
 }
 
-void timers_end_frame() {
+void timers_end_frame(void) {
   g_timers.frame_index = (g_timers.frame_index + 1) % NUM_FRAME_SAMPLES;
 }
 

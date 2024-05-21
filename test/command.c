@@ -5,7 +5,7 @@
 #include "dged/hash.h"
 #include "dged/hashmap.h"
 
-void test_command_registry_create() {
+void test_command_registry_create(void) {
   struct commands cmds = command_registry_create(10);
 
   ASSERT(HASHMAP_CAPACITY(&cmds.commands) == 10,
@@ -17,6 +17,10 @@ void test_command_registry_create() {
 }
 
 int32_t fake_command(struct command_ctx ctx, int argc, const char *argv[]) {
+  (void)ctx;
+  (void)argc;
+  (void)argv;
+
   return 0;
 }
 
@@ -33,7 +37,7 @@ struct commands single_fake_command(const char *name) {
   return cmds;
 }
 
-void test_register_command() {
+void test_register_command(void) {
   struct commands cmds = command_registry_create(1);
 
   struct command cmd = {
@@ -60,7 +64,7 @@ void test_register_command() {
   command_registry_destroy(&cmds);
 }
 
-void test_lookup_command() {
+void test_lookup_command(void) {
   struct commands cmds = single_fake_command("fake");
   struct command *cmd = lookup_command(&cmds, "fake");
 
@@ -69,7 +73,6 @@ void test_lookup_command() {
   ASSERT_STR_EQ(cmd->name, "fake",
                 "Expected the found function to have the correct name");
 
-  struct command *also_cmd = lookup_command_by_hash(&cmds, hash_name("fake"));
   ASSERT(cmd != NULL,
          "Expected to be able to look up inserted command by hash");
   ASSERT_STR_EQ(cmd->name, "fake",
@@ -79,10 +82,14 @@ void test_lookup_command() {
 }
 
 int32_t failing_command(struct command_ctx ctx, int argc, const char *argv[]) {
+  (void)ctx;
+  (void)argc;
+  (void)argv;
+
   return 100;
 }
 
-void test_execute_command() {
+void test_execute_command(void) {
   struct commands cmds = single_fake_command("fake");
   struct command *cmd = lookup_command(&cmds, "fake");
 
@@ -101,7 +108,7 @@ void test_execute_command() {
   command_registry_destroy(&cmds);
 }
 
-void run_command_tests() {
+void run_command_tests(void) {
   run_test(test_command_registry_create);
   run_test(test_register_command);
   run_test(test_lookup_command);

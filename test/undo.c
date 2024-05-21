@@ -5,7 +5,7 @@
 #include "assert.h"
 #include "test.h"
 
-void test_undo_insert() {
+void test_undo_insert(void) {
   struct undo_stack undo;
 
   /* small capacity on purpose to force re-sizing */
@@ -15,7 +15,7 @@ void test_undo_insert() {
   ASSERT(undo_size(&undo) == 1,
          "Expected undo stack to have one item after inserting a save point");
 
-  undo_push_boundary(&undo, (struct undo_boundary){});
+  undo_push_boundary(&undo, (struct undo_boundary){0});
   ASSERT(undo_size(&undo) == 2,
          "Expected undo stack to have two items after inserting a boundary");
 
@@ -37,7 +37,7 @@ void test_undo_insert() {
   undo_destroy(&undo);
 }
 
-void test_undo() {
+void test_undo(void) {
   struct undo_stack undo;
   undo_init(&undo, 10);
 
@@ -99,7 +99,7 @@ void test_undo() {
   undo_destroy(&undo);
 }
 
-void run_undo_tests() {
+void run_undo_tests(void) {
   run_test(test_undo_insert);
   run_test(test_undo);
 }

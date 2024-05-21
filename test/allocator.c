@@ -3,7 +3,7 @@
 #include "assert.h"
 #include "test.h"
 
-void test_frame_allocator() {
+void test_frame_allocator(void) {
   struct frame_allocator fa = frame_allocator_create(128);
 
   ASSERT(fa.capacity == 128,
@@ -28,4 +28,4 @@ void test_frame_allocator() {
   frame_allocator_destroy(&fa);
 }
 
-void run_allocator_tests() { run_test(test_frame_allocator); }
+void run_allocator_tests(void) { run_test(test_frame_allocator); }

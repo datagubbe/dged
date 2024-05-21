@@ -37,19 +37,19 @@ enum binding_type {
 #define BINDING_INNER(mod_, c_, command_)                                      \
   (struct binding) {                                                           \
     .key = {.mod = mod_, .key = c_}, .type = BindingType_Command,              \
-    .command = hash_name(command_)                                             \
+    .data.command = hash_name(command_)                                        \
   }
 
 #define ANONYMOUS_BINDING_INNER(mod_, c_, command_)                            \
   (struct binding) {                                                           \
     .key = {.mod = mod_, .key = c_}, .type = BindingType_DirectCommand,        \
-    .direct_command = command_                                                 \
+    .data.direct_command = command_                                            \
   }
 
 #define PREFIX_INNER(mod_, c_, keymap_)                                        \
   (struct binding) {                                                           \
     .key = {.mod = mod_, .key = c_}, .type = BindingType_Keymap,               \
-    .keymap = keymap_                                                          \
+    .data.keymap = keymap_                                                     \
   }
 
 /**
@@ -89,14 +89,14 @@ struct binding {
   /** Type of this binding, see @ref binding_type */
   uint8_t type;
 
-  union {
+  union binding_data {
     /** A hash of a command name */
     uint32_t command;
     /** A command */
     struct command *direct_command;
     /** A keymap */
     struct keymap *keymap;
-  };
+  } data;
 };
 
 /**
@@ -109,12 +109,12 @@ struct lookup_result {
   /** Type of binding in the result */
   uint8_t type;
 
-  union {
+  union lookup_data {
     /** A command */
     struct command *command;
     /** A keymap */
     struct keymap *keymap;
-  };
+  } data;
 };
 
 struct commands;

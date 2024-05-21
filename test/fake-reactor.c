@@ -5,13 +5,13 @@ struct reactor {
   struct fake_reactor_impl *impl;
 };
 
-struct reactor *reactor_create() {
+struct reactor *reactor_create(void) {
   return (struct reactor *)calloc(1, sizeof(struct reactor));
 }
 
 void reactor_destroy(struct reactor *reactor) { free(reactor); }
 
-void reactor_update(struct reactor *reactor) {}
+void reactor_update(struct reactor *reactor) { (void)reactor; }
 bool reactor_poll_event(struct reactor *reactor, uint32_t ev_id) {
   if (reactor->impl != NULL) {
     return reactor->impl->poll_event(reactor->impl->userdata, ev_id);
@@ -32,7 +32,7 @@ uint32_t reactor_register_interest(struct reactor *reactor, int fd,
 
 void reactor_unregister_interest(struct reactor *reactor, uint32_t ev_id) {
   if (reactor->impl != NULL) {
-    return reactor->impl->unregister_interest(reactor->impl->userdata, ev_id);
+    reactor->impl->unregister_interest(reactor->impl->userdata, ev_id);
   }
 }
 

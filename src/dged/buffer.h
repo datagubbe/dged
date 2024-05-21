@@ -65,8 +65,8 @@ struct buffer {
   bool force_show_ws_off;
 };
 
-void buffer_static_init();
-void buffer_static_teardown();
+void buffer_static_init(void);
+void buffer_static_teardown(void);
 
 /**
  * Create a new buffer.
@@ -690,11 +690,6 @@ uint32_t buffer_add_create_hook(create_hook_cb callback, void *userdata);
 void buffer_remove_create_hook(uint32_t hook_id, remove_hook_cb callback);
 
 /**
- * Parameters for updating a buffer.
- */
-struct buffer_update_params {};
-
-/**
  * Parameters for rendering a buffer.
  */
 struct buffer_render_params {
@@ -716,11 +711,8 @@ struct buffer_render_params {
  * Update a buffer.
  *
  * @param [in] buffer The buffer to update.
- * @param [inout] params The parameters for the update. The @ref commands field
- * in @p params will be modified with the rendering commands needed for this
- * buffer.
  */
-void buffer_update(struct buffer *buffer, struct buffer_update_params *params);
+void buffer_update(struct buffer *buffer);
 
 /**
  * Render a buffer.

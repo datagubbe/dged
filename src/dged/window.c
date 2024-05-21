@@ -124,25 +124,25 @@ static void window_tree_clear_sub(struct window_node *root_node) {
   BINTREE_FREE_NODES(root_node, window_node);
 }
 
-static void window_tree_clear() {
+static void window_tree_clear(void) {
   window_tree_clear_sub(BINTREE_ROOT(&g_windows.windows));
 }
 
-void windows_destroy() { window_tree_clear(); }
+void windows_destroy(void) { window_tree_clear(); }
 
-struct window *root_window() {
+struct window *root_window(void) {
   return &BINTREE_VALUE(BINTREE_ROOT(&g_windows.windows));
 }
 
-struct window *minibuffer_window() {
+struct window *minibuffer_window(void) {
   return &g_minibuffer_window;
 }
 
-struct window *popup_window() {
+struct window *popup_window(void) {
   return &g_popup_window;
 }
 
-bool popup_window_visible() { return g_popup_visible; }
+bool popup_window_visible(void) { return g_popup_visible; }
 
 static void window_tree_resize(struct window_node *root, uint32_t height,
                                uint32_t width) {
@@ -412,7 +412,7 @@ struct window *window_find_by_buffer(struct buffer *b) {
   return NULL;
 }
 
-struct window *windows_get_active() {
+struct window *windows_get_active(void) {
   return g_windows.active;
 }
 
@@ -630,7 +630,7 @@ void window_split(struct window *window, struct window **new_window_a,
       : window_vsplit(window, new_window_a, new_window_b);
 }
 
-struct window *windows_focus_next() {
+struct window *windows_focus_next(void) {
   struct window *active = windows_get_active();
   struct window_node *n = find_window(active);
   BINTREE_NEXT(n);
@@ -693,4 +693,4 @@ void windows_show_popup(uint32_t row, uint32_t col, uint32_t width,
   g_popup_visible = true;
 }
 
-void windows_close_popup() { g_popup_visible = false; }
+void windows_close_popup(void) { g_popup_visible = false; }

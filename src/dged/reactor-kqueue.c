@@ -16,7 +16,7 @@ struct reactor {
   uint32_t nevents;
 };
 
-struct reactor *reactor_create() {
+struct reactor *reactor_create(void) {
   int queue = kqueue();
   if (queue < 0) {
     return NULL;

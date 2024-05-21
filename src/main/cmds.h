@@ -1,7 +1,7 @@
 struct commands;
 
 void register_global_commands(struct commands *commands,
-                              void (*terminate_cb)());
+                              void (*terminate_cb)(void));
 void teardown_global_commands(void);
 
 void register_buffer_commands(struct commands *commands);

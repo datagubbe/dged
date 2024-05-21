@@ -112,7 +112,6 @@ uint32_t utf8_nchars(uint8_t *bytes, uint32_t nbytes) {
 uint32_t utf8_nbytes(uint8_t *bytes, uint32_t nbytes, uint32_t nchars) {
   uint32_t bi = 0;
   uint32_t chars = 0;
-  uint32_t expected = 0;
 
   while (chars < nchars && bi < nbytes) {
     struct codepoint codepoint = next_utf8_codepoint(bytes + bi, nbytes - bi);
@@ -127,7 +126,7 @@ uint32_t utf8_nbytes(uint8_t *bytes, uint32_t nbytes, uint32_t nchars) {
 uint32_t unicode_visual_char_width(const struct codepoint *codepoint) {
   if (codepoint->nbytes > 0) {
     // TODO: use unicode classification instead
-    size_t w = wcwidth(codepoint->codepoint);
+    int w = wcwidth(codepoint->codepoint);
     return w >= 0 ? w : 2;
   } else {
     return 0;

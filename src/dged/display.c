@@ -35,13 +35,13 @@ enum render_cmd_type {
 
 struct render_command {
   enum render_cmd_type type;
-  union {
+  union render_cmd_data {
     struct draw_text_cmd *draw_txt;
     struct push_fmt_cmd *push_fmt;
     struct repeat_cmd *repeat;
     struct show_ws_cmd *show_ws;
     struct draw_list_cmd *draw_list;
-  };
+  } data;
 };
 
 struct draw_text_cmd {
@@ -87,13 +87,13 @@ struct command_list {
   struct command_list *next_list;
 };
 
-struct winsize getsize() {
+struct winsize getsize(void) {
   struct winsize ws;
   ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws);
   return ws;
 }
 
-struct display *display_create() {
+struct display *display_create(void) {
 
   struct winsize ws = getsize();
 
@@ -182,6 +182,8 @@ void put_ansiparm(int n) {
 }
 
 void display_move_cursor(struct display *display, uint32_t row, uint32_t col) {
+  (void)display;
+
   putc(ESC, stdout);
   putc('[', stdout);
   put_ansiparm(row + 1);
@@ -192,7 +194,6 @@ void display_move_cursor(struct display *display, uint32_t row, uint32_t col) {
 
 void display_clear(struct display *display) {
   display_move_cursor(display, 0, 0);
-  uint8_t bytes[] = {ESC, '[', 'J'};
   putc(ESC, stdout);
   putc('[', stdout);
   putc('J', stdout);
@@ -239,21 +240,21 @@ struct render_command *add_command(struct command_list *list,
   cmd->type = tp;
   switch (tp) {
   case RenderCommand_DrawText:
-    cmd->draw_txt = l->allocator(sizeof(struct draw_text_cmd));
+    cmd->data.draw_txt = l->allocator(sizeof(struct draw_text_cmd));
     break;
   case RenderCommand_Repeat:
-    cmd->repeat = l->allocator(sizeof(struct repeat_cmd));
+    cmd->data.repeat = l->allocator(sizeof(struct repeat_cmd));
     break;
   case RenderCommand_PushFormat:
-    cmd->push_fmt = l->allocator(sizeof(struct push_fmt_cmd));
+    cmd->data.push_fmt = l->allocator(sizeof(struct push_fmt_cmd));
     break;
   case RenderCommand_SetShowWhitespace:
-    cmd->show_ws = l->allocator(sizeof(struct show_ws_cmd));
+    cmd->data.show_ws = l->allocator(sizeof(struct show_ws_cmd));
     break;
   case RenderCommand_ClearFormat:
     break;
   case RenderCommand_DrawList:
-    cmd->draw_list = l->allocator(sizeof(struct draw_list_cmd));
+    cmd->data.draw_list = l->allocator(sizeof(struct draw_list_cmd));
     break;
   default:
     assert(false);
@@ -266,7 +267,7 @@ struct render_command *add_command(struct command_list *list,
 void command_list_draw_text(struct command_list *list, uint32_t col,
                             uint32_t row, uint8_t *data, uint32_t len) {
   struct draw_text_cmd *cmd =
-      add_command(list, RenderCommand_DrawText)->draw_txt;
+      add_command(list, RenderCommand_DrawText)->data.draw_txt;
   cmd->data = data;
   cmd->col = col;
   cmd->row = row;
@@ -283,7 +284,7 @@ void command_list_draw_text_copy(struct command_list *list, uint32_t col,
 
 void command_list_draw_repeated(struct command_list *list, uint32_t col,
                                 uint32_t row, uint32_t c, uint32_t nrepeat) {
-  struct repeat_cmd *cmd = add_command(list, RenderCommand_Repeat)->repeat;
+  struct repeat_cmd *cmd = add_command(list, RenderCommand_Repeat)->data.repeat;
   cmd->col = col;
   cmd->row = row;
   cmd->c = c;
@@ -293,14 +294,14 @@ void command_list_draw_repeated(struct command_list *list, uint32_t col,
 void command_list_draw_command_list(struct command_list *list,
                                     struct command_list *to_draw) {
   struct draw_list_cmd *cmd =
-      add_command(list, RenderCommand_DrawList)->draw_list;
+      add_command(list, RenderCommand_DrawList)->data.draw_list;
   cmd->list = to_draw;
 }
 
 void command_list_set_index_color_fg(struct command_list *list,
                                      uint8_t color_idx) {
   struct push_fmt_cmd *cmd =
-      add_command(list, RenderCommand_PushFormat)->push_fmt;
+      add_command(list, RenderCommand_PushFormat)->data.push_fmt;
 
   if (color_idx < 8) {
     cmd->len = snprintf((char *)cmd->fmt, 64, "%d", 30 + color_idx);
@@ -314,14 +315,14 @@ void command_list_set_index_color_fg(struct command_list *list,
 void command_list_set_color_fg(struct command_list *list, uint8_t red,
                                uint8_t green, uint8_t blue) {
   struct push_fmt_cmd *cmd =
-      add_command(list, RenderCommand_PushFormat)->push_fmt;
+      add_command(list, RenderCommand_PushFormat)->data.push_fmt;
   cmd->len = snprintf((char *)cmd->fmt, 64, "38;2;%d;%d;%d", red, green, blue);
 }
 
 void command_list_set_index_color_bg(struct command_list *list,
                                      uint8_t color_idx) {
   struct push_fmt_cmd *cmd =
-      add_command(list, RenderCommand_PushFormat)->push_fmt;
+      add_command(list, RenderCommand_PushFormat)->data.push_fmt;
   if (color_idx < 8) {
     cmd->len = snprintf((char *)cmd->fmt, 64, "%d", 40 + color_idx);
   } else if (color_idx < 16) {
@@ -334,13 +335,13 @@ void command_list_set_index_color_bg(struct command_list *list,
 void command_list_set_color_bg(struct command_list *list, uint8_t red,
                                uint8_t green, uint8_t blue) {
   struct push_fmt_cmd *cmd =
-      add_command(list, RenderCommand_PushFormat)->push_fmt;
+      add_command(list, RenderCommand_PushFormat)->data.push_fmt;
   cmd->len = snprintf((char *)cmd->fmt, 64, "48;2;%d;%d;%d", red, green, blue);
 }
 
 void command_list_set_inverted_colors(struct command_list *list) {
   struct push_fmt_cmd *cmd =
-      add_command(list, RenderCommand_PushFormat)->push_fmt;
+      add_command(list, RenderCommand_PushFormat)->data.push_fmt;
   cmd->fmt[0] = '7';
   cmd->len = 1;
 }
@@ -350,7 +351,7 @@ void command_list_reset_color(struct command_list *list) {
 }
 
 void command_list_set_show_whitespace(struct command_list *list, bool show) {
-  add_command(list, RenderCommand_SetShowWhitespace)->show_ws->show = show;
+  add_command(list, RenderCommand_SetShowWhitespace)->data.show_ws->show = show;
 }
 
 void display_render(struct display *display,
@@ -374,7 +375,7 @@ void display_render(struct display *display,
       struct render_command *cmd = &cl->cmds[cmdi];
       switch (cmd->type) {
       case RenderCommand_DrawText: {
-        struct draw_text_cmd *txt_cmd = cmd->draw_txt;
+        struct draw_text_cmd *txt_cmd = cmd->data.draw_txt;
         display_move_cursor(display, txt_cmd->row + cl->yoffset,
                             txt_cmd->col + cl->xoffset);
         apply_fmt(fmt_stack, fmt_stack_len);
@@ -384,7 +385,7 @@ void display_render(struct display *display,
       }
 
       case RenderCommand_Repeat: {
-        struct repeat_cmd *repeat_cmd = cmd->repeat;
+        struct repeat_cmd *repeat_cmd = cmd->data.repeat;
         display_move_cursor(display, repeat_cmd->row + cl->yoffset,
                             repeat_cmd->col + cl->xoffset);
         apply_fmt(fmt_stack, fmt_stack_len);
@@ -401,7 +402,7 @@ void display_render(struct display *display,
       }
 
       case RenderCommand_PushFormat: {
-        struct push_fmt_cmd *fmt_cmd = cmd->push_fmt;
+        struct push_fmt_cmd *fmt_cmd = cmd->data.push_fmt;
 
         fmt_stack[fmt_stack_len] = ';';
         ++fmt_stack_len;
@@ -416,11 +417,11 @@ void display_render(struct display *display,
         break;
 
       case RenderCommand_SetShowWhitespace:
-        show_whitespace_state = cmd->show_ws->show;
+        show_whitespace_state = cmd->data.show_ws->show;
         break;
 
       case RenderCommand_DrawList:
-        display_render(display, cmd->draw_list->list);
+        display_render(display, cmd->data.draw_list->list);
         break;
       }
     }
@@ -430,7 +431,7 @@ void display_render(struct display *display,
   timer_stop(render_timer);
 }
 
-void hide_cursor() {
+void hide_cursor(void) {
   putc(ESC, stdout);
   putc('[', stdout);
   putc('?', stdout);
@@ -439,7 +440,7 @@ void hide_cursor() {
   putc('l', stdout);
 }
 
-void show_cursor() {
+void show_cursor(void) {
   putc(ESC, stdout);
   putc('[', stdout);
   putc('?', stdout);
@@ -448,8 +449,13 @@ void show_cursor() {
   putc('h', stdout);
 }
 
-void display_begin_render(struct display *display) { hide_cursor(); }
+void display_begin_render(struct display *display) {
+  (void)display;
+  hide_cursor();
+}
 void display_end_render(struct display *display) {
+  (void)display;
+
   show_cursor();
   fflush(stdout);
 }

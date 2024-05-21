@@ -6,9 +6,12 @@
 
 #include "test.h"
 
-void handle_abort() { exit(1); }
+void handle_abort(int sig) {
+  (void)sig;
+  exit(1);
+}
 
-int main() {
+int main(void) {
   // Use a hardcoded locale to get a
   // predictable env.
   setlocale(LC_ALL, "en_US.UTF-8");
@@ -46,6 +49,11 @@ int main() {
 
   printf("\n 🎁 \x1b[1;36mRunning container tests...\x1b[0m\n");
   run_container_tests();
+
+#if defined(LSP_ENABLED)
+  printf("\n 📃 \x1b[1;36mRunning JSON tests...\x1b[0m\n");
+  run_json_tests();
+#endif
 
   struct timespec elapsed;
   clock_gettime(CLOCK_MONOTONIC, &elapsed);

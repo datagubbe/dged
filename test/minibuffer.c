@@ -19,7 +19,7 @@ static struct frame_allocator *g_alloc = NULL;
 
 void *alloc_fn(size_t sz) { return frame_allocator_alloc(g_alloc, sz); }
 
-void init() {
+void init(void) {
   if (b.name == NULL) {
     settings_init(10);
     timers_init();
@@ -31,7 +31,7 @@ void init() {
   windows_init(100, 100, &b, &b, &bufs);
 }
 
-void destroy() {
+void destroy(void) {
   if (b.name != NULL) {
     buffer_destroy(&b);
     buffers_destroy(&bufs);
@@ -41,7 +41,7 @@ void destroy() {
   }
 }
 
-void test_minibuffer_echo() {
+void test_minibuffer_echo(void) {
   struct buffer_view view = buffer_view_create(&b, false, false);
 
   // TODO: how to clear this?
@@ -84,9 +84,15 @@ void test_minibuffer_echo() {
   destroy();
 }
 
-int32_t fake(struct command_ctx ctx, int argc, const char *argv[]) { return 0; }
+int32_t fake(struct command_ctx ctx, int argc, const char *argv[]) {
+  (void)ctx;
+  (void)argc;
+  (void)argv;
 
-void test_minibuffer_prompt() {
+  return 0;
+}
+
+void test_minibuffer_prompt(void) {
   init();
   ASSERT(!minibuffer_focused(),
          "Minibuffer should not be focused without reason");
@@ -111,7 +117,7 @@ void test_minibuffer_prompt() {
   destroy();
 }
 
-void run_minibuffer_tests() {
+void run_minibuffer_tests(void) {
   run_test(test_minibuffer_echo);
   run_test(test_minibuffer_prompt);
 }

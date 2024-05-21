@@ -6,6 +6,5 @@
 #include "assert.h"
 #include "test.h"
 
-void test_nchars_nbytes() {}
-
-void run_utf8_tests() { run_test(test_nchars_nbytes); }
+void test_nchars_nbytes(void) {}
+void run_utf8_tests(void) { run_test(test_nchars_nbytes); }

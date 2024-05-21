@@ -79,7 +79,7 @@ void command_ctx_push_arg(struct command_ctx *ctx, const char *argv) {
 }
 
 void command_ctx_free(struct command_ctx *ctx) {
-  for (uint32_t i = 0; i < ctx->saved_argc; ++i) {
+  for (uint32_t i = 0; i < (uint32_t)ctx->saved_argc; ++i) {
     free((char *)ctx->saved_argv[i]);
   }
 

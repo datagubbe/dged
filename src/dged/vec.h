@@ -48,8 +48,7 @@
   }
 
 #define VEC_SWAP(vec, idx1, idx2)                                              \
-  if (idx1 < (vec)->nentries && idx2 < (vec)->nentries && idx1 >= 0 &&         \
-      idx2 >= 0) {                                                             \
+  if (idx1 < (vec)->nentries && idx2 < (vec)->nentries) {                      \
     *((vec)->temp) = (vec)->entries[idx1];                                     \
     (vec)->entries[idx1] = (vec)->entries[idx2];                               \
     (vec)->entries[idx2] = *((vec)->temp);                                     \
