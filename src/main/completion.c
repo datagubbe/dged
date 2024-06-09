@@ -379,6 +379,11 @@ bool completion_active() {
 
 static void cleanup_active_comp_ctx(void *userdata) {
   struct active_completion_ctx *ctx = (struct active_completion_ctx *)userdata;
+
+  if (g_state.ctx == ctx && g_state.active) {
+    abort_completion();
+  }
+
   free(ctx->providers);
   free(ctx);
 }
