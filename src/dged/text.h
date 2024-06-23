@@ -59,6 +59,7 @@ bool text_line_contains_unicode(struct text *text, uint32_t line);
 
 enum text_property_type {
   TextProperty_Colors,
+  TextProperty_Data,
 };
 
 struct text_property_colors {
@@ -72,6 +73,7 @@ struct text_property {
   enum text_property_type type;
   union {
     struct text_property_colors colors;
+    void *userdata;
   };
 };
 

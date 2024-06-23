@@ -68,6 +68,13 @@ void segfault() {
 }
 
 #define INVALID_WATCH -1
+
+static void clear_buffer_props(struct buffer *buffer, void *userdata) {
+  (void)userdata;
+
+  buffer_clear_text_properties(buffer);
+}
+
 struct watched_file {
   uint32_t watch_id;
   struct buffer *buffer;
@@ -344,6 +351,10 @@ int main(int argc, char *argv[]) {
       display_resized = false;
     }
 
+    // TODO: maybe this should be hidden behind something
+    // The placement is correct though.
+    buffers_for_each(&buflist, clear_buffer_props, NULL);
+
     /* Update all windows together with the buffers in them. */
     struct timer *update_windows = timer_start("update-windows");
     windows_update(frame_alloc, frame_time);
@@ -459,6 +470,7 @@ int main(int argc, char *argv[]) {
   }
 
   timers_destroy();
+  teardown_global_commands();
   destroy_completion();
   windows_destroy();
   minibuffer_destroy();

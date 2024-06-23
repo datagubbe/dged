@@ -7,6 +7,7 @@
 #include "dged/buffer_view.h"
 #include "dged/command.h"
 #include "dged/minibuffer.h"
+#include "dged/s8.h"
 #include "dged/window.h"
 
 #include "bindings.h"
@@ -29,17 +30,62 @@ static struct replace {
   uint32_t nmatches;
   uint32_t current_match;
   buffer_keymap_id keymap_id;
+  uint32_t highlight_hook;
   struct window *window;
 } g_current_replace = {0};
 
-void abort_replace() {
+static struct search {
+  bool active;
+  char *pattern;
+  struct region *matches;
+  struct buffer *buffer;
+  uint32_t nmatches;
+  uint32_t current_match;
+  uint32_t highlight_hook;
+  buffer_keymap_id keymap_id;
+} g_current_search = {0};
+
+static void clear_replace(void) {
   buffer_remove_keymap(g_current_replace.keymap_id);
   free(g_current_replace.matches);
   free(g_current_replace.replace);
   g_current_replace.matches = NULL;
   g_current_replace.replace = NULL;
   g_current_replace.nmatches = 0;
+
+  if (g_current_replace.window != NULL) {
+    buffer_remove_update_hook(window_buffer(g_current_replace.window),
+                              g_current_replace.highlight_hook, NULL);
+  }
+  g_current_replace.highlight_hook = 0;
   g_current_replace.window = NULL;
+}
+
+void abort_replace(void) {
+  clear_replace();
+  minibuffer_abort_prompt();
+}
+
+static void clear_search(void) {
+  // n.b. leak the pattern on purpose so
+  // it can be used to recall previous searches.
+  free(g_current_search.matches);
+  g_current_search.matches = NULL;
+  g_current_search.nmatches = 0;
+
+  if (g_current_search.buffer != NULL &&
+      g_current_search.highlight_hook != (uint32_t)-1) {
+    buffer_remove_update_hook(g_current_search.buffer,
+                              g_current_search.highlight_hook, NULL);
+  }
+  g_current_search.highlight_hook = -1;
+  g_current_search.active = false;
+}
+
+void abort_search(void) {
+  clear_search();
+
+  buffer_remove_keymap(g_current_search.keymap_id);
   minibuffer_abort_prompt();
 }
 
@@ -59,36 +105,52 @@ uint64_t matchdist(struct region *match, struct location loc) {
   return (linedist * linedist) * 1e6 + coldist * coldist;
 }
 
-static void highlight_matches(struct buffer *buffer, struct match *matches,
-                              uint32_t nmatches, uint32_t current) {
-  for (uint32_t matchi = 0; matchi < nmatches; ++matchi) {
-    struct match *m = &matches[matchi];
+static void highlight_match(struct buffer *buffer, struct region match,
+                            bool current) {
+  if (current) {
+    buffer_add_text_property(
+        buffer, match.begin, match.end,
+        (struct text_property){.type = TextProperty_Colors,
+                               .colors = (struct text_property_colors){
+                                   .set_bg = true,
+                                   .bg = 3,
+                                   .set_fg = true,
+                                   .fg = 0,
+                               }});
+
+  } else {
+    buffer_add_text_property(
+        buffer, match.begin, match.end,
+        (struct text_property){.type = TextProperty_Colors,
+                               .colors = (struct text_property_colors){
+                                   .set_bg = true,
+                                   .bg = 6,
+                                   .set_fg = true,
+                                   .fg = 0,
+                               }});
+  }
+}
+
+static void search_highlight_hook(struct buffer *buffer, void *userdata) {
+  (void)userdata;
+
+  for (uint32_t matchi = 0; matchi < g_current_search.nmatches; ++matchi) {
+    highlight_match(buffer, g_current_search.matches[matchi],
+                    matchi == g_current_search.current_match);
+  }
+}
+
+static void replace_highlight_hook(struct buffer *buffer, void *userdata) {
+  (void)userdata;
+
+  for (uint32_t matchi = 0; matchi < g_current_replace.nmatches; ++matchi) {
+    struct match *m = &g_current_replace.matches[matchi];
     if (m->state != Todo) {
       continue;
     }
 
-    if (matchi == current) {
-      buffer_add_text_property(
-          buffer, m->region.begin, m->region.end,
-          (struct text_property){.type = TextProperty_Colors,
-                                 .colors = (struct text_property_colors){
-                                     .set_bg = true,
-                                     .bg = 3,
-                                     .set_fg = true,
-                                     .fg = 0,
-                                 }});
-
-    } else {
-      buffer_add_text_property(
-          buffer, m->region.begin, m->region.end,
-          (struct text_property){.type = TextProperty_Colors,
-                                 .colors = (struct text_property_colors){
-                                     .set_bg = true,
-                                     .bg = 6,
-                                     .set_fg = true,
-                                     .fg = 0,
-                                 }});
-    }
+    highlight_match(buffer, m->region,
+                    matchi == g_current_replace.current_match);
   }
 }
 
@@ -139,8 +201,6 @@ static int32_t replace_next(struct command_ctx ctx, int argc,
     buffer_view_goto(buffer_view,
                      (struct location){.line = m->region.begin.line,
                                        .col = m->region.begin.col});
-    highlight_matches(buffer_view->buffer, state->matches, state->nmatches,
-                      state->current_match);
   }
 
   return 0;
@@ -165,8 +225,6 @@ static int32_t skip_next(struct command_ctx ctx, int argc, const char *argv[]) {
     buffer_view_goto(buffer_view,
                      (struct location){.line = m->region.begin.line,
                                        .col = m->region.begin.col});
-    highlight_matches(buffer_view->buffer, state->matches, state->nmatches,
-                      state->current_match);
   }
 
   return 0;
@@ -242,8 +300,6 @@ static int32_t replace(struct command_ctx ctx, int argc, const char *argv[]) {
   struct region *m = &g_current_replace.matches[0].region;
   buffer_view_goto(buffer_view, (struct location){.line = m->begin.line,
                                                   .col = m->begin.col});
-  highlight_matches(buffer_view->buffer, g_current_replace.matches,
-                    g_current_replace.nmatches, 0);
 
   struct binding bindings[] = {
       ANONYMOUS_BINDING(None, 'y', &replace_next_command),
@@ -253,13 +309,11 @@ static int32_t replace(struct command_ctx ctx, int argc, const char *argv[]) {
   struct keymap km = keymap_create("replace", 8);
   keymap_bind_keys(&km, bindings, sizeof(bindings) / sizeof(bindings[0]));
   g_current_replace.keymap_id = buffer_add_keymap(minibuffer_buffer(), km);
+  g_current_replace.highlight_hook =
+      buffer_add_update_hook(buffer_view->buffer, replace_highlight_hook, NULL);
 
   return minibuffer_prompt(ctx, "replace? [yn] ");
 }
-
-static char *g_last_search = NULL;
-static bool g_last_search_interactive = false;
-static buffer_keymap_id g_search_keymap;
 
 const char *search_prompt(bool reverse) {
   const char *txt = "search (down): ";
@@ -275,96 +329,98 @@ struct closest_match {
   struct region closest;
 };
 
-static struct closest_match find_closest(struct buffer_view *view,
-                                         const char *pattern, bool highlight,
-                                         bool reverse) {
-  struct region *matches = NULL;
-  uint32_t nmatches = 0;
-  struct closest_match res = {
-      .found = false,
-      .closest = {0},
-  };
-
-  buffer_find(view->buffer, pattern, &matches, &nmatches);
-
-  // find the "nearest" match
-  if (nmatches > 0) {
-    res.found = true;
-    struct region *closest = &matches[0];
-    int64_t closest_dist = INT64_MAX;
-    for (uint32_t matchi = 0; matchi < nmatches; ++matchi) {
-      struct region *m = &matches[matchi];
-
-      if (highlight) {
-        buffer_add_text_property(
-            view->buffer, m->begin, m->end,
-            (struct text_property){.type = TextProperty_Colors,
-                                   .colors = (struct text_property_colors){
-                                       .set_bg = true,
-                                       .bg = 6,
-                                       .set_fg = true,
-                                       .fg = 0,
-                                   }});
-      }
-      int res = location_compare(m->begin, view->dot);
-      uint64_t dist = matchdist(m, view->dot);
-      if (((res < 0 && reverse) || (res > 0 && !reverse)) &&
-          dist < closest_dist) {
-        closest_dist = dist;
-        closest = m;
-      }
+static struct region *find_closest(struct region *matches, uint32_t nmatches,
+                                   struct location dot, bool reverse,
+                                   uint32_t *closest_idx) {
+  struct region *closest = &matches[0];
+  *closest_idx = 0;
+  uint64_t closest_dist = UINT64_MAX;
+  for (uint32_t matchi = 0; matchi < nmatches; ++matchi) {
+    struct region *m = &matches[matchi];
+    int res = location_compare(m->begin, dot);
+    uint64_t dist = matchdist(m, dot);
+    if (((res < 0 && reverse) || (res > 0 && !reverse)) &&
+        dist < closest_dist) {
+      closest_dist = dist;
+      closest = m;
+      *closest_idx = matchi;
     }
-
-    if (highlight) {
-      buffer_add_text_property(
-          view->buffer, closest->begin, closest->end,
-          (struct text_property){.type = TextProperty_Colors,
-                                 .colors = (struct text_property_colors){
-                                     .set_bg = true,
-                                     .bg = 3,
-                                     .set_fg = true,
-                                     .fg = 0,
-                                 }});
-    }
-    res.closest = *closest;
   }
 
-  free(matches);
-  return res;
+  return closest;
 }
 
-void do_search(struct buffer_view *view, const char *pattern, bool reverse) {
-  g_last_search = strdup(pattern);
+static void do_search(struct buffer_view *view, const char *pattern,
+                      bool reverse) {
+  if (view->buffer != g_current_search.buffer) {
+    clear_search();
+  }
 
-  struct closest_match m = find_closest(view, pattern, true, reverse);
+  g_current_search.buffer = view->buffer;
+  g_current_search.active = true;
 
-  // find the "nearest" match
-  if (m.found) {
-    buffer_view_goto(view, (struct location){.line = m.closest.begin.line,
-                                             .col = m.closest.begin.col});
+  // if we are in a new buffer, add the update hook for it.
+  if (g_current_search.highlight_hook == (uint32_t)-1) {
+    g_current_search.highlight_hook =
+        buffer_add_update_hook(view->buffer, search_highlight_hook, NULL);
+  }
+
+  // replace the pattern if needed
+  if (g_current_search.pattern == NULL ||
+      !s8eq(s8(g_current_search.pattern), s8(pattern))) {
+    char *new_pattern = strdup(pattern);
+    free(g_current_search.pattern);
+    g_current_search.pattern = new_pattern;
+  }
+
+  // clear out any old search results first
+  if (g_current_search.matches != NULL) {
+    free(g_current_search.matches);
+    g_current_search.matches = NULL;
+    g_current_search.nmatches = 0;
+  }
+
+  buffer_find(view->buffer, g_current_search.pattern, &g_current_search.matches,
+              &g_current_search.nmatches);
+
+  if (g_current_search.nmatches > 0) {
+    // find the "nearest" match
+    uint32_t closest_idx = 0;
+    struct region *closest =
+        find_closest(g_current_search.matches, g_current_search.nmatches,
+                     view->dot, reverse, &closest_idx);
+    buffer_view_goto(view, closest->begin);
+    g_current_search.current_match = closest_idx;
   } else {
+    abort_search();
     minibuffer_echo_timeout(4, "%s not found", pattern);
   }
 }
 
+static const char *get_pattern() {
+  struct text_chunk content = minibuffer_content();
+  char *p = malloc(content.nbytes + 1);
+  memcpy(p, (const char *)content.text, content.nbytes);
+  p[content.nbytes] = '\0';
+  return (const char *)p;
+}
+
 int32_t search_interactive(struct command_ctx ctx, int argc,
                            const char *argv[]) {
-  g_last_search_interactive = true;
+  (void)argc;
+  (void)argv;
+
   const char *pattern = NULL;
   if (minibuffer_content().nbytes == 0) {
     // recall the last search, if any
-    if (g_last_search != NULL) {
-      struct buffer_view *view = window_buffer_view(minibuffer_window());
-      buffer_set_text(view->buffer, (uint8_t *)g_last_search,
-                      strlen(g_last_search));
-      pattern = g_last_search;
+    if (g_current_search.pattern != NULL) {
+      buffer_set_text(window_buffer(minibuffer_window()),
+                      (uint8_t *)g_current_search.pattern,
+                      strlen(g_current_search.pattern));
+      pattern = strdup(g_current_search.pattern);
     }
   } else {
-    struct text_chunk content = minibuffer_content();
-    char *p = malloc(content.nbytes + 1);
-    strncpy(p, (const char *)content.text, content.nbytes);
-    p[content.nbytes] = '\0';
-    pattern = p;
+    pattern = get_pattern();
   }
 
   minibuffer_set_prompt(search_prompt(*(bool *)ctx.userdata));
@@ -388,31 +444,27 @@ COMMAND_FN("search-backward", search_backward, search_interactive,
 int32_t find(struct command_ctx ctx, int argc, const char *argv[]) {
   bool reverse = *(bool *)ctx.userdata;
   if (argc == 0) {
-    g_last_search_interactive = false;
     struct binding bindings[] = {
         ANONYMOUS_BINDING(Ctrl, 'S', &search_forward_command),
         ANONYMOUS_BINDING(Ctrl, 'R', &search_backward_command),
     };
     struct keymap m = keymap_create("search", 8);
     keymap_bind_keys(&m, bindings, sizeof(bindings) / sizeof(bindings[0]));
-    g_search_keymap = buffer_add_keymap(minibuffer_buffer(), m);
+    g_current_search.keymap_id = buffer_add_keymap(minibuffer_buffer(), m);
     return minibuffer_prompt(ctx, search_prompt(reverse));
   }
 
-  buffer_remove_keymap(g_search_keymap);
-  if (g_last_search_interactive) {
-    g_last_search_interactive = false;
+  if (g_current_search.active) {
+    abort_search();
     return 0;
   }
 
-  struct text_chunk content = minibuffer_content();
-  char *pattern = malloc(content.nbytes + 1);
-  strncpy(pattern, (const char *)content.text, content.nbytes);
-  pattern[content.nbytes] = '\0';
+  buffer_remove_keymap(g_current_search.keymap_id);
+  do_search(window_buffer_view(ctx.active_window), argv[0], reverse);
 
-  do_search(window_buffer_view(ctx.active_window), pattern, reverse);
-  free(pattern);
-
+  if (g_current_search.active) {
+    abort_search();
+  }
   return 0;
 }
 
@@ -426,4 +478,14 @@ void register_search_replace_commands(struct commands *commands) {
   register_commands(commands, search_replace_commands,
                     sizeof(search_replace_commands) /
                         sizeof(search_replace_commands[0]));
+}
+
+void cleanup_search_replace(void) {
+  clear_search();
+  if (g_current_search.pattern != NULL) {
+    free(g_current_search.pattern);
+    g_current_search.pattern = NULL;
+  }
+
+  clear_replace();
 }

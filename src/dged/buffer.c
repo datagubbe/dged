@@ -61,7 +61,9 @@ static struct kill_ring {
     uint64_t found_at = -1;                                                    \
     VEC_FOR_EACH_INDEXED(hooks, struct name##_hook *h, idx) {                  \
       if (h->id == id) {                                                       \
-        callback(h->userdata);                                                 \
+        if (callback != NULL) {                                                \
+          callback(h->userdata);                                               \
+        }                                                                      \
         found_at = idx;                                                        \
         break;                                                                 \
       }                                                                        \
@@ -1073,6 +1075,8 @@ static void apply_properties(struct command_list *cmds,
       }
       break;
     }
+    case TextProperty_Data:
+      break;
     }
   }
 }

@@ -22,6 +22,7 @@
 
 int32_t _abort(struct command_ctx ctx, int argc, const char *argv[]) {
   abort_replace();
+  abort_search();
   abort_completion();
   disable_completion(minibuffer_buffer());
   minibuffer_abort_prompt();
@@ -253,6 +254,12 @@ void buffer_to_list_line(struct buffer *buffer, void *userdata) {
                                    .set_fg = true,
                                    .fg = Color_Blue,
                                }});
+
+    buffer_add_text_property(
+        listbuf, (struct location){.line = begin.line, .col = 0},
+        (struct location){.line = begin.line,
+                          .col = buffer_num_chars(listbuf, begin.line)},
+        (struct text_property){.type = TextProperty_Data, .userdata = buffer});
   }
 }
 
@@ -261,22 +268,18 @@ int32_t buflist_visit_cmd(struct command_ctx ctx, int argc,
   struct window *w = ctx.active_window;
 
   struct buffer_view *bv = window_buffer_view(w);
-  struct text_chunk text = buffer_line(bv->buffer, bv->dot.line);
+  struct text_property *props[16] = {0};
+  uint32_t nprops;
+  buffer_get_text_properties(bv->buffer, bv->dot, props, 16, &nprops);
 
-  char *end = (char *)memchr(text.text, ' ', text.nbytes);
-
-  if (end != NULL) {
-    uint32_t len = end - (char *)text.text;
-    char *bufname = (char *)malloc(len + 1);
-    strncpy(bufname, (const char *)text.text, len);
-    bufname[len] = '\0';
-
-    struct buffer *target = buffers_find(ctx.buffers, bufname);
-    free(bufname);
-    if (target != NULL) {
-      window_set_buffer(w, target);
+  for (uint32_t propi = 0; propi < nprops; ++propi) {
+    struct text_property *p = props[propi];
+    if (p->type == TextProperty_Data) {
+      window_set_buffer(w, p->userdata);
+      return 0;
     }
   }
+
   return 0;
 }
 
@@ -496,6 +499,8 @@ void register_global_commands(struct commands *commands,
 
   register_search_replace_commands(commands);
 }
+
+void teardown_global_commands(void) { cleanup_search_replace(); }
 
 #define BUFFER_VIEW_WRAPCMD(fn)                                                \
   static int32_t fn##_cmd(struct command_ctx ctx, int argc,                    \

@@ -479,8 +479,4 @@ void buffer_view_update(struct buffer_view *view,
   // draw buffer commands nested inside this command list
   command_list_draw_command_list(params->commands, buf_cmds);
   timer_stop(render_buffer_timer);
-
-  // TODO: move to somewhere where more correct if buffers
-  // are in more than one view (same with buffer hooks).
-  buffer_clear_text_properties(view->buffer);
 }
