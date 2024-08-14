@@ -82,7 +82,7 @@ bool reactor_poll_event(struct reactor *reactor, uint32_t ev_id) {
 uint32_t reactor_watch_file(struct reactor *reactor, const char *path,
                             uint32_t mask) {
   // TODO: change if we get more event types
-  mask = IN_MODIFY;
+  mask = IN_CLOSE_WRITE;
 
   int fd = inotify_add_watch(reactor->inotify_fd, path, mask);
   if (fd == -1) {
