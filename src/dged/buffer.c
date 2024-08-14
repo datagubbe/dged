@@ -1183,7 +1183,8 @@ void buffer_render(struct buffer *buffer, struct buffer_render_params *params) {
       .origin = params->origin,
       .width = params->width,
       .height = params->height,
-      .show_ws = show_ws != NULL ? show_ws->value.bool_value : true,
+      .show_ws = (show_ws != NULL ? show_ws->value.bool_value : true) &&
+                 !buffer->force_show_ws_off,
       .buffer = buffer,
   };
   text_for_each_line(buffer->text, params->origin.line, params->height,

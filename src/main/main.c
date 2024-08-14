@@ -34,6 +34,12 @@
 #include "completion.h"
 #include "version.h"
 
+/* welcome.h is generated from welcome.inc with
+ * xxd -n welcome_text -i <path-to-welcome.inc> <path-to-welcome.h>
+ * or similar.
+ */
+#include "welcome.h"
+
 static struct frame_allocator frame_allocator;
 
 void *frame_alloc(size_t sz) {
@@ -311,10 +317,9 @@ int main(int argc, char *argv[]) {
     free((void *)filename);
     free((void *)absfile);
   } else {
-    const char *welcome_txt =
-        "Welcome to the editor for datagubbar and datagummor 👴👵\n";
-    buffer_set_text(&initial_buffer, (uint8_t *)welcome_txt,
-                    strlen(welcome_txt));
+    initial_buffer.force_show_ws_off = true;
+    buffer_set_readonly(&initial_buffer, true);
+    buffer_set_text(&initial_buffer, (uint8_t *)welcome_text, welcome_text_len);
   }
 
   struct buffer *ib = buffers_add(&buflist, initial_buffer);
