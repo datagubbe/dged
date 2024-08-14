@@ -84,13 +84,7 @@ uint32_t reactor_watch_file(struct reactor *reactor, const char *path,
   // TODO: change if we get more event types
   mask = IN_CLOSE_WRITE;
 
-  int fd = inotify_add_watch(reactor->inotify_fd, path, mask);
-  if (fd == -1) {
-    minibuffer_echo_timeout(4, "failed to watch %s: %s", path, strerror(errno));
-    return 0;
-  }
-
-  return (uint32_t)fd;
+  return (uint32_t)inotify_add_watch(reactor->inotify_fd, path, mask);
 }
 
 void reactor_unwatch_file(struct reactor *reactor, uint32_t id) {

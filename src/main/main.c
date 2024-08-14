@@ -125,7 +125,10 @@ void update_file_watches(struct reactor *reactor) {
       message("re-watching: %s", w->buffer->filename);
       w->watch_id =
           reactor_watch_file(reactor, w->buffer->filename, FileWritten);
-      reload_buffer(w->buffer);
+
+      if (w->watch_id != INVALID_WATCH) {
+        reload_buffer(w->buffer);
+      }
     }
   }
 }
