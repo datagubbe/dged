@@ -219,7 +219,6 @@ static void buffer_read_from_file(struct buffer *b) {
     }
 
     fclose(file);
-    b->last_write = sb.st_mtim;
 
     // if last line is empty, remove it
     strip_final_newline(b);
