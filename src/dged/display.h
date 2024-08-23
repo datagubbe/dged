@@ -238,7 +238,7 @@ void command_list_draw_text_copy(struct command_list *list, uint32_t col,
  * @param nrepeat Number of times to repeat byte.
  */
 void command_list_draw_repeated(struct command_list *list, uint32_t col,
-                                uint32_t row, int32_t c, uint32_t nrepeat);
+                                uint32_t row, uint32_t c, uint32_t nrepeat);
 
 void command_list_draw_command_list(struct command_list *list,
                                     struct command_list *to_draw);

@@ -295,13 +295,13 @@ struct location buffer_end(struct buffer *buffer);
 uint32_t buffer_num_lines(struct buffer *buffer);
 
 /**
- * Get the number of chars in a given line in buffer.
+ * Get the line length in number of column positions.
  *
  * @param [in] buffer The buffer to use.
- * @param [in] line The line to get number of chars for.
- * @returns The number of chars in @ref line.
+ * @param [in] line The line to get number of columns for.
+ * @returns The number of column positions in the current line.
  */
-uint32_t buffer_num_chars(struct buffer *buffer, uint32_t line);
+uint32_t buffer_line_length(struct buffer *buffer, uint32_t line);
 
 /**
  * Insert a newline in the buffer.
@@ -555,6 +555,13 @@ uint32_t buffer_add_reload_hook(struct buffer *buffer, reload_hook_cb callback,
 void buffer_remove_reload_hook(struct buffer *buffer, uint32_t hook_id,
                                remove_hook_cb callback);
 
+struct edit_location {
+  struct region coordinates;
+  struct region bytes;
+  uint64_t global_byte_begin;
+  uint64_t global_byte_end;
+};
+
 /**
  * Buffer insert hook callback function.
  *
@@ -565,9 +572,8 @@ void buffer_remove_reload_hook(struct buffer *buffer, uint32_t hook_id,
  * @param end_idx The global byte offset to the end of where text was inserted.
  * @param userdata The userdata as sent in to @ref buffer_add_insert_hook.
  */
-typedef void (*insert_hook_cb)(struct buffer *buffer, struct region inserted,
-                               uint32_t begin_idx, uint32_t end_idx,
-                               void *userdata);
+typedef void (*insert_hook_cb)(struct buffer *buffer,
+                               struct edit_location inserted, void *userdata);
 
 /**
  * Add an insert hook, called when text is inserted into the @p buffer.
@@ -600,9 +606,8 @@ void buffer_remove_insert_hook(struct buffer *buffer, uint32_t hook_id,
  * @param end_idx The global byte offset to the end of the removed text.
  * @param userdata The userdata as sent in to @ref buffer_add_delete_hook.
  */
-typedef void (*delete_hook_cb)(struct buffer *buffer, struct region removed,
-                               uint32_t begin_idx, uint32_t end_idx,
-                               void *userdata);
+typedef void (*delete_hook_cb)(struct buffer *buffer,
+                               struct edit_location removed, void *userdata);
 
 /**
  * Add a delete hook, called when text is removed from the @p buffer.
@@ -724,10 +729,6 @@ void buffer_update(struct buffer *buffer, struct buffer_update_params *params);
  */
 void buffer_render(struct buffer *buffer, struct buffer_render_params *params);
 
-// TODO: move this to where it makes sense
-uint32_t visual_string_width(uint8_t *txt, uint32_t len, uint32_t start_col,
-                             uint32_t end_col);
-
 /**
  * Sort lines in a buffer alphabetically.
  *
@@ -737,5 +738,20 @@ uint32_t visual_string_width(uint8_t *txt, uint32_t len, uint32_t start_col,
  */
 void buffer_sort_lines(struct buffer *buffer, uint32_t start_line,
                        uint32_t end_line);
+
+struct location buffer_location_to_byte_coords(struct buffer *buffer,
+                                               struct location coords);
+
+struct match_result {
+  struct location at;
+  bool found;
+};
+
+struct match_result
+buffer_find_prev_in_line(struct buffer *buffer, struct location start,
+                         bool (*predicate)(const struct codepoint *c));
+struct match_result
+buffer_find_next_in_line(struct buffer *buffer, struct location start,
+                         bool (*predicate)(const struct codepoint *c));
 
 #endif

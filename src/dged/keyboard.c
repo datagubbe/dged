@@ -78,20 +78,24 @@ void parse_keys(uint8_t *bytes, uint32_t nbytes, struct key *out_keys,
       } else if (utf8_byte_is_unicode_continuation(b)) {
         // do nothing for these
       } else { // ascii char or unicode start byte (self-inserting)
-        uint32_t nb = utf8_byte_is_unicode_start(b)
-                          ? utf8_nbytes(bytes + bytei, nbytes - bytei, 1)
-                          : 1;
+        // TODO: do this better
+        struct utf8_codepoint_iterator iter =
+            create_utf8_codepoint_iterator(bytes + bytei, nbytes - bytei, 0);
+        struct codepoint *codepoint = utf8_next_codepoint(&iter);
+        if (codepoint != NULL) {
+          uint32_t nb = codepoint->nbytes;
 
-        // "compress" number of keys if previous key was also a
-        // "simple" key
-        if (prev_kp != NULL && prev_kp->mod == None) {
-          prev_kp->end += nb;
-        } else {
-          kp->mod = None;
-          kp->key = b;
-          kp->start = bytei;
-          kp->end = bytei + nb;
-          ++nkps;
+          // "compress" number of keys if previous key was also a
+          // "simple" key
+          if (prev_kp != NULL && prev_kp->mod == None) {
+            prev_kp->end += nb;
+          } else {
+            kp->mod = None;
+            kp->key = b;
+            kp->start = bytei;
+            kp->end = bytei + nb;
+            ++nkps;
+          }
         }
       }
     }

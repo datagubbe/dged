@@ -10,6 +10,8 @@
 , valgrind
 , linkFarm
 , fetchFromGitHub
+, glibcLocalesUtf8
+, strace
 }:
 stdenv.mkDerivation {
   name = "dged";
@@ -31,6 +33,9 @@ stdenv.mkDerivation {
     CFLAGS=-O2 bmake dged
     bmake docs
   '';
+
+  # needed for tests to work in sandboxed builds
+  LOCALE_ARCHIVE = "${glibcLocalesUtf8}/lib/locale/locale-archive";
 
   TREESITTER_GRAMMARS = with tree-sitter-grammars;
     linkFarm "tree-sitter-grammars" rec {

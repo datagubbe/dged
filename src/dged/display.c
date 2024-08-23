@@ -60,7 +60,7 @@ struct push_fmt_cmd {
 struct repeat_cmd {
   uint32_t col;
   uint32_t row;
-  int32_t c;
+  uint32_t c;
   uint32_t nrepeat;
 };
 
@@ -135,21 +135,7 @@ void display_destroy(struct display *display) {
 uint32_t display_width(struct display *display) { return display->width; }
 uint32_t display_height(struct display *display) { return display->height; }
 
-void putch(uint8_t c) {
-  // TODO: move this to buffer rendering
-  if (c < ' ') {
-    fprintf(stdout, "^%c", c + 0x40);
-  } else if (c == 0x7f) {
-    fprintf(stdout, "^?");
-  } else if (utf8_byte_is_unicode_start(c) ||
-             utf8_byte_is_unicode_continuation(c)) {
-    putc(c, stdout);
-  } else if (c >= ' ' && c < 0x7f) {
-    putc(c, stdout);
-  } else {
-    fprintf(stdout, "|0x%02x|", c);
-  }
-}
+void putch(uint8_t c) { putc(c, stdout); }
 
 static void apply_fmt(uint8_t *fmt_stack, uint32_t fmt_stack_len) {
   if (fmt_stack == NULL || fmt_stack_len == 0) {
@@ -164,6 +150,7 @@ static void apply_fmt(uint8_t *fmt_stack, uint32_t fmt_stack_len) {
 
 void putch_ws(uint8_t c, bool show_whitespace, uint8_t *fmt_stack,
               uint32_t fmt_stack_len) {
+  // TODO: tab width needs to be sent here
   if (show_whitespace && c == '\t') {
     fputs("\x1b[90m →  \x1b[39m", stdout);
     apply_fmt(fmt_stack, fmt_stack_len);
@@ -295,7 +282,7 @@ void command_list_draw_text_copy(struct command_list *list, uint32_t col,
 }
 
 void command_list_draw_repeated(struct command_list *list, uint32_t col,
-                                uint32_t row, int32_t c, uint32_t nrepeat) {
+                                uint32_t row, uint32_t c, uint32_t nrepeat) {
   struct repeat_cmd *cmd = add_command(list, RenderCommand_Repeat)->repeat;
   cmd->col = col;
   cmd->row = row;
@@ -401,10 +388,14 @@ void display_render(struct display *display,
         display_move_cursor(display, repeat_cmd->row + cl->yoffset,
                             repeat_cmd->col + cl->xoffset);
         apply_fmt(fmt_stack, fmt_stack_len);
-        uint32_t nbytes = utf8_nbytes((uint8_t *)&repeat_cmd->c, 4, 1);
-        for (uint32_t i = 0; i < repeat_cmd->nrepeat; ++i) {
-          putbytes((uint8_t *)&repeat_cmd->c, nbytes, show_whitespace_state,
-                   fmt_stack, fmt_stack_len);
+        struct utf8_codepoint_iterator iter =
+            create_utf8_codepoint_iterator((uint8_t *)&repeat_cmd->c, 4, 0);
+        struct codepoint *codepoint = utf8_next_codepoint(&iter);
+        if (codepoint != NULL) {
+          for (uint32_t i = 0; i < repeat_cmd->nrepeat; ++i) {
+            putbytes((uint8_t *)&repeat_cmd->c, codepoint->nbytes,
+                     show_whitespace_state, fmt_stack, fmt_stack_len);
+          }
         }
         break;
       }

@@ -128,7 +128,7 @@ void buffer_view_backward_nlines(struct buffer_view *view, uint32_t nlines) {
 }
 
 void buffer_view_goto_end_of_line(struct buffer_view *view) {
-  view->dot.col = buffer_num_chars(view->buffer, view->dot.line);
+  view->dot.col = buffer_line_length(view->buffer, view->dot.line);
 }
 
 void buffer_view_goto_beginning_of_line(struct buffer_view *view) {
@@ -224,15 +224,22 @@ void buffer_view_delete_word(struct buffer_view *view) {
 }
 
 void buffer_view_kill_line(struct buffer_view *view) {
-  uint32_t nchars =
-      buffer_num_chars(view->buffer, view->dot.line) - view->dot.col;
-  if (nchars == 0) {
-    nchars = 1;
+  uint32_t ncols =
+      buffer_line_length(view->buffer, view->dot.line) - view->dot.col;
+
+  uint32_t line = view->dot.line;
+  uint32_t col = view->dot.col + ncols;
+
+  // kill the newline if we are at the end of the line
+  if (ncols == 0) {
+    struct location loc = buffer_next_char(view->buffer, view->dot);
+    line = loc.line;
+    col = loc.col;
   }
 
   struct region reg = region_new(view->dot, (struct location){
-                                                .line = view->dot.line,
-                                                .col = view->dot.col + nchars,
+                                                .line = line,
+                                                .col = col,
                                             });
 
   buffer_cut(view->buffer, reg);
@@ -241,7 +248,8 @@ void buffer_view_kill_line(struct buffer_view *view) {
 void buffer_view_sort_lines(struct buffer_view *view) {
   struct region reg = region_new(view->dot, view->mark);
   if (view->mark_set && region_has_size(reg)) {
-    if (reg.end.line > 0 && buffer_num_chars(view->buffer, reg.end.line) == 0) {
+    if (reg.end.line > 0 &&
+        buffer_line_length(view->buffer, reg.end.line) == 0) {
       reg.end.line -= 1;
     }
 
@@ -271,21 +279,7 @@ struct location buffer_view_dot_to_relative(struct buffer_view *view) {
 }
 
 struct location buffer_view_dot_to_visual(struct buffer_view *view) {
-  // calculate visual column index for dot column
-  struct text_chunk c = buffer_line(view->buffer, view->dot.line);
-  uint32_t width = visual_string_width(c.text, c.nbytes, 0, view->dot.col);
-  if (view->scroll.col > 0) {
-    width -= visual_string_width(c.text, c.nbytes, 0, view->scroll.col);
-  }
-
-  struct location l = buffer_view_dot_to_relative(view);
-  l.col = width + view->fringe_width;
-
-  if (c.allocated) {
-    free(c.text);
-  }
-
-  return l;
+  return buffer_view_dot_to_relative(view);
 }
 
 void buffer_view_undo(struct buffer_view *view) {

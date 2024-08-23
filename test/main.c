@@ -9,7 +9,9 @@
 void handle_abort() { exit(1); }
 
 int main() {
-  setlocale(LC_ALL, "");
+  // Use a hardcoded locale to get a
+  // predictable env.
+  setlocale(LC_ALL, "en_US.UTF-8");
   signal(SIGABRT, handle_abort);
 
   struct timespec test_begin;
@@ -52,5 +54,6 @@ int main() {
       ((uint64_t)test_begin.tv_sec * 1e9 + (uint64_t)test_begin.tv_nsec);
   printf("\n🎉 \x1b[1;32mDone! All tests successful in %.2f ms!\x1b[0m\n",
          (double)elapsed_nanos / 1e6);
+
   return 0;
 }

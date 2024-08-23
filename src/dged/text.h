@@ -6,9 +6,16 @@
 #include <stdint.h>
 
 #include "location.h"
+#include "utf8.h"
 
 struct text;
-struct render_command;
+
+struct text_chunk {
+  uint8_t *text;
+  uint32_t nbytes;
+  uint32_t line;
+  bool allocated;
+};
 
 struct text *text_create(uint32_t initial_capacity);
 void text_destroy(struct text *text);
@@ -18,31 +25,21 @@ void text_destroy(struct text *text);
  */
 void text_clear(struct text *text);
 
-void text_insert_at(struct text *text, uint32_t line, uint32_t col,
-                    uint8_t *bytes, uint32_t nbytes, uint32_t *lines_added,
-                    uint32_t *cols_added);
+void text_insert_at(struct text *text, uint32_t line, uint32_t offset,
+                    uint8_t *bytes, uint32_t nbytes, uint32_t *lines_added);
 
 void text_append(struct text *text, uint8_t *bytes, uint32_t nbytes,
-                 uint32_t *lines_added, uint32_t *cols_added);
+                 uint32_t *lines_added);
 
-void text_delete(struct text *text, uint32_t start_line, uint32_t start_col,
-                 uint32_t end_line, uint32_t end_col);
+void text_delete(struct text *text, uint32_t start_line, uint32_t start_offset,
+                 uint32_t end_line, uint32_t end_offset);
 
-uint32_t text_num_lines(struct text *text);
-uint32_t text_line_length(struct text *text, uint32_t lineidx);
-uint32_t text_line_size(struct text *text, uint32_t lineidx);
-uint32_t text_col_to_byteindex(struct text *text, uint32_t line, uint32_t col);
-uint32_t text_byteindex_to_col(struct text *text, uint32_t line,
-                               uint32_t byteindex);
-uint32_t text_global_idx(struct text *text, uint32_t line, uint32_t col);
-
-struct text_chunk {
-  uint8_t *text;
-  uint32_t nbytes;
-  uint32_t nchars;
-  uint32_t line;
-  bool allocated;
-};
+uint32_t text_num_lines(const struct text *text);
+uint32_t text_line_size(const struct text *text, uint32_t lineidx);
+struct utf8_codepoint_iterator
+text_line_codepoint_iterator(const struct text *text, uint32_t lineidx);
+struct utf8_codepoint_iterator
+text_chunk_codepoint_iterator(const struct text_chunk *chunk);
 
 typedef void (*chunk_cb)(struct text_chunk *chunk, void *userdata);
 void text_for_each_line(struct text *text, uint32_t line, uint32_t nlines,
@@ -52,10 +49,8 @@ void text_for_each_chunk(struct text *text, chunk_cb callback, void *userdata);
 
 struct text_chunk text_get_line(struct text *text, uint32_t line);
 struct text_chunk text_get_region(struct text *text, uint32_t start_line,
-                                  uint32_t start_col, uint32_t end_line,
-                                  uint32_t end_col);
-
-bool text_line_contains_unicode(struct text *text, uint32_t line);
+                                  uint32_t start_offset, uint32_t end_line,
+                                  uint32_t end_offset);
 
 enum text_property_type {
   TextProperty_Colors,
@@ -77,10 +72,11 @@ struct text_property {
   };
 };
 
-void text_add_property(struct text *text, struct location start,
-                       struct location end, struct text_property property);
+void text_add_property(struct text *text, uint32_t start_line,
+                       uint32_t start_offset, uint32_t end_line,
+                       uint32_t end_offset, struct text_property property);
 
-void text_get_properties(struct text *text, struct location location,
+void text_get_properties(struct text *text, uint32_t line, uint32_t offset,
                          struct text_property **properties,
                          uint32_t max_nproperties, uint32_t *nproperties);
 

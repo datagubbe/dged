@@ -258,7 +258,7 @@ void buffer_to_list_line(struct buffer *buffer, void *userdata) {
     buffer_add_text_property(
         listbuf, (struct location){.line = begin.line, .col = 0},
         (struct location){.line = begin.line,
-                          .col = buffer_num_chars(listbuf, begin.line)},
+                          .col = buffer_line_length(listbuf, begin.line)},
         (struct text_property){.type = TextProperty_Data, .userdata = buffer});
   }
 }

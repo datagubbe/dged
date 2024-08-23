@@ -40,6 +40,11 @@ static struct buffer *g_target_buffer = NULL;
 
 static void hide_completion();
 
+static bool is_space(const struct codepoint *c) {
+  // TODO: utf8 whitespace and other whitespace
+  return c->codepoint == ' ';
+}
+
 static uint32_t complete_path(struct completion_context ctx, void *userdata);
 static struct completion_provider g_path_provider = {
     .name = "path",
@@ -214,32 +219,30 @@ static void update_completions(struct buffer *buffer,
   }
 }
 
-static void on_buffer_delete(struct buffer *buffer, struct region deleted,
-                             uint32_t start_idx, uint32_t end_idx,
-                             void *userdata) {
+static void on_buffer_delete(struct buffer *buffer,
+                             struct edit_location deleted, void *userdata) {
   struct active_completion_ctx *ctx = (struct active_completion_ctx *)userdata;
 
   if (g_state.active) {
-    update_completions(buffer, ctx, deleted.begin);
+    update_completions(buffer, ctx, deleted.coordinates.begin);
   }
 }
 
-static void on_buffer_insert(struct buffer *buffer, struct region inserted,
-                             uint32_t start_idx, uint32_t end_idx,
-                             void *userdata) {
+static void on_buffer_insert(struct buffer *buffer,
+                             struct edit_location inserted, void *userdata) {
   struct active_completion_ctx *ctx = (struct active_completion_ctx *)userdata;
 
   if (!g_state.active) {
     uint32_t nchars = 0;
     switch (ctx->trigger.kind) {
     case CompletionTrigger_Input:
-      for (uint32_t line = inserted.begin.line; line <= inserted.end.line;
-           ++line) {
-        nchars += buffer_num_chars(buffer, line);
+      for (uint32_t line = inserted.coordinates.begin.line;
+           line <= inserted.coordinates.end.line; ++line) {
+        nchars += buffer_line_length(buffer, line);
       }
-      nchars -=
-          inserted.begin.col +
-          (buffer_num_chars(buffer, inserted.end.line) - inserted.end.col);
+      nchars -= inserted.coordinates.begin.col +
+                (buffer_line_length(buffer, inserted.coordinates.end.line) -
+                 inserted.coordinates.end.col);
 
       ctx->trigger_current_nchars += nchars;
 
@@ -260,16 +263,16 @@ static void on_buffer_insert(struct buffer *buffer, struct region inserted,
     g_state.ctx = ctx;
   }
 
-  update_completions(buffer, ctx, inserted.end);
+  update_completions(buffer, ctx, inserted.coordinates.end);
 }
 
 static void update_completion_buffer(struct buffer *buffer, void *userdata) {
   buffer_add_text_property(
       g_target_buffer,
       (struct location){.line = g_state.current_completion, .col = 0},
-      (struct location){
-          .line = g_state.current_completion,
-          .col = buffer_num_chars(g_target_buffer, g_state.current_completion)},
+      (struct location){.line = g_state.current_completion,
+                        .col = buffer_line_length(g_target_buffer,
+                                                  g_state.current_completion)},
       (struct text_property){.type = TextProperty_Colors,
                              .colors = (struct text_property_colors){
                                  .set_bg = false,
@@ -433,26 +436,18 @@ static uint32_t complete_path(struct completion_context ctx, void *userdata) {
   if (ctx.buffer == minibuffer_buffer()) {
     txt = minibuffer_content();
   } else {
-    txt = buffer_line(ctx.buffer, ctx.location.line);
-    uint32_t end_idx = text_col_to_byteindex(
-        ctx.buffer->text, ctx.location.line, ctx.location.col);
-
-    for (uint32_t bytei = end_idx; bytei > 0; --bytei) {
-      if (txt.text[bytei] == ' ') {
-        start_idx = bytei + 1;
-        break;
-      }
-    }
-
-    if (start_idx >= end_idx) {
+    struct match_result start =
+        buffer_find_prev_in_line(ctx.buffer, ctx.location, is_space);
+    if (!start.found) {
+      start.at = (struct location){.line = ctx.location.line, .col = 0};
       return 0;
     }
-
-    txt.nbytes = end_idx - start_idx;
+    txt = buffer_region(ctx.buffer, region_new(start.at, ctx.location));
   }
 
-  char *path = calloc(txt.nbytes + 1, sizeof(uint8_t));
-  memcpy(path, txt.text + start_idx, txt.nbytes);
+  char *path = calloc(txt.nbytes + 1, sizeof(char));
+  memcpy(path, txt.text, txt.nbytes);
+  path[txt.nbytes] = '\0';
 
   if (txt.allocated) {
     free(txt.text);
@@ -562,25 +557,18 @@ static uint32_t complete_buffers(struct completion_context ctx,
   if (ctx.buffer == minibuffer_buffer()) {
     txt = minibuffer_content();
   } else {
-    txt = buffer_line(ctx.buffer, ctx.location.line);
-    uint32_t end_idx = text_col_to_byteindex(
-        ctx.buffer->text, ctx.location.line, ctx.location.col);
-    for (uint32_t bytei = end_idx; bytei > 0; --bytei) {
-      if (txt.text[bytei] == ' ') {
-        start_idx = bytei + 1;
-        break;
-      }
-    }
-
-    if (start_idx >= end_idx) {
+    struct match_result start =
+        buffer_find_prev_in_line(ctx.buffer, ctx.location, is_space);
+    if (!start.found) {
+      start.at = (struct location){.line = ctx.location.line, .col = 0};
       return 0;
     }
-
-    txt.nbytes = end_idx - start_idx;
+    txt = buffer_region(ctx.buffer, region_new(start.at, ctx.location));
   }
 
-  char *needle = calloc(txt.nbytes + 1, sizeof(uint8_t));
-  memcpy(needle, txt.text + start_idx, txt.nbytes);
+  char *needle = calloc(txt.nbytes + 1, sizeof(char));
+  memcpy(needle, txt.text, txt.nbytes);
+  needle[txt.nbytes] = '\0';
 
   if (txt.allocated) {
     free(txt.text);
@@ -619,31 +607,23 @@ static uint32_t complete_commands(struct completion_context ctx,
   if (commands == NULL) {
     return 0;
   }
-
   struct text_chunk txt = {0};
   uint32_t start_idx = 0;
   if (ctx.buffer == minibuffer_buffer()) {
     txt = minibuffer_content();
   } else {
-    txt = buffer_line(ctx.buffer, ctx.location.line);
-    uint32_t end_idx = text_col_to_byteindex(
-        ctx.buffer->text, ctx.location.line, ctx.location.col);
-    for (uint32_t bytei = end_idx; bytei > 0; --bytei) {
-      if (txt.text[bytei] == ' ') {
-        start_idx = bytei + 1;
-        break;
-      }
-    }
-
-    if (start_idx >= end_idx) {
+    struct match_result start =
+        buffer_find_prev_in_line(ctx.buffer, ctx.location, is_space);
+    if (!start.found) {
+      start.at = (struct location){.line = ctx.location.line, .col = 0};
       return 0;
     }
-
-    txt.nbytes = end_idx - start_idx;
+    txt = buffer_region(ctx.buffer, region_new(start.at, ctx.location));
   }
 
-  char *needle = calloc(txt.nbytes + 1, sizeof(uint8_t));
-  memcpy(needle, txt.text + start_idx, txt.nbytes);
+  char *needle = calloc(txt.nbytes + 1, sizeof(char));
+  memcpy(needle, txt.text, txt.nbytes);
+  needle[txt.nbytes] = '\0';
 
   if (txt.allocated) {
     free(txt.text);

@@ -18,7 +18,6 @@ struct line {
   uint8_t *data;
   uint8_t flags;
   uint32_t nbytes;
-  uint32_t nchars;
 };
 
 struct text_property_entry {
@@ -54,11 +53,9 @@ void text_destroy(struct text *text) {
     text->lines[li].data = NULL;
     text->lines[li].flags = 0;
     text->lines[li].nbytes = 0;
-    text->lines[li].nchars = 0;
   }
 
   free(text->lines);
-
   free(text);
 }
 
@@ -68,68 +65,25 @@ void text_clear(struct text *text) {
     text->lines[li].data = NULL;
     text->lines[li].flags = 0;
     text->lines[li].nbytes = 0;
-    text->lines[li].nchars = 0;
   }
 
   text->nlines = 0;
   text_clear_properties(text);
 }
 
-// given `char_idx` as a character index, return the byte index
-uint32_t charidx_to_byteidx(struct line *line, uint32_t char_idx) {
-  if (line->nchars == 0) {
-    return 0;
+struct utf8_codepoint_iterator
+text_line_codepoint_iterator(const struct text *text, uint32_t lineidx) {
+  if (lineidx >= text_num_lines(text)) {
+    return create_utf8_codepoint_iterator(NULL, 0, 0);
   }
 
-  if (char_idx > line->nchars) {
-    return line->nbytes - 1;
-  }
-
-  return utf8_nbytes(line->data, line->nbytes, char_idx);
+  return create_utf8_codepoint_iterator(text->lines[lineidx].data,
+                                        text->lines[lineidx].nbytes, 0);
 }
 
-uint32_t text_col_to_byteindex(struct text *text, uint32_t line, uint32_t col) {
-  return charidx_to_byteidx(&text->lines[line], col);
-}
-
-// given `byte_idx` as a byte index, return the character index
-uint32_t byteidx_to_charidx(struct line *line, uint32_t byte_idx) {
-  if (byte_idx > line->nbytes) {
-    return line->nchars;
-  }
-
-  return utf8_nchars(line->data, byte_idx);
-}
-
-uint32_t text_byteindex_to_col(struct text *text, uint32_t line,
-                               uint32_t byteindex) {
-  return byteidx_to_charidx(&text->lines[line], byteindex);
-}
-
-uint32_t text_global_idx(struct text *text, uint32_t line, uint32_t col) {
-  uint32_t byteoff = 0;
-  uint32_t nlines = text_num_lines(text);
-
-  if (nlines == 0) {
-    return 0;
-  }
-
-  for (uint32_t l = 0; l < line && l < nlines; ++l) {
-    // +1 for newline
-    byteoff += text_line_size(text, l) + 1;
-  }
-
-  uint32_t l = line < nlines ? line : nlines - 1;
-  uint32_t nchars = text_line_length(text, l);
-  uint32_t c = col < nchars ? col : nchars;
-  byteoff += text_col_to_byteindex(text, l, c);
-
-  if (col > nchars) {
-    // account for newline
-    ++byteoff;
-  }
-
-  return byteoff;
+struct utf8_codepoint_iterator
+text_chunk_codepoint_iterator(const struct text_chunk *chunk) {
+  return create_utf8_codepoint_iterator(chunk->text, chunk->nbytes, 0);
 }
 
 void append_empty_lines(struct text *text, uint32_t numlines) {
@@ -145,16 +99,9 @@ void append_empty_lines(struct text *text, uint32_t numlines) {
     struct line *nline = &text->lines[text->nlines];
     nline->data = NULL;
     nline->nbytes = 0;
-    nline->nchars = 0;
     nline->flags = 0;
 
     ++text->nlines;
-  }
-
-  if (text->nlines > text->capacity) {
-    printf("text->nlines: %d, text->capacity: %d\n", text->nlines,
-           text->capacity);
-    raise(SIGTRAP);
   }
 }
 
@@ -166,8 +113,8 @@ void ensure_line(struct text *text, uint32_t line) {
 
 // It is assumed that `data` does not contain any \n, that is handled by
 // higher-level functions
-void insert_at(struct text *text, uint32_t line, uint32_t col, uint8_t *data,
-               uint32_t len, uint32_t nchars) {
+static void insert_at(struct text *text, uint32_t line, uint32_t offset,
+                      uint8_t *data, uint32_t len) {
 
   if (len == 0) {
     return;
@@ -178,11 +125,10 @@ void insert_at(struct text *text, uint32_t line, uint32_t col, uint8_t *data,
   struct line *l = &text->lines[line];
 
   l->nbytes += len;
-  l->nchars += nchars;
   l->flags = LineChanged;
   l->data = realloc(l->data, l->nbytes);
 
-  uint32_t bytei = charidx_to_byteidx(l, col);
+  uint32_t bytei = offset;
 
   // move following bytes out of the way
   if (bytei + len < l->nbytes) {
@@ -194,15 +140,7 @@ void insert_at(struct text *text, uint32_t line, uint32_t col, uint8_t *data,
   memcpy(l->data + bytei, data, len);
 }
 
-uint32_t text_line_length(struct text *text, uint32_t lineidx) {
-  if (lineidx >= text_num_lines(text)) {
-    return 0;
-  }
-
-  return text->lines[lineidx].nchars;
-}
-
-uint32_t text_line_size(struct text *text, uint32_t lineidx) {
+uint32_t text_line_size(const struct text *text, uint32_t lineidx) {
   if (lineidx >= text_num_lines(text)) {
     return 0;
   }
@@ -210,20 +148,19 @@ uint32_t text_line_size(struct text *text, uint32_t lineidx) {
   return text->lines[lineidx].nbytes;
 }
 
-uint32_t text_num_lines(struct text *text) { return text->nlines; }
+uint32_t text_num_lines(const struct text *text) { return text->nlines; }
 
-void split_line(uint32_t col, struct line *line, struct line *next) {
+static void split_line(struct text *text, uint32_t offset, uint32_t lineidx,
+                       uint32_t newlineidx) {
+  struct line *line = &text->lines[lineidx];
+  struct line *next = &text->lines[newlineidx];
+
   uint8_t *data = line->data;
   uint32_t nbytes = line->nbytes;
-  uint32_t nchars = line->nchars;
-
-  uint32_t chari = col;
-  uint32_t bytei = charidx_to_byteidx(line, chari);
+  uint32_t bytei = offset;
 
   line->nbytes = bytei;
-  line->nchars = chari;
   next->nbytes = nbytes - bytei;
-  next->nchars = nchars - chari;
   line->flags = next->flags = line->flags;
 
   next->data = NULL;
@@ -260,7 +197,7 @@ void shift_lines(struct text *text, uint32_t start, int32_t direction) {
   memmove(dest, src, nlines * sizeof(struct line));
 }
 
-void new_line_at(struct text *text, uint32_t line, uint32_t col) {
+void new_line_at(struct text *text, uint32_t line, uint32_t offset) {
   ensure_line(text, line);
 
   uint32_t newline = line + 1;
@@ -274,7 +211,7 @@ void new_line_at(struct text *text, uint32_t line, uint32_t col) {
   }
 
   // split line if needed
-  split_line(col, &text->lines[line], &text->lines[newline]);
+  split_line(text, offset, line, newline);
 }
 
 void delete_line(struct text *text, uint32_t line) {
@@ -294,29 +231,25 @@ void delete_line(struct text *text, uint32_t line) {
   --text->nlines;
   text->lines[text->nlines].data = NULL;
   text->lines[text->nlines].nbytes = 0;
-  text->lines[text->nlines].nchars = 0;
 }
 
-void text_insert_at_inner(struct text *text, uint32_t line, uint32_t col,
-                          uint8_t *bytes, uint32_t nbytes,
-                          uint32_t *lines_added, uint32_t *cols_added) {
+static void text_insert_at_inner(struct text *text, uint32_t line,
+                                 uint32_t offset, uint8_t *bytes,
+                                 uint32_t nbytes, uint32_t *lines_added) {
   uint32_t linelen = 0, start_line = line;
 
-  *cols_added = 0;
   for (uint32_t bytei = 0; bytei < nbytes; ++bytei) {
     uint8_t byte = bytes[bytei];
     if (byte == '\n') {
       uint8_t *line_data = bytes + (bytei - linelen);
-      uint32_t nchars = utf8_nchars(line_data, linelen);
+      insert_at(text, line, offset, line_data, linelen);
 
-      insert_at(text, line, col, line_data, linelen, nchars);
-
-      col += nchars;
-      new_line_at(text, line, col);
+      offset += linelen;
+      new_line_at(text, line, offset);
 
       ++line;
       linelen = 0;
-      col = 0;
+      offset = 0;
     } else {
       ++linelen;
     }
@@ -325,30 +258,26 @@ void text_insert_at_inner(struct text *text, uint32_t line, uint32_t col,
   // handle remaining
   if (linelen > 0) {
     uint8_t *line_data = bytes + (nbytes - linelen);
-    uint32_t nchars = utf8_nchars(line_data, linelen);
-    insert_at(text, line, col, line_data, linelen, nchars);
-    *cols_added = nchars;
+    insert_at(text, line, offset, line_data, linelen);
   }
 
   *lines_added = line - start_line;
 }
 
 void text_append(struct text *text, uint8_t *bytes, uint32_t nbytes,
-                 uint32_t *lines_added, uint32_t *cols_added) {
+                 uint32_t *lines_added) {
   uint32_t line = text->nlines > 0 ? text->nlines - 1 : 0;
-  uint32_t col = text_line_length(text, line);
-
-  text_insert_at_inner(text, line, col, bytes, nbytes, lines_added, cols_added);
+  uint32_t offset = text_line_size(text, line);
+  text_insert_at_inner(text, line, offset, bytes, nbytes, lines_added);
 }
 
-void text_insert_at(struct text *text, uint32_t line, uint32_t col,
-                    uint8_t *bytes, uint32_t nbytes, uint32_t *lines_added,
-                    uint32_t *cols_added) {
-  text_insert_at_inner(text, line, col, bytes, nbytes, lines_added, cols_added);
+void text_insert_at(struct text *text, uint32_t line, uint32_t offset,
+                    uint8_t *bytes, uint32_t nbytes, uint32_t *lines_added) {
+  text_insert_at_inner(text, line, offset, bytes, nbytes, lines_added);
 }
 
-void text_delete(struct text *text, uint32_t start_line, uint32_t start_col,
-                 uint32_t end_line, uint32_t end_col) {
+void text_delete(struct text *text, uint32_t start_line, uint32_t start_offset,
+                 uint32_t end_line, uint32_t end_offset) {
 
   if (text->nlines == 0) {
     return;
@@ -362,45 +291,44 @@ void text_delete(struct text *text, uint32_t start_line, uint32_t start_col,
 
   if (end_line > maxline) {
     end_line = maxline;
-    end_col = text->lines[end_line].nchars;
+    end_offset = text_line_size(text, end_line);
   }
 
   struct line *firstline = &text->lines[start_line];
   struct line *lastline = &text->lines[end_line];
 
   // clamp column
-  if (start_col > firstline->nchars) {
-    start_col = firstline->nchars > 0 ? firstline->nchars - 1 : 0;
+  uint32_t firstline_len = text_line_size(text, start_line);
+  if (start_offset > firstline_len) {
+    start_offset = firstline_len > 0 ? firstline_len - 1 : 0;
   }
 
   // handle deletion of newlines
-  if (end_col > lastline->nchars) {
+  uint32_t lastline_len = text_line_size(text, end_line);
+  if (end_offset > lastline_len) {
     if (end_line + 1 < text->nlines) {
-      end_col = 0;
+      end_offset = 0;
       ++end_line;
       lastline = &text->lines[end_line];
     } else {
-      end_col = lastline->nchars;
+      end_offset = lastline_len;
     }
   }
 
-  uint32_t bytei = utf8_nbytes(lastline->data, lastline->nbytes, end_col);
+  uint32_t srcbytei = end_offset;
+  uint32_t dstbytei = start_offset;
+  uint32_t ncopy = lastline->nbytes - srcbytei;
   if (lastline == firstline) {
     // in this case we can "overwrite"
-    uint32_t dstbytei =
-        utf8_nbytes(firstline->data, firstline->nbytes, start_col);
-    memmove(firstline->data + dstbytei, lastline->data + bytei,
-            lastline->nbytes - bytei);
+    memmove(firstline->data + dstbytei, lastline->data + srcbytei, ncopy);
   } else {
     // otherwise we actually have to copy from the last line
-    insert_at(text, start_line, start_col, lastline->data + bytei,
-              lastline->nbytes - bytei, lastline->nchars - end_col);
+    insert_at(text, start_line, start_offset, lastline->data + srcbytei, ncopy);
   }
 
-  firstline->nchars = start_col + (lastline->nchars - end_col);
-  firstline->nbytes =
-      utf8_nbytes(firstline->data, firstline->nbytes, start_col) +
-      (lastline->nbytes - bytei);
+  // new byte count is whatever we had before (left of dstbytei)
+  // plus what we copied
+  firstline->nbytes = dstbytei + ncopy;
 
   // delete full lines, backwards to not shift old, crappy data upwards
   for (uint32_t linei = end_line >= text->nlines ? end_line - 1 : end_line;
@@ -429,7 +357,6 @@ void text_for_each_line(struct text *text, uint32_t line, uint32_t nlines,
         .allocated = false,
         .text = src_line->data,
         .nbytes = src_line->nbytes,
-        .nchars = src_line->nchars,
         .line = li,
     };
     callback(&line, userdata);
@@ -441,8 +368,8 @@ struct text_chunk text_get_line(struct text *text, uint32_t line) {
   return (struct text_chunk){
       .text = src_line->data,
       .nbytes = src_line->nbytes,
-      .nchars = src_line->nchars,
       .line = line,
+      .allocated = false,
   };
 }
 
@@ -453,33 +380,34 @@ struct copy_cmd {
 };
 
 struct text_chunk text_get_region(struct text *text, uint32_t start_line,
-                                  uint32_t start_col, uint32_t end_line,
-                                  uint32_t end_col) {
-  if (start_line == end_line && start_col == end_col) {
+                                  uint32_t start_offset, uint32_t end_line,
+                                  uint32_t end_offset) {
+  if (start_line == end_line && start_offset == end_offset) {
     return (struct text_chunk){0};
   }
 
   struct line *first_line = &text->lines[start_line];
   struct line *last_line = &text->lines[end_line];
+  uint32_t first_line_len = first_line->nbytes;
+  uint32_t last_line_len = last_line->nbytes;
 
-  if (start_col > first_line->nchars) {
+  if (start_offset > first_line_len) {
     return (struct text_chunk){0};
   }
 
   // handle copying of newlines
-  if (end_col > last_line->nchars) {
+  if (end_offset > last_line_len) {
     ++end_line;
-    end_col = 0;
+    end_offset = 0;
     last_line = &text->lines[end_line];
   }
 
   uint32_t nlines = end_line - start_line + 1;
   struct copy_cmd *copy_cmds = calloc(nlines, sizeof(struct copy_cmd));
 
-  uint32_t total_chars = 0, total_bytes = 0;
+  uint32_t total_bytes = 0;
   for (uint32_t line = start_line; line <= end_line; ++line) {
     struct line *l = &text->lines[line];
-    total_chars += l->nchars;
     total_bytes += l->nbytes;
 
     struct copy_cmd *cmd = &copy_cmds[line - start_line];
@@ -490,19 +418,14 @@ struct text_chunk text_get_region(struct text *text, uint32_t start_line,
 
   // correct first line
   struct copy_cmd *cmd_first = &copy_cmds[0];
-  uint32_t byteoff =
-      utf8_nbytes(first_line->data, first_line->nbytes, start_col);
-  cmd_first->byteoffset += byteoff;
-  cmd_first->nbytes -= byteoff;
-  total_bytes -= byteoff;
-  total_chars -= start_col;
+  cmd_first->byteoffset += start_offset;
+  cmd_first->nbytes -= start_offset;
+  total_bytes -= start_offset;
 
   // correct last line
   struct copy_cmd *cmd_last = &copy_cmds[nlines - 1];
-  uint32_t byteindex = utf8_nbytes(last_line->data, last_line->nbytes, end_col);
-  cmd_last->nbytes -= (last_line->nbytes - byteindex);
-  total_bytes -= (last_line->nbytes - byteindex);
-  total_chars -= (last_line->nchars - end_col);
+  cmd_last->nbytes -= (last_line->nbytes - end_offset);
+  total_bytes -= (last_line->nbytes - end_offset);
 
   uint8_t *data = (uint8_t *)malloc(
       total_bytes + /* nr of newline chars */ (end_line - start_line));
@@ -518,7 +441,6 @@ struct text_chunk text_get_region(struct text *text, uint32_t start_line,
       data[curr] = '\n';
       ++curr;
       ++total_bytes;
-      ++total_chars;
     }
   }
 
@@ -527,28 +449,25 @@ struct text_chunk text_get_region(struct text *text, uint32_t start_line,
       .text = data,
       .line = 0,
       .nbytes = total_bytes,
-      .nchars = total_chars,
       .allocated = true,
   };
 }
 
-bool text_line_contains_unicode(struct text *text, uint32_t line) {
-  return text->lines[line].nbytes != text->lines[line].nchars;
-}
-
-void text_add_property(struct text *text, struct location start,
-                       struct location end, struct text_property property) {
+void text_add_property(struct text *text, uint32_t start_line,
+                       uint32_t start_offset, uint32_t end_line,
+                       uint32_t end_offset, struct text_property property) {
   struct text_property_entry entry = {
-      .start = start,
-      .end = end,
+      .start = (struct location){.line = start_line, .col = start_offset},
+      .end = (struct location){.line = end_line, .col = end_offset},
       .property = property,
   };
   VEC_PUSH(&text->properties, entry);
 }
 
-void text_get_properties(struct text *text, struct location location,
+void text_get_properties(struct text *text, uint32_t line, uint32_t offset,
                          struct text_property **properties,
                          uint32_t max_nproperties, uint32_t *nproperties) {
+  struct location location = {.line = line, .col = offset};
   uint32_t nres = 0;
   VEC_FOR_EACH(&text->properties, struct text_property_entry * prop) {
     if (location_is_between(location, prop->start, prop->end)) {

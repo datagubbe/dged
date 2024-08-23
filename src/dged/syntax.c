@@ -342,7 +342,8 @@ static void update_parser(struct buffer *buffer, void *userdata,
                           : origin.line + height;
   ts_query_cursor_set_point_range(
       cursor, (TSPoint){.row = origin.line, .column = origin.col},
-      (TSPoint){.row = end_line, .column = buffer_num_chars(buffer, end_line)});
+      (TSPoint){.row = end_line,
+                .column = buffer_line_length(buffer, end_line)});
   ts_query_cursor_exec(cursor, h->query, ts_tree_root_node(h->tree));
 
   TSQueryMatch match;
@@ -406,47 +407,39 @@ static void update_parser(struct buffer *buffer, void *userdata,
         continue;
       }
 
-      buffer_add_text_property(
-          buffer,
-          (struct location){.line = start.row,
-                            .col = text_byteindex_to_col(
-                                buffer->text, start.row, start.column)},
-          (struct location){.line = end.row,
-                            .col = text_byteindex_to_col(buffer->text, end.row,
-                                                         end.column - 1)},
-          (struct text_property){
-              .type = TextProperty_Colors,
-              .colors =
-                  (struct text_property_colors){
-                      .set_fg = true,
-                      .fg = color,
-                  },
-          });
+      text_add_property(buffer->text, start.row, start.column, end.row,
+                        end.column > 0 ? end.column - 1 : 0,
+                        (struct text_property){
+                            .type = TextProperty_Colors,
+                            .colors =
+                                (struct text_property_colors){
+                                    .set_fg = true,
+                                    .fg = color,
+                                },
+                        });
     }
   }
 
   ts_query_cursor_delete(cursor);
 }
 
-static void text_removed(struct buffer *buffer, struct region removed,
-                         uint32_t begin_idx, uint32_t end_idx, void *userdata) {
+static void text_removed(struct buffer *buffer, struct edit_location removed,
+                         void *userdata) {
   struct highlight *h = (struct highlight *)userdata;
 
-  TSPoint begin = {.row = removed.begin.line,
-                   .column = text_col_to_byteindex(
-                       buffer->text, removed.begin.line, removed.begin.col)};
+  TSPoint begin = {.row = removed.bytes.begin.line,
+                   .column = removed.bytes.begin.col};
   TSPoint new_end = begin;
-  TSPoint old_end = {.row = removed.end.line,
-                     .column = text_col_to_byteindex(
-                         buffer->text, removed.end.line, removed.end.col)};
+  TSPoint old_end = {.row = removed.bytes.end.line,
+                     .column = removed.bytes.end.col};
 
   TSInputEdit edit = {
       .start_point = begin,
       .old_end_point = old_end,
       .new_end_point = new_end,
-      .start_byte = begin_idx,
-      .old_end_byte = end_idx,
-      .new_end_byte = begin_idx,
+      .start_byte = removed.global_byte_begin,
+      .old_end_byte = removed.global_byte_end,
+      .new_end_byte = removed.global_byte_begin,
   };
 
   ts_tree_edit(h->tree, &edit);
@@ -479,27 +472,24 @@ static void buffer_reloaded(struct buffer *buffer, void *userdata) {
   }
 }
 
-static void text_inserted(struct buffer *buffer, struct region inserted,
-                          uint32_t begin_idx, uint32_t end_idx,
+static void text_inserted(struct buffer *buffer, struct edit_location inserted,
                           void *userdata) {
   struct timer *text_inserted = timer_start("syntax.txt-inserted");
   struct highlight *h = (struct highlight *)userdata;
 
-  TSPoint begin = {.row = inserted.begin.line,
-                   .column = text_col_to_byteindex(
-                       buffer->text, inserted.begin.line, inserted.begin.col)};
+  TSPoint begin = {.row = inserted.bytes.begin.line,
+                   .column = inserted.bytes.begin.col};
   TSPoint old_end = begin;
-  TSPoint new_end = {.row = inserted.end.line,
-                     .column = text_col_to_byteindex(
-                         buffer->text, inserted.end.line, inserted.end.col)};
+  TSPoint new_end = {.row = inserted.bytes.end.line,
+                     .column = inserted.bytes.end.col};
 
   TSInputEdit edit = {
       .start_point = begin,
       .old_end_point = old_end,
       .new_end_point = new_end,
-      .start_byte = begin_idx,
-      .old_end_byte = begin_idx,
-      .new_end_byte = end_idx,
+      .start_byte = inserted.global_byte_begin,
+      .old_end_byte = inserted.global_byte_begin,
+      .new_end_byte = inserted.global_byte_end,
   };
 
   ts_tree_edit(h->tree, &edit);
