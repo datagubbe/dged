@@ -237,11 +237,12 @@ static void minibuffer_abort_prompt_internal(bool clear) {
   if (clear) {
     minibuffer_clear();
   }
-  g_minibuffer.prompt_active = false;
 
-  if (g_minibuffer.prev_window != NULL) {
+  if (g_minibuffer.prompt_active && g_minibuffer.prev_window != NULL) {
     windows_set_active(g_minibuffer.prev_window);
   }
+
+  g_minibuffer.prompt_active = false;
 }
 
 void minibuffer_abort_prompt() { minibuffer_abort_prompt_internal(true); }
