@@ -153,9 +153,7 @@ struct text_chunk minibuffer_content(void) {
   return buffer_line(g_minibuffer.buffer, 0);
 }
 
-struct buffer *minibuffer_buffer(void) {
-  return g_minibuffer.buffer;
-}
+struct buffer *minibuffer_buffer(void) { return g_minibuffer.buffer; }
 
 void minibuffer_echo(const char *fmt, ...) {
   va_list args;

@@ -67,13 +67,9 @@ static struct completion_provider g_commands_provider = {
     .userdata = NULL,
 };
 
-struct completion_provider path_provider(void) {
-  return g_path_provider;
-}
+struct completion_provider path_provider(void) { return g_path_provider; }
 
-struct completion_provider buffer_provider(void) {
-  return g_buffer_provider;
-}
+struct completion_provider buffer_provider(void) { return g_buffer_provider; }
 
 struct completion_provider commands_provider(void) {
   return g_commands_provider;

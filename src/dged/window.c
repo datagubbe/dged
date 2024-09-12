@@ -134,13 +134,9 @@ struct window *root_window(void) {
   return &BINTREE_VALUE(BINTREE_ROOT(&g_windows.windows));
 }
 
-struct window *minibuffer_window(void) {
-  return &g_minibuffer_window;
-}
+struct window *minibuffer_window(void) { return &g_minibuffer_window; }
 
-struct window *popup_window(void) {
-  return &g_popup_window;
-}
+struct window *popup_window(void) { return &g_popup_window; }
 
 bool popup_window_visible(void) { return g_popup_visible; }
 
@@ -412,9 +408,7 @@ struct window *window_find_by_buffer(struct buffer *b) {
   return NULL;
 }
 
-struct window *windows_get_active(void) {
-  return g_windows.active;
-}
+struct window *windows_get_active(void) { return g_windows.active; }
 
 void window_set_buffer(struct window *window, struct buffer *buffer) {
   window_set_buffer_e(window, buffer, true, true);
