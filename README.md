@@ -21,7 +21,7 @@ expected pre-1.0.0.
 - [x] Terminal only
 - [x] Mouse-free editing
 - [x] Naive and incorrect unicode handling
-- [ ] LSP Client implementation
+- [ ] LSP Client implementation (in progress)
 
 ## Contributing
 
@@ -41,7 +41,25 @@ needed dependencies, issue:
 $ nix develop
 ```
 
-Currently, tree-sitter grammars can only be automatically fetched when using the Nix setup.
+Tree-sitter grammars are automatically fetched and bundled when using the Nix setup.
+When not using the Nix setup, download/build needed treesitter grammars and set the env
+var $BUNDLE_TREESITTER_GRAMMARS to a folder containing built treesitter grammars. The
+structure should be like
+
+```
+/
+  <lang-1>/
+            parser # the parser binary as a DSO
+            queries/
+                highlights.scm # treesitter queries for highlights
+  <lang-2>/
+           parser
+           queries/
+                highlights.scm
+  ...
+```
+
+where `<lang-1>` is for example `cpp` which corresponds to the language id, see man page.
 
 To build the editor, first create the build folder
 

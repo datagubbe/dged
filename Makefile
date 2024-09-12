@@ -121,12 +121,11 @@ FILES = $(DEPS) \
 	$(CC) $(CFLAGS) -c $< -o $@
 
 grammars:
-	@if [ -n "$$TREESITTER_GRAMMARS" ]; then \
-		IFS=":"; for p in "$$TREESITTER_GRAMMARS"; do \
+	@if [ "$(SYNTAX_ENABLE)" = "true" ] && [ -n "$$BUNDLE_TREESITTER_GRAMMARS" ]; then \
+		IFS=":"; for p in "$$BUNDLE_TREESITTER_GRAMMARS"; do \
 			cp -rL --no-preserve=mode "$$p"/ grammars; \
 		done \
 	else \
-		echo "TODO: download and build default set of grammars"; \
 		mkdir -p ./grammars; \
 	fi
 
