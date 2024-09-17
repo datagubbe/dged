@@ -36,62 +36,16 @@ static struct kill_ring {
                  .paste_idx = 0,
                  .paste_up_to_date = false};
 
-#define DECLARE_HOOK(name, callback_type, vec_type)                            \
-  struct name##_hook {                                                         \
-    uint32_t id;                                                               \
-    callback_type callback;                                                    \
-    void *userdata;                                                            \
-  };                                                                           \
-                                                                               \
-  static uint32_t insert_##name##_hook(                                        \
-      vec_type *hooks, uint32_t *id, callback_type callback, void *userdata) { \
-    uint32_t iid = ++(*id);                                                    \
-    struct name##_hook hook = (struct name##_hook){                            \
-        .id = iid,                                                             \
-        .callback = callback,                                                  \
-        .userdata = userdata,                                                  \
-    };                                                                         \
-    VEC_PUSH(hooks, hook);                                                     \
-                                                                               \
-    return iid;                                                                \
-  }                                                                            \
-                                                                               \
-  static void remove_##name##_hook(vec_type *hooks, uint32_t id,               \
-                                   remove_hook_cb callback) {                  \
-    uint64_t found_at = (uint64_t)-1;                                          \
-    VEC_FOR_EACH_INDEXED(hooks, struct name##_hook *h, idx) {                  \
-      if (h->id == id) {                                                       \
-        if (callback != NULL) {                                                \
-          callback(h->userdata);                                               \
-        }                                                                      \
-        found_at = idx;                                                        \
-        break;                                                                 \
-      }                                                                        \
-    }                                                                          \
-    if (found_at != (uint64_t)-1) {                                            \
-      if (found_at < VEC_SIZE(hooks) - 1) {                                    \
-        VEC_SWAP(hooks, found_at, VEC_SIZE(hooks) - 1);                        \
-      }                                                                        \
-      VEC_POP(hooks, struct name##_hook removed);                              \
-      (void)removed;                                                           \
-    }                                                                          \
-  }
-
-typedef VEC(struct create_hook) create_hook_vec;
-typedef VEC(struct destroy_hook) destroy_hook_vec;
-typedef VEC(struct insert_hook) insert_hook_vec;
-typedef VEC(struct update_hook) update_hook_vec;
-typedef VEC(struct reload_hook) reload_hook_vec;
-typedef VEC(struct delete_hook) delete_hook_vec;
-typedef VEC(struct render_hook) render_hook_vec;
-
-DECLARE_HOOK(create, create_hook_cb, create_hook_vec)
-DECLARE_HOOK(destroy, destroy_hook_cb, destroy_hook_vec)
-DECLARE_HOOK(insert, insert_hook_cb, insert_hook_vec)
-DECLARE_HOOK(update, update_hook_cb, update_hook_vec)
-DECLARE_HOOK(reload, reload_hook_cb, reload_hook_vec)
-DECLARE_HOOK(render, render_hook_cb, render_hook_vec)
-DECLARE_HOOK(delete, delete_hook_cb, delete_hook_vec)
+HOOK_IMPL(create, create_hook_cb);
+HOOK_IMPL(destroy, destroy_hook_cb);
+HOOK_IMPL(insert, insert_hook_cb);
+HOOK_IMPL(update, update_hook_cb);
+HOOK_IMPL(reload, reload_hook_cb);
+HOOK_IMPL(render, render_hook_cb);
+HOOK_IMPL(delete, delete_hook_cb);
+HOOK_IMPL(pre_delete, delete_hook_cb);
+HOOK_IMPL(pre_save, pre_save_cb);
+HOOK_IMPL(post_save, post_save_cb);
 
 static create_hook_vec g_create_hooks;
 uint32_t g_create_hook_id;
@@ -114,6 +68,15 @@ struct hooks {
 
   delete_hook_vec delete_hooks;
   uint32_t delete_hook_id;
+
+  pre_delete_hook_vec pre_delete_hooks;
+  uint32_t pre_delete_hook_id;
+
+  pre_save_hook_vec pre_save_hooks;
+  uint32_t pre_save_hook_id;
+
+  post_save_hook_vec post_save_hooks;
+  uint32_t post_save_hook_id;
 };
 
 uint32_t buffer_add_create_hook(create_hook_cb callback, void *userdata) {
@@ -202,9 +165,12 @@ static struct buffer create_internal(const char *name, char *filename) {
       .modified = false,
       .readonly = false,
       .lazy_row_add = true,
+      .retain_properties = false,
       .lang =
           filename != NULL ? lang_from_filename(filename) : lang_from_id("fnd"),
       .last_write = {0},
+      .version = 0,
+      .needs_render = false,
   };
 
   b.hooks = calloc(1, sizeof(struct hooks));
@@ -213,7 +179,10 @@ static struct buffer create_internal(const char *name, char *filename) {
   VEC_INIT(&b.hooks->reload_hooks, 8);
   VEC_INIT(&b.hooks->render_hooks, 8);
   VEC_INIT(&b.hooks->delete_hooks, 8);
+  VEC_INIT(&b.hooks->pre_delete_hooks, 8);
   VEC_INIT(&b.hooks->destroy_hooks, 8);
+  VEC_INIT(&b.hooks->pre_save_hooks, 8);
+  VEC_INIT(&b.hooks->post_save_hooks, 8);
 
   undo_init(&b.undo, 100);
 
@@ -280,7 +249,7 @@ static bool is_word_break(const struct codepoint *codepoint) {
   uint32_t c = codepoint->codepoint;
   return c == ' ' || c == '.' || c == '(' || c == ')' || c == '[' || c == ']' ||
          c == '{' || c == '}' || c == ';' || c == '<' || c == '>' || c == ':' ||
-         c == '"';
+         c == '"' || c == '=' || c == ',';
 }
 
 static bool is_word_char(const struct codepoint *c) {
@@ -334,8 +303,7 @@ find_prev_in_line(struct buffer *buffer, struct location start,
   }
 
   return (struct match_result){
-      .at =
-          (struct location){.line = start.line, .col = found ? found_at : coli},
+      .at = (struct location){.line = start.line, .col = found ? found_at : 0},
       .found = found};
 }
 
@@ -400,9 +368,7 @@ struct buffer buffer_create(const char *name) {
 
   struct buffer b = create_internal(name, NULL);
 
-  VEC_FOR_EACH(&g_create_hooks, struct create_hook * h) {
-    h->callback(&b, h->userdata);
-  }
+  dispatch_hook(&g_create_hooks, struct create_hook, &b);
 
   return b;
 }
@@ -412,9 +378,7 @@ struct buffer buffer_from_file(const char *path) {
   struct buffer b = create_internal(basename((char *)path), full_path);
   buffer_read_from_file(&b);
 
-  VEC_FOR_EACH(&g_create_hooks, struct create_hook * h) {
-    h->callback(&b, h->userdata);
-  }
+  dispatch_hook(&g_create_hooks, struct create_hook, &b);
 
   return b;
 }
@@ -440,6 +404,8 @@ void buffer_to_file(struct buffer *buffer) {
     return;
   }
 
+  dispatch_hook(&buffer->hooks->pre_save_hooks, struct pre_save_hook, buffer);
+
   uint32_t nlines = text_num_lines(buffer->text);
   uint32_t nlines_to_write = nlines;
   if (nlines > 0) {
@@ -452,13 +418,19 @@ void buffer_to_file(struct buffer *buffer) {
                           buffer->filename);
   fclose(file);
 
-  clock_gettime(CLOCK_REALTIME, &buffer->last_write);
   buffer->modified = false;
   undo_push_boundary(&buffer->undo, (struct undo_boundary){.save_point = true});
+
+  struct stat sb;
+  stat(buffer->filename, &sb);
+  buffer->last_write = sb.st_mtim;
+
+  dispatch_hook(&buffer->hooks->post_save_hooks, struct post_save_hook, buffer);
 }
 
 void buffer_set_filename(struct buffer *buffer, const char *filename) {
   buffer->filename = to_abspath(filename);
+  ++buffer->version;
   buffer->modified = true;
 }
 
@@ -478,16 +450,12 @@ void buffer_reload(struct buffer *buffer) {
       sb.st_mtim.tv_nsec != buffer->last_write.tv_nsec) {
     text_clear(buffer->text);
     buffer_read_from_file(buffer);
-    VEC_FOR_EACH(&buffer->hooks->reload_hooks, struct reload_hook * h) {
-      h->callback(buffer, h->userdata);
-    }
+    dispatch_hook(&buffer->hooks->reload_hooks, struct reload_hook, buffer);
   }
 }
 
 void buffer_destroy(struct buffer *buffer) {
-  VEC_FOR_EACH(&buffer->hooks->destroy_hooks, struct destroy_hook * h) {
-    h->callback(buffer, h->userdata);
-  }
+  dispatch_hook(&buffer->hooks->destroy_hooks, struct destroy_hook, buffer);
 
   lang_destroy(&buffer->lang);
 
@@ -506,6 +474,9 @@ void buffer_destroy(struct buffer *buffer) {
   VEC_DESTROY(&buffer->hooks->insert_hooks);
   VEC_DESTROY(&buffer->hooks->destroy_hooks);
   VEC_DESTROY(&buffer->hooks->delete_hooks);
+  VEC_DESTROY(&buffer->hooks->pre_delete_hooks);
+  VEC_DESTROY(&buffer->hooks->pre_save_hooks);
+  VEC_DESTROY(&buffer->hooks->post_save_hooks);
   free(buffer->hooks);
 
   undo_destroy(&buffer->undo);
@@ -517,6 +488,8 @@ struct location buffer_add(struct buffer *buffer, struct location at,
     minibuffer_echo_timeout(4, "buffer is read-only");
     return at;
   }
+
+  buffer->needs_render = true;
 
   // invalidate last paste
   g_kill_ring.paste_up_to_date = false;
@@ -553,26 +526,20 @@ struct location buffer_add(struct buffer *buffer, struct location at,
       (struct undo_add){.begin = {.row = initial.line, .col = initial.col},
                         .end = {.row = final.line, .col = final.col}});
 
-  if (lines_added > 0) {
-    undo_push_boundary(&buffer->undo,
-                       (struct undo_boundary){.save_point = false});
-  }
+  ++buffer->version;
+  buffer->modified = true;
 
   uint32_t begin_idx = to_global_offset(buffer, at_bytes);
   uint32_t end_idx = to_global_offset(buffer, final_bytes);
 
-  VEC_FOR_EACH(&buffer->hooks->insert_hooks, struct insert_hook * h) {
-    h->callback(buffer,
+  dispatch_hook(&buffer->hooks->insert_hooks, struct insert_hook, buffer,
                 (struct edit_location){
                     .coordinates = region_new(initial, final),
                     .bytes = region_new(at_bytes, final_bytes),
                     .global_byte_begin = begin_idx,
                     .global_byte_end = end_idx,
-                },
-                h->userdata);
-  }
+                });
 
-  buffer->modified = true;
   return final;
 }
 
@@ -636,8 +603,8 @@ struct location buffer_previous_word(struct buffer *buffer,
                                      struct location dot) {
 
   struct match_result res = find_prev_in_line(buffer, dot, is_word_break);
-  if (!res.found && res.at.col == dot.col) {
-    return buffer_previous_char(buffer, res.at);
+  if (!res.found) {
+    return (struct location){.line = dot.line, .col = 0};
   }
 
   // check if we got here from the middle of a word or not
@@ -647,7 +614,7 @@ struct location buffer_previous_word(struct buffer *buffer,
   if (traveled <= 1) {
     res = find_prev_in_line(buffer, res.at, is_word_char);
     if (!res.found) {
-      return buffer_previous_char(buffer, res.at);
+      return (struct location){.line = dot.line, .col = 0};
     }
 
     // at this point, we are at the end of the previous word
@@ -657,7 +624,7 @@ struct location buffer_previous_word(struct buffer *buffer,
     } else {
       res.at = buffer_next_char(buffer, res.at);
     }
-  } else {
+  } else if (res.at.col > 0) {
     res.at = buffer_next_char(buffer, res.at);
   }
 
@@ -823,6 +790,11 @@ struct location buffer_indent_alt(struct buffer *buffer, struct location at) {
   return do_indent(buffer, at, get_tab_width(buffer), !use_tabs(buffer));
 }
 
+void buffer_push_undo_boundary(struct buffer *buffer) {
+  undo_push_boundary(&buffer->undo,
+                     (struct undo_boundary){.save_point = false});
+}
+
 struct location buffer_undo(struct buffer *buffer, struct location dot) {
   struct undo_stack *undo = &buffer->undo;
   undo_begin(undo);
@@ -958,9 +930,16 @@ struct location buffer_delete(struct buffer *buffer, struct region region) {
     return region.begin;
   }
 
+  buffer->needs_render = true;
+
   if (!region_has_size(region)) {
     return region.begin;
   }
+
+  region.begin = buffer_clamp(buffer, (int64_t)region.begin.line,
+                              (int64_t)region.begin.col);
+  region.end =
+      buffer_clamp(buffer, (int64_t)region.end.line, (int64_t)region.end.col);
 
   struct location begin_bytes =
       buffer_location_to_byte_coords(buffer, region.begin);
@@ -971,34 +950,37 @@ struct location buffer_delete(struct buffer *buffer, struct region region) {
       text_get_region(buffer->text, begin_bytes.line, begin_bytes.col,
                       end_bytes.line, end_bytes.col);
 
-  undo_push_boundary(&buffer->undo,
-                     (struct undo_boundary){.save_point = false});
-
   undo_push_delete(&buffer->undo,
                    (struct undo_delete){.data = txt.text,
                                         .nbytes = txt.nbytes,
                                         .pos = {.row = region.begin.line,
                                                 .col = region.begin.col}});
-  undo_push_boundary(&buffer->undo,
-                     (struct undo_boundary){.save_point = false});
 
   uint64_t begin_idx = to_global_offset(buffer, begin_bytes);
   uint64_t end_idx = to_global_offset(buffer, end_bytes);
 
-  text_delete(buffer->text, begin_bytes.line, begin_bytes.col, end_bytes.line,
-              end_bytes.col);
+  ++buffer->version;
   buffer->modified = true;
 
-  VEC_FOR_EACH(&buffer->hooks->delete_hooks, struct delete_hook * h) {
-    h->callback(buffer,
+  dispatch_hook(&buffer->hooks->pre_delete_hooks, struct pre_delete_hook,
+                buffer,
                 (struct edit_location){
                     .coordinates = region,
                     .bytes = region_new(begin_bytes, end_bytes),
                     .global_byte_begin = begin_idx,
                     .global_byte_end = end_idx,
-                },
-                h->userdata);
-  }
+                });
+
+  text_delete(buffer->text, begin_bytes.line, begin_bytes.col, end_bytes.line,
+              end_bytes.col);
+
+  dispatch_hook(&buffer->hooks->delete_hooks, struct delete_hook, buffer,
+                (struct edit_location){
+                    .coordinates = region,
+                    .bytes = region_new(begin_bytes, end_bytes),
+                    .global_byte_begin = begin_idx,
+                    .global_byte_end = end_idx,
+                });
 
   return region.begin;
 }
@@ -1047,8 +1029,13 @@ struct text_chunk buffer_line(struct buffer *buffer, uint32_t line) {
 }
 
 struct text_chunk buffer_region(struct buffer *buffer, struct region region) {
-  return text_get_region(buffer->text, region.begin.line, region.begin.col,
-                         region.end.line, region.end.col);
+  struct location begin_bytes =
+      buffer_location_to_byte_coords(buffer, region.begin);
+  struct location end_bytes =
+      buffer_location_to_byte_coords(buffer, region.end);
+
+  return text_get_region(buffer->text, begin_bytes.line, begin_bytes.col,
+                         end_bytes.line, end_bytes.col);
 }
 
 uint32_t buffer_add_insert_hook(struct buffer *buffer, insert_hook_cb hook,
@@ -1071,6 +1058,18 @@ uint32_t buffer_add_delete_hook(struct buffer *buffer, delete_hook_cb hook,
 void buffer_remove_delete_hook(struct buffer *buffer, uint32_t hook_id,
                                remove_hook_cb callback) {
   remove_delete_hook(&buffer->hooks->delete_hooks, hook_id, callback);
+}
+
+uint32_t buffer_add_pre_delete_hook(struct buffer *buffer, delete_hook_cb hook,
+                                    void *userdata) {
+  return insert_pre_delete_hook(&buffer->hooks->pre_delete_hooks,
+                                &buffer->hooks->pre_delete_hook_id, hook,
+                                userdata);
+}
+
+void buffer_remove_pre_delete_hook(struct buffer *buffer, uint32_t hook_id,
+                                   remove_hook_cb callback) {
+  remove_pre_delete_hook(&buffer->hooks->pre_delete_hooks, hook_id, callback);
 }
 
 uint32_t buffer_add_update_hook(struct buffer *buffer, update_hook_cb hook,
@@ -1106,6 +1105,30 @@ void buffer_remove_reload_hook(struct buffer *buffer, uint32_t hook_id,
   remove_reload_hook(&buffer->hooks->reload_hooks, hook_id, callback);
 }
 
+uint32_t buffer_add_pre_save_hook(struct buffer *buffer, pre_save_cb callback,
+                                  void *userdata) {
+  return insert_pre_save_hook(&buffer->hooks->pre_save_hooks,
+                              &buffer->hooks->pre_save_hook_id, callback,
+                              userdata);
+}
+
+void buffer_remove_pre_save_hook(struct buffer *buffer, uint32_t hook_id,
+                                 remove_hook_cb callback) {
+  remove_pre_save_hook(&buffer->hooks->pre_save_hooks, hook_id, callback);
+}
+
+uint32_t buffer_add_post_save_hook(struct buffer *buffer, post_save_cb callback,
+                                   void *userdata) {
+  return insert_post_save_hook(&buffer->hooks->post_save_hooks,
+                               &buffer->hooks->post_save_hook_id, callback,
+                               userdata);
+}
+
+void buffer_remove_post_save_hook(struct buffer *buffer, uint32_t hook_id,
+                                  remove_hook_cb callback) {
+  remove_post_save_hook(&buffer->hooks->post_save_hooks, hook_id, callback);
+}
+
 struct cmdbuf {
   struct command_list *cmds;
   struct location origin;
@@ -1133,6 +1156,15 @@ static void apply_properties(struct command_list *cmds,
       if (colors->set_fg) {
         command_list_set_index_color_fg(cmds, colors->fg);
       }
+
+      if (colors->underline) {
+        command_list_set_underline(cmds);
+      }
+
+      if (colors->inverted) {
+        command_list_set_inverted_colors(cmds);
+      }
+
       break;
     }
     case TextProperty_Data:
@@ -1215,7 +1247,6 @@ void render_line(struct text_chunk *line, void *userdata) {
   command_list_reset_color(cmdbuf->cmds);
   command_list_set_show_whitespace(cmdbuf->cmds, false);
 
-  // TODO: considering the whole screen is cleared, is this really needed?
   if (drawn_coli < cmdbuf->width) {
     command_list_draw_repeated(cmdbuf->cmds, drawn_coli, visual_line, ' ',
                                cmdbuf->width - drawn_coli);
@@ -1223,9 +1254,7 @@ void render_line(struct text_chunk *line, void *userdata) {
 }
 
 void buffer_update(struct buffer *buffer) {
-  VEC_FOR_EACH(&buffer->hooks->update_hooks, struct update_hook * h) {
-    h->callback(buffer, h->userdata);
-  }
+  dispatch_hook(&buffer->hooks->update_hooks, struct update_hook, buffer);
 }
 
 void buffer_render(struct buffer *buffer, struct buffer_render_params *params) {
@@ -1233,10 +1262,8 @@ void buffer_render(struct buffer *buffer, struct buffer_render_params *params) {
     return;
   }
 
-  VEC_FOR_EACH(&buffer->hooks->render_hooks, struct render_hook * h) {
-    h->callback(buffer, h->userdata, params->origin, params->width,
-                params->height);
-  }
+  dispatch_hook(&buffer->hooks->render_hooks, struct render_hook, buffer,
+                params->origin, params->width, params->height);
 
   struct setting *show_ws = settings_get("editor.show-whitespace");
 
@@ -1258,15 +1285,38 @@ void buffer_render(struct buffer *buffer, struct buffer_render_params *params) {
        ++linei) {
     command_list_draw_repeated(params->commands, 0, linei, ' ', params->width);
   }
+
+  buffer->needs_render = false;
 }
 
 void buffer_add_text_property(struct buffer *buffer, struct location start,
                               struct location end,
                               struct text_property property) {
+  buffer->needs_render = true;
   struct location bytestart = buffer_location_to_byte_coords(buffer, start);
   struct location byteend = buffer_location_to_byte_coords(buffer, end);
   text_add_property(buffer->text, bytestart.line, bytestart.col, byteend.line,
                     byteend.col, property);
+}
+
+void buffer_add_text_property_to_layer(struct buffer *buffer,
+                                       struct location start,
+                                       struct location end,
+                                       struct text_property property,
+                                       layer_id layer) {
+  buffer->needs_render = true;
+  struct location bytestart = buffer_location_to_byte_coords(buffer, start);
+  struct location byteend = buffer_location_to_byte_coords(buffer, end);
+  text_add_property_to_layer(buffer->text, bytestart.line, bytestart.col,
+                             byteend.line, byteend.col, property, layer);
+}
+
+layer_id buffer_add_text_property_layer(struct buffer *buffer) {
+  return text_add_property_layer(buffer->text);
+}
+
+void buffer_remove_property_layer(struct buffer *buffer, layer_id layer) {
+  text_remove_property_layer(buffer->text, layer);
 }
 
 void buffer_get_text_properties(struct buffer *buffer, struct location location,
@@ -1278,8 +1328,23 @@ void buffer_get_text_properties(struct buffer *buffer, struct location location,
                       max_nproperties, nproperties);
 }
 
+void buffer_get_text_properties_filtered(struct buffer *buffer,
+                                         struct location location,
+                                         struct text_property **properties,
+                                         uint32_t max_nproperties,
+                                         uint32_t *nproperties,
+                                         layer_id layer) {
+  struct location bytecoords = buffer_location_to_byte_coords(buffer, location);
+  text_get_properties_filtered(buffer->text, bytecoords.line, bytecoords.col,
+                               properties, max_nproperties, nproperties, layer);
+}
+
 void buffer_clear_text_properties(struct buffer *buffer) {
   text_clear_properties(buffer->text);
+}
+
+void buffer_clear_text_property_layer(struct buffer *buffer, layer_id layer) {
+  text_clear_property_layer(buffer->text, layer);
 }
 
 static int compare_lines(const void *l1, const void *l2) {

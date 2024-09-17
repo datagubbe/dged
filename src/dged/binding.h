@@ -69,7 +69,8 @@ enum binding_type {
 #define PREFIX(...) PREFIX_INNER(__VA_ARGS__)
 
 /**
- * Define an anonymous binding, i.e. a binding directly to a function.
+ * Define an anonymous binding, i.e. a binding directly to a non-
+ * registered command that has no name.
  *
  * Note the function that this key binds to cannot usually be
  * executed dynamically (with M-x).

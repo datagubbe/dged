@@ -359,6 +359,13 @@ void command_list_set_inverted_colors(struct command_list *list) {
   cmd->len = 1;
 }
 
+void command_list_set_underline(struct command_list *list) {
+  struct push_fmt_cmd *cmd =
+      add_command(list, RenderCommand_PushFormat)->data.push_fmt;
+  cmd->fmt[0] = '4';
+  cmd->len = 1;
+}
+
 void command_list_reset_color(struct command_list *list) {
   add_command(list, RenderCommand_ClearFormat);
 }

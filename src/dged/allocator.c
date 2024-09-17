@@ -1,5 +1,7 @@
 #include "allocator.h"
 
+#include <stdlib.h>
+
 struct frame_allocator frame_allocator_create(size_t capacity) {
   return (struct frame_allocator){
       .capacity = capacity, .offset = 0, .buf = (uint8_t *)malloc(capacity)};

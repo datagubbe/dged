@@ -11,16 +11,27 @@
 #include <stdlib.h>
 #include <string.h>
 
+struct prompt_key {
+  char key[16];
+  char name[128];
+};
+
 static struct minibuffer {
   struct buffer *buffer;
   struct timespec expires;
 
   char prompt[128];
+  struct prompt_key prompt_keys[16];
+  uint32_t nprompt_keys;
+
   struct command_ctx prompt_command_ctx;
   bool prompt_active;
+
   struct window *prev_window;
 
   struct buffer *message_buffer;
+
+  struct timespec created_at;
 
 } g_minibuffer = {0};
 
@@ -34,7 +45,31 @@ uint32_t minibuffer_draw_prompt(struct command_list *commands) {
   command_list_draw_text(commands, 0, 0, (uint8_t *)g_minibuffer.prompt, len);
   command_list_reset_color(commands);
 
-  return len;
+  uint32_t xoffset = len;
+  for (uint32_t i = 0; i < g_minibuffer.nprompt_keys; ++i) {
+    struct prompt_key *pk = &g_minibuffer.prompt_keys[i];
+
+    command_list_set_index_color_fg(commands, Color_Green);
+    size_t keylen = strlen(pk->key);
+    command_list_draw_text_copy(commands, xoffset, 0, (uint8_t *)pk->key,
+                                keylen);
+    command_list_reset_color(commands);
+
+    xoffset += keylen;
+
+    command_list_draw_text(commands, xoffset, 0, (uint8_t *)" -> ", 4);
+    xoffset += 4;
+
+    command_list_set_index_color_fg(commands, Color_Magenta);
+    size_t namelen = strlen(pk->name);
+    command_list_draw_text_copy(commands, xoffset, 0, (uint8_t *)pk->name,
+                                namelen);
+    command_list_reset_color(commands);
+
+    xoffset += namelen + 1;
+  }
+
+  return xoffset;
 }
 
 static void minibuffer_abort_prompt_internal(bool clear);
@@ -89,6 +124,27 @@ void update(struct buffer *buffer, void *userdata) {
   }
 }
 
+static void print_message(const char *buff, size_t len) {
+  if (g_minibuffer.message_buffer == NULL) {
+    return;
+  }
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+
+  uint64_t elapsed = (((uint64_t)ts.tv_sec * 1e9 + (uint64_t)ts.tv_nsec) -
+                      ((uint64_t)g_minibuffer.created_at.tv_sec * 1e9 +
+                       (uint64_t)g_minibuffer.created_at.tv_nsec)) /
+                     1e6;
+
+  struct s8 timestamp = s8from_fmt("%d: ", elapsed);
+  struct location at = buffer_add(g_minibuffer.message_buffer,
+                                  buffer_end(g_minibuffer.message_buffer),
+                                  timestamp.s, timestamp.l);
+  s8delete(timestamp);
+
+  buffer_add(g_minibuffer.message_buffer, at, (uint8_t *)buff, len);
+}
+
 void minibuffer_init(struct buffer *buffer, struct buffers *buffers) {
   if (g_minibuffer.buffer != NULL) {
     return;
@@ -98,13 +154,17 @@ void minibuffer_init(struct buffer *buffer, struct buffers *buffers) {
   g_minibuffer.expires.tv_sec = 0;
   g_minibuffer.expires.tv_nsec = 0;
   g_minibuffer.prompt_active = false;
+  g_minibuffer.nprompt_keys = 0;
   buffer_add_update_hook(g_minibuffer.buffer, update, &g_minibuffer);
 
   g_minibuffer.message_buffer =
       buffers_add(buffers, buffer_create("*messages*"));
+
+  clock_gettime(CLOCK_MONOTONIC, &g_minibuffer.created_at);
 }
 
-void echo(uint32_t timeout, const char *fmt, va_list args) {
+static void echo(uint32_t timeout, const char *fmt, va_list args,
+                 bool message) {
   if (g_minibuffer.prompt_active || g_minibuffer.buffer == NULL) {
     return;
   }
@@ -120,11 +180,8 @@ void echo(uint32_t timeout, const char *fmt, va_list args) {
   buffer_set_text(g_minibuffer.buffer, (uint8_t *)buff,
                   nbytes > 2048 ? 2048 : nbytes);
 
-  // we can get messages before this is set up
-  if (g_minibuffer.message_buffer != NULL) {
-    buffer_add(g_minibuffer.message_buffer,
-               buffer_end(g_minibuffer.message_buffer), (uint8_t *)buff,
-               nbytes > 2048 ? 2048 : nbytes);
+  if (message) {
+    print_message(buff, nbytes > 2048 ? 2048 : nbytes);
   }
 }
 
@@ -139,10 +196,7 @@ void message(const char *fmt, ...) {
   static char buff[2048];
   size_t nbytes = vsnprintf(buff, 2048, fmt, args);
   va_end(args);
-
-  buffer_add(g_minibuffer.message_buffer,
-             buffer_end(g_minibuffer.message_buffer), (uint8_t *)buff,
-             nbytes > 2048 ? 2048 : nbytes);
+  print_message(buff, nbytes > 2048 ? 2048 : nbytes);
 }
 
 void minibuffer_destroy(void) {
@@ -158,14 +212,28 @@ struct buffer *minibuffer_buffer(void) { return g_minibuffer.buffer; }
 void minibuffer_echo(const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  echo(1000, fmt, args);
+  echo(1000, fmt, args, true);
   va_end(args);
 }
 
 void minibuffer_echo_timeout(uint32_t timeout, const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  echo(timeout, fmt, args);
+  echo(timeout, fmt, args, true);
+  va_end(args);
+}
+
+void minibuffer_display(const char *fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+  echo(1000, fmt, args, false);
+  va_end(args);
+}
+
+void minibuffer_display_timeout(uint32_t timeout, const char *fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+  echo(timeout, fmt, args, false);
   va_end(args);
 }
 
@@ -226,6 +294,50 @@ int32_t minibuffer_prompt(struct command_ctx command_ctx, const char *fmt,
   return 0;
 }
 
+int32_t minibuffer_keymap_prompt(struct command_ctx command_ctx,
+                                 const char *fmt, struct keymap *keys, ...) {
+  if (g_minibuffer.buffer == NULL) {
+    return 1;
+  }
+
+  for (uint32_t i = 0; i < keys->nbindings; ++i) {
+    struct prompt_key *pk = &g_minibuffer.prompt_keys[i];
+    struct binding *bind = &keys->bindings[i];
+    key_name(&bind->key, pk->key, 16);
+
+    switch (bind->type) {
+    case BindingType_Command:
+      // FIXME: this is not awesome
+      memcpy(pk->name, "<cmd>", 5);
+      pk->name[5] = '\0';
+      break;
+    case BindingType_Keymap:
+      memcpy(pk->name, "<map>", 5);
+      pk->name[5] = '\0';
+      break;
+    case BindingType_DirectCommand: {
+      const char *n = bind->data.direct_command->name;
+      size_t l = strlen(n);
+      if (l > 0) {
+        l = l > 127 ? 127 : l;
+        memcpy(pk->name, n, l);
+        pk->name[l] = '\0';
+      }
+    } break;
+    }
+  }
+  g_minibuffer.nprompt_keys = keys->nbindings;
+
+  minibuffer_setup(command_ctx, NULL);
+
+  va_list args;
+  va_start(args, keys);
+  minibuffer_set_prompt_internal(fmt, args);
+  va_end(args);
+
+  return 0;
+}
+
 void minibuffer_set_prompt(const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);
@@ -243,6 +355,7 @@ static void minibuffer_abort_prompt_internal(bool clear) {
   }
 
   g_minibuffer.prompt_active = false;
+  g_minibuffer.nprompt_keys = 0;
 }
 
 void minibuffer_abort_prompt(void) { minibuffer_abort_prompt_internal(true); }

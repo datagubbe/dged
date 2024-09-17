@@ -53,6 +53,9 @@ int main(void) {
   printf("\n🎁 \x1b[1;36mRunning container tests...\x1b[0m\n");
   run_container_tests();
 
+  printf("\n🐃 \x1b[1;36mRunning bufread tests...\x1b[0m\n");
+  run_bufread_tests();
+
 #if defined(LSP_ENABLED)
   printf("\n📃 \x1b[1;36mRunning JSON tests...\x1b[0m\n");
   run_json_tests();

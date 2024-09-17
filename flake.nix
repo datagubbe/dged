@@ -1,7 +1,7 @@
 {
   description = "An editor for datagubbar";
 
-  inputs.nixpkgs.url = "nixpkgs/nixos-24.05";
+  inputs.nixpkgs.url = "nixpkgs/nixos-24.11";
   inputs.flake-utils.url = "github:numtide/flake-utils";
 
   outputs = { self, nixpkgs, flake-utils }:

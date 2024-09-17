@@ -7,6 +7,7 @@
 #include <time.h>
 
 #include "command.h"
+#include "hook.h"
 #include "lang.h"
 #include "location.h"
 #include "text.h"
@@ -63,6 +64,17 @@ struct buffer {
 
   /** If true, force whitespace indication off for this buffer */
   bool force_show_ws_off;
+
+  /** If true, text properties are not immediate */
+  bool retain_properties;
+
+  bool needs_render;
+
+  /**
+   * Version that increases with each edit (including undo).
+   * Can be used to check if a buffer has changed.
+   */
+  uint64_t version;
 };
 
 void buffer_static_init(void);
@@ -342,6 +354,8 @@ struct location buffer_indent_alt(struct buffer *buffer, struct location at);
  */
 struct location buffer_undo(struct buffer *buffer, struct location dot);
 
+void buffer_push_undo_boundary(struct buffer *buffer);
+
 /**
  * Search for a substring in the buffer.
  *
@@ -433,7 +447,45 @@ void buffer_add_text_property(struct buffer *buffer, struct location start,
                               struct text_property property);
 
 /**
+ * Add a text property to a region of the buffer and a specified property layer.
+ *
+ * @param buffer The buffer to add a text property to.
+ * @param start The start of the region to set the property for.
+ * @param end The end of the region to set the property for.
+ * @param property The text property to set.
+ * @param layer Id of the layer to add the text property to.
+ */
+void buffer_add_text_property_to_layer(struct buffer *buffer,
+                                       struct location start,
+                                       struct location end,
+                                       struct text_property property,
+                                       layer_id layer);
+
+/**
+ * Add a new layer for holding properties.
+ *
+ * Note that only the default layer is cleared automatically
+ * when @ref retain_properties is false. Any other layer
+ * needs to be cleared manually when needed.
+ *
+ * @param [in] buffer The buffer to add the property layer to.
+ *
+ * @returns The id of the added layer, -1 on error.
+ */
+layer_id buffer_add_text_property_layer(struct buffer *buffer);
+
+/**
+ * Remove a property layer.
+ *
+ * @param [in] buffer The buffer to remove the property layer from
+ * @param [in] layer The layer id of the layer to remove.
+ */
+void buffer_remove_property_layer(struct buffer *buffer, layer_id layer);
+
+/**
  * Get active text properties at @p location in @p buffer.
+ *
+ * This will retrieve properties from all property layers.
  *
  * @param buffer The buffer to get properties for.
  * @param location The location to get properties at.
@@ -447,14 +499,35 @@ void buffer_get_text_properties(struct buffer *buffer, struct location location,
                                 uint32_t *nproperties);
 
 /**
- * Clear any text properties for @p buffer.
+ * Get active text properties at @p location in @p buffer for the layer @layer.
+ *
+ * @param buffer The buffer to get properties for.
+ * @param location The location to get properties at.
+ * @param properties Caller-provided array of properties set by this function.
+ * @param max_nproperties Max num properties to put in @p properties.
+ * @param nproperties Number of properties that got stored in @p properties.
+ * @param layer Id of the layer to fetch properties for.
+ */
+void buffer_get_text_properties_filtered(struct buffer *buffer,
+                                         struct location location,
+                                         struct text_property **properties,
+                                         uint32_t max_nproperties,
+                                         uint32_t *nproperties, layer_id layer);
+
+/**
+ * Clear any text properties from the default property layer for @p buffer.
  *
  * @param buffer The buffer to clear properties for.
  */
 void buffer_clear_text_properties(struct buffer *buffer);
 
-/** Callback when removing hooks to clean up userdata */
-typedef void (*remove_hook_cb)(void *userdata);
+/**
+ * Clear text properties from layer @ref layer.
+ *
+ * @param buffer The buffer to clear properties for.
+ * @param layer The layer to clear.
+ */
+void buffer_clear_text_property_layer(struct buffer *buffer, layer_id layer);
 
 /**
  * Buffer update hook callback function.
@@ -496,9 +569,8 @@ void buffer_remove_update_hook(struct buffer *buffer, uint32_t hook_id,
  * @param width The width of the rendered region.
  * @param height The height of the rendered region.
  */
-typedef void (*render_hook_cb)(struct buffer *buffer, void *userdata,
-                               struct location origin, uint32_t width,
-                               uint32_t height);
+typedef void (*render_hook_cb)(struct buffer *buffer, struct location origin,
+                               uint32_t width, uint32_t height, void *userdata);
 
 /**
  * Add a buffer render hook.
@@ -567,9 +639,6 @@ struct edit_location {
  *
  * @param buffer The buffer.
  * @param inserted The position in the @p buffer where text was inserted.
- * @param begin_idx The global byte offset to the start of where text was
- * inserted.
- * @param end_idx The global byte offset to the end of where text was inserted.
  * @param userdata The userdata as sent in to @ref buffer_add_insert_hook.
  */
 typedef void (*insert_hook_cb)(struct buffer *buffer,
@@ -602,8 +671,6 @@ void buffer_remove_insert_hook(struct buffer *buffer, uint32_t hook_id,
  *
  * @param buffer The buffer.
  * @param removed The region that was removed from the @p buffer.
- * @param begin_idx The global byte offset to the start of the removed text.
- * @param end_idx The global byte offset to the end of the removed text.
  * @param userdata The userdata as sent in to @ref buffer_add_delete_hook.
  */
 typedef void (*delete_hook_cb)(struct buffer *buffer,
@@ -630,6 +697,29 @@ uint32_t buffer_add_delete_hook(struct buffer *buffer, delete_hook_cb callback,
  */
 void buffer_remove_delete_hook(struct buffer *buffer, uint32_t hook_id,
                                remove_hook_cb callback);
+
+/**
+ * Add a pre-delete hook, called when text is about to be removed from the @p
+ * buffer.
+ *
+ * @param buffer The buffer to add a delete hook to.
+ * @param callback The function to call when text is removed from @p buffer.
+ * @param userdata Data that is passed unmodified to the delete hook.
+ * @returns The hook id.
+ */
+uint32_t buffer_add_pre_delete_hook(struct buffer *buffer,
+                                    delete_hook_cb callback, void *userdata);
+
+/**
+ * Remove a buffer pre-delete hook.
+ *
+ * @param [in] buffer The buffer to remove the hook from.
+ * @param [in] hook_id The hook id as returned from @ref buffer_add_delete_hook.
+ * @param [in] callback A function called with the userdata pointer to do
+ * cleanup.
+ */
+void buffer_remove_pre_delete_hook(struct buffer *buffer, uint32_t hook_id,
+                                   remove_hook_cb callback);
 
 /**
  * Buffer destroy hook callback function.
@@ -688,6 +778,68 @@ uint32_t buffer_add_create_hook(create_hook_cb callback, void *userdata);
  * cleanup.
  */
 void buffer_remove_create_hook(uint32_t hook_id, remove_hook_cb callback);
+
+/**
+ * Buffer pre-save callback function
+ *
+ * @param buffer The buffer about to be saved.
+ * @param userdata The userdata as sent in to @ref buffer_add_pre_save_hook.
+ */
+typedef void (*pre_save_cb)(struct buffer *buffer, void *userdata);
+
+/**
+ * Add a pre-save hook, called when @p buffer is about to be saved.
+ *
+ * @param buffer The buffer to add a pre-save hook to.
+ * @param callback The function to call @p buffer is about to be saved.
+ * @param userdata Data that is passed unmodified to the pre-save hook.
+ * @returns The hook id.
+ */
+uint32_t buffer_add_pre_save_hook(struct buffer *buffer, pre_save_cb callback,
+                                  void *userdata);
+
+/**
+ * Remove a buffer pre-save hook.
+ *
+ * @param [in] buffer The buffer to remove the hook from.
+ * @param [in] hook_id The hook id as returned from @ref
+ * buffer_add_pre_save_hook.
+ * @param [in] callback A function called with the userdata pointer to do
+ * cleanup.
+ */
+void buffer_remove_pre_save_hook(struct buffer *buffer, uint32_t hook_id,
+                                 remove_hook_cb callback);
+
+/**
+ * Buffer post-save callback function
+ *
+ * @param buffer The buffer that was saved.
+ * @param userdata The userdata as sent in to @ref buffer_add_post_save_hook.
+ */
+typedef void (*post_save_cb)(struct buffer *buffer, void *userdata);
+
+/**
+ * Add a post-save hook, called when @p buffer has been saved.
+ *
+ * @param buffer The buffer to add a post-save hook to.
+ * @param callback The function to call @p buffer is saved.
+ * @param userdata Data that is passed unmodified to the post-save hook.
+ * @returns The hook id.
+ */
+uint32_t buffer_add_post_save_hook(struct buffer *buffer, post_save_cb callback,
+                                   void *userdata);
+
+/**
+ * Remove a buffer post-save hook.
+ *
+ * @param [in] buffer The buffer to remove the hook from.
+ * @param [in] hook_id The hook id as returned from @ref
+ * buffer_add_post_save_hook.
+ * @param [in] callback A function called with the userdata pointer to do
+ * cleanup.
+ */
+void buffer_remove_post_save_hook(struct buffer *buffer, uint32_t hook_id,
+                                  remove_hook_cb callback);
 
 /**
  * Parameters for rendering a buffer.

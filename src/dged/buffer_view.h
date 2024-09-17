@@ -3,7 +3,9 @@
 
 #include <stddef.h>
 
+#include "hook.h"
 #include "location.h"
+#include "s8.h"
 
 struct buffer;
 
@@ -25,8 +27,8 @@ struct buffer_view {
   /** Pointer to the actual buffer */
   struct buffer *buffer;
 
-  /** Modeline buffer (may be NULL) */
-  struct modeline *modeline;
+  /** Has modeline? */
+  bool modeline;
 
   /** Current left fringe size */
   uint32_t fringe_width;
@@ -86,6 +88,15 @@ void buffer_view_undo(struct buffer_view *view);
 
 void buffer_view_sort_lines(struct buffer_view *view);
 
+// hack to prevent s8 from being expanded as a macro
+// in the function pointer typedef
+typedef struct s8 _string;
+typedef _string (*modeline_hook_cb)(struct buffer_view *, void *);
+uint32_t buffer_view_add_modeline_hook(modeline_hook_cb callback,
+                                       void *userdata);
+void buffer_view_remove_modeline_hook(uint32_t hook_id,
+                                      remove_hook_cb callback);
+
 struct buffer_view_update_params {
   struct command_list *commands;
   void *(*frame_alloc)(size_t);
@@ -97,7 +108,7 @@ struct buffer_view_update_params {
   uint32_t window_y;
 };
 
-void buffer_view_update(struct buffer_view *view,
+bool buffer_view_update(struct buffer_view *view,
                         struct buffer_view_update_params *params);
 
 #endif

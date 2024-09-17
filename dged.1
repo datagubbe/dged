@@ -244,10 +244,95 @@ more languages, add something like
 .Bd -literal
 [languages.mylang]
 name = "My Language"  # a descriptive name
+pattern "^.*\.mylang$"  # a regex pattern to identify files for this language
 grammar = "mylang"  # name of the treesitter grammar to use (if syntax is enabled)
 .Ed
 
 to the configuration file.
+.Sh LANGUAGE SERVER PROTOCOL
+When
+.Nm
+is built with language server protocol support (short: LSP, enabled by default),
+it acts as a language server protocol client. To configure the language server
+for a language (some common languages are already configured out of the box,
+look for a message in *messages* about needing to configure the
+language server). Configuration is done in
+.Pa dged.toml
+and looks like
+.Bd -literal
+[languages.mylang]
+name = "My Language"
+pattern "^.*\.mylang$"  # see above
+grammar = "mylang"  # see above
+
+[languages.mylang.language-server]
+command = "mylang-lsp"  # path/name of language server process to start
+language-server.format-on-save = true  # true to format the language when saving
+.Ed
+
+format-on-save can also be set globally with
+.Bd -literal
+[editor]
+format-on-save = true
+.Ed
+
+.Ss COMMANDS
+A set of commands are also associated with the language server
+
+.Bl -tag -width xxxx
+.It lsp-goto-definition
+Go to the definition of the symbol under the cursor.
+.It lsp-goto-declaration
+Go to the declaration of the symbol under the cursor.
+.It lsp-goto-implementation
+Go to the implementation of the symbol under the cursor.
+.It lsp-goto
+Interactively go to the definition, declaration or implementation
+of the symbol under the cursor.
+.It lsp-goto-previous
+Go back to where the cursor was before jumping with above commands.
+.It lsp-references
+Find all references for the symbol under the cursor.
+.It lsp-restart
+Restart the LSP server process.
+.It lsp-diagnostics
+Open a list of the diagnostics for the current buffer.
+.It lsp-next-diagnostic
+Goto the next LSP diagnostic in the file.
+.It lsp-prev-diagnostic
+Goto the previous LSP diagnostic in the file.
+.It lsp-code-actions
+Get a list of and apply code actions for the symbol under the cursor.
+.It lsp-format
+Format the buffer or region using the LSP.
+.It lsp-rename
+Rename the symbol under the cursor. Note that this may modify more
+than the open buffer.
+.It lsp-help
+Display help text for the symbol under the cursor.
+.El
+
+.Ss BINDINGS
+For some of the above commands there are also key bindings:
+
+.Bl -tag -width xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx -compact
+.It M-.
+lsp-goto-definition
+.It M-/
+lsp-goto
+.It M-[
+lsp-prev-diagnostic
+.It M-]
+lsp-next-diagnostic
+.It M-a
+lsp-code-actions
+.It M-=
+lsp-format
+.It M-r
+lsp-rename
+.It M-h
+lsp-help
+
 .Sh FILES
 .Bl -tag -width XX
 .It Pa ~/.config/dged/dged.toml

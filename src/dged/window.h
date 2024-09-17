@@ -27,7 +27,7 @@ void windows_init(uint32_t height, uint32_t width,
 
 void windows_destroy(void);
 void windows_resize(uint32_t height, uint32_t width);
-void windows_update(void *(*frame_alloc)(size_t), float frame_time);
+bool windows_update(void *(*frame_alloc)(size_t), float frame_time);
 void windows_render(struct display *display);
 
 struct window *root_window(void);

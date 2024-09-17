@@ -38,6 +38,7 @@
 #include "bindings.h"
 #include "cmds.h"
 #include "completion.h"
+#include "frame-hooks.h"
 #include "version.h"
 
 /* welcome.h is generated from welcome.inc with
@@ -86,12 +87,21 @@ void segfault(int sig) {
   abort();
 }
 
+/* void __asan_on_error() {
+  if (display != NULL) {
+    display_clear(display);
+    display_destroy(display);
+  }
+} */
+
 #define INVALID_WATCH (uint32_t) - 1
 
 static void clear_buffer_props(struct buffer *buffer, void *userdata) {
   (void)userdata;
 
-  buffer_clear_text_properties(buffer);
+  if (!buffer->retain_properties) {
+    buffer_clear_text_properties(buffer);
+  }
 }
 
 struct watched_file {
@@ -275,6 +285,10 @@ int main(int argc, char *argv[]) {
 
   buffers_add_add_hook(&buflist, watch_file, (void *)reactor);
 
+  init_bindings();
+
+  init_completion(&buflist);
+
 #ifdef SYNTAX_ENABLE
   char *treesitter_path_env = getenv("TREESITTER_GRAMMARS");
   struct setting *path_setting = settings_get("editor.grammars-path");
@@ -324,7 +338,7 @@ int main(int argc, char *argv[]) {
 #endif
 
 #ifdef LSP_ENABLE
-  lang_servers_init(reactor, &buflist);
+  lang_servers_init(reactor, &buflist, &commands);
 #endif
 
   struct buffer initial_buffer = buffer_create("welcome");
@@ -361,20 +375,21 @@ int main(int argc, char *argv[]) {
   register_settings_commands(&commands);
 
   struct keymap *current_keymap = NULL;
-  init_bindings();
-
-  init_completion(&buflist, &commands);
   timers_init();
+  init_frame_hooks();
 
   float frame_time = 0.f;
   static char keyname[64] = {0};
   static uint32_t nkeychars = 0;
+
+  bool needs_render = true;
 
   while (running) {
     timers_start_frame();
     if (display_resized) {
       windows_resize(display_height(display), display_width(display));
       display_resized = false;
+      needs_render = true;
     }
 
     // TODO: maybe this should be hidden behind something
@@ -383,7 +398,7 @@ int main(int argc, char *argv[]) {
 
     /* Update all windows together with the buffers in them. */
     struct timer *update_windows = timer_start("update-windows");
-    windows_update(frame_alloc, frame_time);
+    needs_render |= windows_update(frame_alloc, frame_time);
     timer_stop(update_windows);
 
     struct window *active_window = windows_get_active();
@@ -392,26 +407,36 @@ int main(int argc, char *argv[]) {
      * from updating the buffers.
      */
     struct timer *update_display = timer_start("display");
-    display_begin_render(display);
-    windows_render(display);
-    struct buffer_view *view = window_buffer_view(active_window);
-    struct location cursor = buffer_view_dot_to_visual(view);
-    struct window_position winpos = window_position(active_window);
-    display_move_cursor(display, winpos.y + cursor.line, winpos.x + cursor.col);
-    display_end_render(display);
+    if (needs_render) {
+      display_begin_render(display);
+      windows_render(display);
+      struct buffer_view *view = window_buffer_view(active_window);
+      struct location cursor = buffer_view_dot_to_visual(view);
+      struct window_position winpos = window_position(active_window);
+      display_move_cursor(display, winpos.y + cursor.line,
+                          winpos.x + cursor.col);
+      display_end_render(display);
+      needs_render = false;
+    }
     timer_stop(update_display);
 
-    /* This blocks for events, so if nothing has happened we block here and let
-     * the CPU do something more useful than updating this editor for no reason.
-     * This is also the reason that there is no timed scope around this, it
-     * simply makes no sense.
+    /* if we have dispatched frame hooks, they need a
+     * full cycle of updates.
      */
-    reactor_update(reactor);
+    if (dispatch_next_frame_hooks() == 0) {
+      /* This blocks for events, so if nothing has happened we block here and
+       * let the CPU do something more useful than updating this editor for no
+       * reason. This is also the reason that there is no timed scope around
+       * this, it simply makes no sense.
+       */
+      reactor_update(reactor);
+    }
 
     struct timer *update_keyboard = timer_start("update-keyboard");
     struct keyboard_update kbd_upd =
         keyboard_update(&kbd, reactor, frame_alloc);
 
+    needs_render |= kbd_upd.nkeys > 0;
     for (uint32_t ki = 0; ki < kbd_upd.nkeys; ++ki) {
       struct key *k = &kbd_upd.keys[ki];
 
@@ -457,7 +482,7 @@ int main(int argc, char *argv[]) {
 
           if (nkeychars < 64) {
             nkeychars += key_name(k, keyname + nkeychars, 64 - nkeychars);
-            minibuffer_echo("%s", keyname);
+            minibuffer_display("%s", keyname);
           }
 
           current_keymap = res.data.keymap;
@@ -472,10 +497,10 @@ int main(int argc, char *argv[]) {
         char keyname[16];
         key_name(k, keyname, 16);
         if (current_keymap == NULL) {
-          minibuffer_echo_timeout(4, "key \"%s\" is not bound!", keyname);
+          minibuffer_display_timeout(4, "key \"%s\" is not bound!", keyname);
         } else {
-          minibuffer_echo_timeout(4, "key \"%s %s\" is not bound!",
-                                  current_keymap->name, keyname);
+          minibuffer_display_timeout(4, "key \"%s %s\" is not bound!",
+                                     current_keymap->name, keyname);
         }
         current_keymap = NULL;
         nkeychars = 0;
@@ -498,13 +523,10 @@ int main(int argc, char *argv[]) {
     frame_allocator_clear(&frame_allocator);
   }
 
+  teardown_frame_hooks();
   timers_destroy();
   teardown_global_commands();
-  destroy_completion();
   windows_destroy();
-  minibuffer_destroy();
-  buffer_destroy(&minibuffer);
-  buffers_destroy(&buflist);
 
 #ifdef SYNTAX_ENABLE
   syntax_teardown();
@@ -513,6 +535,11 @@ int main(int argc, char *argv[]) {
 #ifdef LSP_ENABLE
   lang_servers_teardown();
 #endif
+
+  destroy_completion();
+  minibuffer_destroy();
+  buffer_destroy(&minibuffer);
+  buffers_destroy(&buflist);
 
   display_clear(display);
   display_destroy(display);

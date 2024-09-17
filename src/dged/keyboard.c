@@ -124,7 +124,7 @@ struct keyboard_update keyboard_update(struct keyboard *kbd,
   const uint32_t bufsize = 1024;
   uint8_t *buf = malloc(bufsize), *writepos = buf;
   int nbytes = 0, nread = 0;
-  while ((nread = read(kbd->fd, writepos, bufsize)) == bufsize) {
+  while ((nread = read(kbd->fd, writepos, bufsize)) == (int)bufsize) {
     nbytes += bufsize;
     buf = realloc(buf, nbytes + bufsize);
     writepos = buf + nbytes;

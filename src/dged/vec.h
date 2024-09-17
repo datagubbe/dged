@@ -1,6 +1,7 @@
 #ifndef _VEC_H
 #define _VEC_H
 
+#include <stdint.h>
 #include <stdlib.h>
 
 #define VEC(entry)                                                             \
@@ -12,7 +13,7 @@
   }
 
 #define VEC_INIT(vec, initial_capacity)                                        \
-  (vec)->entries = malloc(sizeof((vec)->entries[0]) * initial_capacity);       \
+  (vec)->entries = calloc(initial_capacity, sizeof((vec)->entries[0]));        \
   (vec)->temp = calloc(1, sizeof((vec)->entries[0]));                          \
   (vec)->capacity = initial_capacity;                                          \
   (vec)->nentries = 0;
@@ -23,6 +24,7 @@
   free((vec)->temp);                                                           \
   free((vec)->entries);                                                        \
   (vec)->entries = NULL;                                                       \
+  (vec)->temp = NULL;                                                          \
   (vec)->capacity = 0;                                                         \
   (vec)->nentries = 0;
 
@@ -68,6 +70,13 @@
   for (uint32_t keep = 1, idx = 0, size = (vec)->nentries;                     \
        keep && idx != size; keep = !keep, idx++)                               \
     for (var = (vec)->entries + idx; keep; keep = !keep)
+
+#define VEC_FOR_EACH_REVERSE(vec, var) VEC_FOR_EACH_INDEXED_REVERSE(vec, var, i)
+
+#define VEC_FOR_EACH_INDEXED_REVERSE(vec, var, idx)                            \
+  for (uint32_t keep = 1, idx = 0, size = (vec)->nentries;                     \
+       keep && idx != size; keep = !keep, idx++)                               \
+    for (var = &(vec)->entries[size - idx - 1]; keep; keep = !keep)
 
 #define VEC_SIZE(vec) (vec)->nentries
 #define VEC_CAPACITY(vec) (vec)->capacity

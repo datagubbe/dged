@@ -55,8 +55,6 @@ static void buffer_removed(struct buffer *buffer, void *userdata) {
     if (window_buffer(w) == buffer) {
       if (window_has_prev_buffer_view(w)) {
         window_set_buffer(w, window_prev_buffer_view(w)->buffer);
-        buffer_view_destroy(&w->prev_buffer_view);
-        w->has_prev_buffer_view = false;
       } else {
         struct buffers *buffers = (struct buffers *)userdata;
         struct buffer *b = buffers_find(buffers, "*messages*");
@@ -71,9 +69,10 @@ static void buffer_removed(struct buffer *buffer, void *userdata) {
             window_set_buffer(w, b);
           }
         }
-        buffer_view_destroy(&w->prev_buffer_view);
-        w->has_prev_buffer_view = false;
       }
+
+      buffer_view_destroy(&w->prev_buffer_view);
+      w->has_prev_buffer_view = false;
     }
 
     BINTREE_NEXT(n);
@@ -198,7 +197,36 @@ void windows_resize(uint32_t height, uint32_t width) {
   window_tree_resize(BINTREE_ROOT(&g_windows.windows), height - 1, width);
 }
 
-void windows_update(void *(*frame_alloc)(size_t), float frame_time) {
+bool windows_update(void *(*frame_alloc)(size_t), float frame_time) {
+  bool needs_render = false;
+  struct window_node *n = BINTREE_ROOT(&g_windows.windows);
+  BINTREE_FIRST(n);
+  uint32_t window_id = 0;
+  while (n != NULL) {
+    struct window *w = &BINTREE_VALUE(n);
+    if (w->type == Window_Buffer) {
+      char name[16] = {0};
+      snprintf(name, 15, "bufview-%s", w->buffer_view.buffer->name);
+      w->commands = command_list_create(w->height * w->width, frame_alloc, w->x,
+                                        w->y, 4, name);
+
+      struct buffer_view_update_params p = {
+          .commands = w->commands,
+          .window_id = window_id,
+          .frame_time = frame_time,
+          .width = w->width,
+          .height = w->height,
+          .window_x = w->x,
+          .window_y = w->y,
+          .frame_alloc = frame_alloc,
+      };
+
+      needs_render |= buffer_view_update(&w->buffer_view, &p);
+      ++window_id;
+    }
+
+    BINTREE_NEXT(n);
+  }
 
   struct window *w = &g_minibuffer_window;
   w->x = 0;
@@ -224,7 +252,7 @@ void windows_update(void *(*frame_alloc)(size_t), float frame_time) {
       .frame_alloc = frame_alloc,
   };
 
-  buffer_view_update(&w->buffer_view, &p);
+  needs_render |= buffer_view_update(&w->buffer_view, &p);
   command_list_draw_command_list(w->commands, inner_commands);
 
   if (g_popup_visible) {
@@ -239,9 +267,12 @@ void windows_update(void *(*frame_alloc)(size_t), float frame_time) {
     struct window *rw = root_window();
     uint32_t w_x = w->x;
     uint32_t w_y = w->y;
-    uint32_t width = w_x + w->width > rw->width ? rw->width - w_x : w->width;
-    uint32_t height =
-        w_y + w->height > rw->height ? rw->height - w_y : w->height;
+    uint32_t width = w_x + w->width > rw->width
+                         ? (rw->width >= w_x ? rw->width - w_x : 0)
+                         : w->width;
+    uint32_t height = w_y + w->height > rw->height
+                          ? (rw->height >= w_y ? rw->height - w_y : 0)
+                          : w->height;
 
     // is there space for padding?
     if (w_x > 1 && w_x + width + hpadding <= rw->width) {
@@ -317,38 +348,11 @@ void windows_update(void *(*frame_alloc)(size_t), float frame_time) {
         .frame_alloc = frame_alloc,
     };
 
-    buffer_view_update(&w->buffer_view, &p);
+    needs_render |= buffer_view_update(&w->buffer_view, &p);
     command_list_draw_command_list(w->commands, inner);
   }
 
-  struct window_node *n = BINTREE_ROOT(&g_windows.windows);
-  BINTREE_FIRST(n);
-  uint32_t window_id = 0;
-  while (n != NULL) {
-    struct window *w = &BINTREE_VALUE(n);
-    if (w->type == Window_Buffer) {
-      char name[16] = {0};
-      snprintf(name, 15, "bufview-%s", w->buffer_view.buffer->name);
-      w->commands = command_list_create(w->height * w->width, frame_alloc, w->x,
-                                        w->y, 4, name);
-
-      struct buffer_view_update_params p = {
-          .commands = w->commands,
-          .window_id = window_id,
-          .frame_time = frame_time,
-          .width = w->width,
-          .height = w->height,
-          .window_x = w->x,
-          .window_y = w->y,
-          .frame_alloc = frame_alloc,
-      };
-
-      buffer_view_update(&w->buffer_view, &p);
-      ++window_id;
-    }
-
-    BINTREE_NEXT(n);
-  }
+  return needs_render;
 }
 
 void windows_render(struct display *display) {

@@ -103,12 +103,19 @@ static void test_delete(void) {
 
 static void test_word_at(void) {
   struct buffer b = buffer_create("test-word-at-buffer");
-  const char *txt = "word1 (word2). Another";
-  buffer_add(&b, (struct location){.line = 0, .col = 0}, (uint8_t *)txt,
-             strlen(txt));
+  const char *txt = "word1";
+  struct location at = buffer_add(&b, (struct location){.line = 0, .col = 0},
+                                  (uint8_t *)txt, strlen(txt));
 
   struct region word1 =
-      buffer_word_at(&b, (struct location){.line = 0, .col = 0});
+      buffer_word_at(&b, (struct location){.line = 0, .col = 5});
+  ASSERT(region_has_size(word1), "expected 0,0 to be a word even if only word");
+  ASSERT(word1.begin.col == 0 && word1.end.col == 5,
+         "Expected only word to end at col 5");
+
+  const char *txt2 = " (word2). Another";
+  buffer_add(&b, at, (uint8_t *)txt2, strlen(txt2));
+  word1 = buffer_word_at(&b, (struct location){.line = 0, .col = 0});
   ASSERT(region_has_size(word1), "expected 0,0 to be a word");
   ASSERT(word1.begin.col == 0 && word1.end.col == 5,
          "Expected word to end at col 5");
@@ -179,7 +186,7 @@ static void test_char_movement(void) {
 static void test_word_movement(void) {
   struct buffer b = buffer_create("test-word-movement-buffer");
 
-  const char *txt = " word1, word2 \"word3\" word4";
+  const char *txt = " word1, word2 \"word3\"   word4";
   buffer_add(&b, buffer_end(&b), (uint8_t *)txt, strlen(txt));
   struct location next =
       buffer_next_word(&b, (struct location){.line = 0, .col = 0});
@@ -192,18 +199,28 @@ static void test_word_movement(void) {
   ASSERT(next.col == 15, "Expected next word to start at col 15");
 
   next = buffer_next_word(&b, (struct location){.line = 0, .col = 15});
-  ASSERT(next.col == 22, "Expected next word to start at col 22");
+  ASSERT(next.col == 24, "Expected next word to start at col 24");
 
   struct location prev =
       buffer_previous_word(&b, (struct location){.line = 0, .col = 26});
-  ASSERT(prev.col == 22, "Expected previous word to start at col 22");
+  ASSERT(prev.col == 24, "Expected previous word to start at col 24");
 
-  prev = buffer_previous_word(&b, (struct location){.line = 0, .col = 22});
+  prev = buffer_previous_word(&b, (struct location){.line = 0, .col = 24});
   ASSERT(prev.col == 15, "Expected previous word to start at col 15");
+
+  prev = buffer_previous_word(&b, (struct location){.line = 0, .col = 3});
+  ASSERT(prev.col == 0 && prev.line == 0,
+         "Expected first word to start at start of first line");
 
   prev = buffer_previous_word(&b, (struct location){.line = 0, .col = 0});
   ASSERT(prev.col == 0 && prev.line == 0,
          "Expected previous word to not go before beginning of buffer");
+
+  const char *txt2 = "        word";
+  buffer_add(&b, buffer_end(&b), (uint8_t *)txt2, strlen(txt2));
+  prev = buffer_previous_word(&b, (struct location){.line = 1, .col = 8});
+  ASSERT(prev.col == 0 && prev.line == 1,
+         "Expected to be at start of line if there are no words");
 
   buffer_destroy(&b);
 }

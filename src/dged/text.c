@@ -20,10 +20,13 @@ struct line {
   uint32_t nbytes;
 };
 
-struct text_property_entry {
-  struct location start;
-  struct location end;
-  struct text_property property;
+typedef VEC(struct text_property) property_vec;
+
+#define MAX_LAYERS 16
+
+struct property_layer {
+  layer_id id;
+  property_vec properties;
 };
 
 struct text {
@@ -31,7 +34,10 @@ struct text {
   struct line *lines;
   uint32_t nlines;
   uint32_t capacity;
-  VEC(struct text_property_entry) properties;
+  property_vec properties;
+  struct property_layer property_layers[MAX_LAYERS];
+  uint32_t nproperty_layers;
+  layer_id current_layer_id;
 };
 
 struct text *text_create(uint32_t initial_capacity) {
@@ -39,6 +45,7 @@ struct text *text_create(uint32_t initial_capacity) {
   txt->lines = calloc(initial_capacity, sizeof(struct line));
   txt->capacity = initial_capacity;
   txt->nlines = 0;
+  txt->current_layer_id = 1;
 
   VEC_INIT(&txt->properties, 32);
 
@@ -47,6 +54,10 @@ struct text *text_create(uint32_t initial_capacity) {
 
 void text_destroy(struct text *text) {
   VEC_DESTROY(&text->properties);
+
+  for (size_t i = 0; i < text->nproperty_layers; ++i) {
+    VEC_DESTROY(&text->property_layers[i].properties);
+  }
 
   for (uint32_t li = 0; li < text->nlines; ++li) {
     free(text->lines[li].data);
@@ -364,6 +375,15 @@ void text_for_each_line(struct text *text, uint32_t line, uint32_t nlines,
 }
 
 struct text_chunk text_get_line(struct text *text, uint32_t line) {
+  if (line >= text_num_lines(text)) {
+    return (struct text_chunk){
+        .text = NULL,
+        .nbytes = 0,
+        .line = line,
+        .allocated = false,
+    };
+  }
+
   struct line *src_line = &text->lines[line];
   return (struct text_chunk){
       .text = src_line->data,
@@ -453,15 +473,41 @@ struct text_chunk text_get_region(struct text *text, uint32_t start_line,
   };
 }
 
+static property_vec *find_property_layer(struct text *text, layer_id layer) {
+  if (layer == PropertyLayer_Default) {
+    return &text->properties;
+  }
+
+  for (size_t i = 0; i < text->nproperty_layers; ++i) {
+    if (text->property_layers[i].id == layer) {
+      return &text->property_layers[i].properties;
+    }
+  }
+
+  return NULL;
+}
+
 void text_add_property(struct text *text, uint32_t start_line,
                        uint32_t start_offset, uint32_t end_line,
                        uint32_t end_offset, struct text_property property) {
-  struct text_property_entry entry = {
-      .start = (struct location){.line = start_line, .col = start_offset},
-      .end = (struct location){.line = end_line, .col = end_offset},
-      .property = property,
-  };
-  VEC_PUSH(&text->properties, entry);
+  text_add_property_to_layer(text, start_line, start_offset, end_line,
+                             end_offset, property, PropertyLayer_Default);
+}
+
+void text_add_property_to_layer(struct text *text, uint32_t start_line,
+                                uint32_t start_offset, uint32_t end_line,
+                                uint32_t end_offset,
+                                struct text_property property, layer_id layer) {
+
+  property_vec *target_vec = find_property_layer(text, layer);
+
+  if (target_vec == NULL) {
+    return;
+  }
+
+  property.start = (struct location){.line = start_line, .col = start_offset};
+  property.end = (struct location){.line = end_line, .col = end_offset};
+  VEC_PUSH(target_vec, property);
 }
 
 void text_get_properties(struct text *text, uint32_t line, uint32_t offset,
@@ -469,17 +515,110 @@ void text_get_properties(struct text *text, uint32_t line, uint32_t offset,
                          uint32_t max_nproperties, uint32_t *nproperties) {
   struct location location = {.line = line, .col = offset};
   uint32_t nres = 0;
-  VEC_FOR_EACH(&text->properties, struct text_property_entry * prop) {
-    if (location_is_between(location, prop->start, prop->end)) {
-      properties[nres] = &prop->property;
-      ++nres;
+  VEC_FOR_EACH(&text->properties, struct text_property * prop) {
+    if (nres == max_nproperties) {
+      break;
+    }
 
+    if (location_is_between(location, prop->start, prop->end)) {
+      properties[nres] = prop;
+      ++nres;
+    }
+  }
+
+  for (size_t i = 0; i < text->nproperty_layers; ++i) {
+    property_vec *pv = &text->property_layers[i].properties;
+    VEC_FOR_EACH(pv, struct text_property * prop) {
       if (nres == max_nproperties) {
         break;
       }
+
+      if (location_is_between(location, prop->start, prop->end)) {
+        properties[nres] = prop;
+        ++nres;
+      }
     }
   }
+
+  *nproperties = nres;
+}
+
+void text_get_properties_filtered(struct text *text, uint32_t line,
+                                  uint32_t offset,
+                                  struct text_property **properties,
+                                  uint32_t max_nproperties,
+                                  uint32_t *nproperties, layer_id layer) {
+
+  struct location location = {.line = line, .col = offset};
+  uint32_t nres = 0;
+  property_vec *pv = find_property_layer(text, layer);
+
+  if (pv == NULL) {
+    return;
+  }
+
+  VEC_FOR_EACH(pv, struct text_property * prop) {
+    if (nres == max_nproperties) {
+      break;
+    }
+
+    if (location_is_between(location, prop->start, prop->end)) {
+      properties[nres] = prop;
+      ++nres;
+    }
+  }
+
   *nproperties = nres;
 }
 
 void text_clear_properties(struct text *text) { VEC_CLEAR(&text->properties); }
+
+layer_id text_add_property_layer(struct text *text) {
+  if (text->nproperty_layers < MAX_LAYERS) {
+
+    struct property_layer *layer =
+        &text->property_layers[text->nproperty_layers];
+    layer->id = text->current_layer_id;
+    VEC_INIT(&layer->properties, 16);
+
+    ++text->current_layer_id;
+    ++text->nproperty_layers;
+
+    return layer->id;
+  }
+
+  return (layer_id)-1;
+}
+
+void text_remove_property_layer(struct text *text, layer_id layer) {
+  for (size_t i = 0; i < text->nproperty_layers; ++i) {
+    struct property_layer *l = &text->property_layers[i];
+    if (layer == l->id) {
+
+      // swap to last place
+      struct property_layer temp =
+          text->property_layers[text->nproperty_layers - 1];
+      text->property_layers[text->nproperty_layers - 1] =
+          text->property_layers[i];
+      text->property_layers[i] = temp;
+
+      // drop from array
+      text->property_layers[text->nproperty_layers - 1].id = (layer_id)-1;
+      VEC_DESTROY(
+          &text->property_layers[text->nproperty_layers - 1].properties);
+      --text->nproperty_layers;
+
+      return;
+    }
+  }
+}
+
+void text_clear_property_layer(struct text *text, layer_id layer) {
+  property_vec *pv = find_property_layer(text, layer);
+
+  if (pv == NULL) {
+    return;
+  }
+
+  VEC_CLEAR(pv);
+}

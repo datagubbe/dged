@@ -62,9 +62,13 @@ struct text_property_colors {
   uint32_t fg;
   bool set_bg;
   uint32_t bg;
+  bool underline;
+  bool inverted;
 };
 
 struct text_property {
+  struct location start;
+  struct location end;
   enum text_property_type type;
   union property_data {
     struct text_property_colors colors;
@@ -72,14 +76,34 @@ struct text_property {
   } data;
 };
 
+typedef uint64_t layer_id;
+enum layer_ids {
+  PropertyLayer_Default = 0,
+};
+
 void text_add_property(struct text *text, uint32_t start_line,
                        uint32_t start_offset, uint32_t end_line,
                        uint32_t end_offset, struct text_property property);
+
+void text_add_property_to_layer(struct text *text, uint32_t start_line,
+                                uint32_t start_offset, uint32_t end_line,
+                                uint32_t end_offset,
+                                struct text_property property, layer_id layer);
+
+layer_id text_add_property_layer(struct text *text);
+void text_remove_property_layer(struct text *text, layer_id layer);
 
 void text_get_properties(struct text *text, uint32_t line, uint32_t offset,
                          struct text_property **properties,
                          uint32_t max_nproperties, uint32_t *nproperties);
 
+void text_get_properties_filtered(struct text *text, uint32_t line,
+                                  uint32_t offset,
+                                  struct text_property **properties,
+                                  uint32_t max_nproperties,
+                                  uint32_t *nproperties, layer_id layer);
+
 void text_clear_properties(struct text *text);
+void text_clear_property_layer(struct text *text, layer_id layer);
 
 #endif

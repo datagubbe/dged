@@ -8,6 +8,11 @@
 static struct keymap g_global_keymap, g_ctrlx_map, g_windows_keymap,
     g_buffer_default_keymap;
 
+HOOK_IMPL(buffer_keymaps, buffer_keymaps_cb);
+
+static buffer_keymaps_hook_vec g_buffer_keymaps_hooks;
+uint32_t g_buffer_keymaps_hook_id = 0;
+
 struct buffer_keymap {
   buffer_keymap_id id;
   struct buffer *buffer;
@@ -16,6 +21,8 @@ struct buffer_keymap {
 
 static VEC(struct buffer_keymap) g_buffer_keymaps;
 static buffer_keymap_id g_current_keymap_id;
+
+struct keymap *buffer_default_keymap(void) { return &g_buffer_default_keymap; }
 
 void set_default_buffer_bindings(struct keymap *keymap) {
   struct binding buffer_bindings[] = {
@@ -144,6 +151,8 @@ void init_bindings(void) {
   VEC_INIT(&g_buffer_keymaps, 32);
   g_current_keymap_id = 0;
 
+  VEC_INIT(&g_buffer_keymaps_hooks, 16);
+
   /* Minibuffer binds.
    * This map is actually never removed so forget about the id.
    */
@@ -204,6 +213,14 @@ uint32_t buffer_keymaps(struct buffer *buffer, struct keymap *keymaps[],
     }
   }
 
+  // hooks
+  VEC_FOR_EACH(&g_buffer_keymaps_hooks, struct buffer_keymaps_hook * hook) {
+    if (nkeymaps < max_nkeymaps) {
+      nkeymaps += hook->callback(buffer, &keymaps[nkeymaps],
+                                 max_nkeymaps - nkeymaps, hook->userdata);
+    }
+  }
+
   return nkeymaps;
 }
 
@@ -218,4 +235,12 @@ void destroy_bindings(void) {
   }
 
   VEC_DESTROY(&g_buffer_keymaps);
+}
+
+uint32_t buffer_add_keymaps_hook(buffer_keymaps_cb callback, void *userdata) {
+  return insert_buffer_keymaps_hook(
+      &g_buffer_keymaps_hooks, &g_buffer_keymaps_hook_id, callback, userdata);
+}
+void buffer_remove_keymaps_hook(uint32_t id, remove_hook_cb callback) {
+  remove_buffer_keymaps_hook(&g_buffer_keymaps_hooks, id, callback);
 }

@@ -1,4 +1,5 @@
 #include "path.h"
+#include "unistd.h"
 
 #include <limits.h>
 #include <stdint.h>
@@ -32,7 +33,37 @@ char *expanduser(const char *path) {
 }
 
 char *to_abspath(const char *path) {
+  if (strlen(path) > 0 && path[0] == '/') {
+    return strdup(path);
+  }
+
   char *exp = expanduser(path);
+  if (access(path, F_OK) == -1) {
+    // anchor to cwd
+    const char *cwd = getcwd(NULL, 0);
+    if (cwd == NULL) {
+      return strdup(path);
+    }
+
+    size_t cwdlen = strlen(cwd);
+    size_t pathlen = strlen(path);
+    size_t len = cwdlen + pathlen + (pathlen > 0 ? 2 : 1);
+    char *ret = calloc(len, sizeof(char));
+    memcpy(ret, cwd, cwdlen);
+
+    if (pathlen > 0) {
+      ret[cwdlen] = '/';
+      memcpy(ret + cwdlen + 1, path, pathlen);
+    }
+
+    ret[len - 1] = '\0';
+
+    free((void *)cwd);
+    free(exp);
+
+    return ret;
+  }
+
   char *p = realpath(path, NULL);
   if (p != NULL) {
     free(exp);

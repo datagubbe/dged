@@ -198,6 +198,11 @@ void command_list_set_color_fg(struct command_list *list, uint8_t red,
 void command_list_set_inverted_colors(struct command_list *list);
 
 /**
+ * Enable underline.
+ */
+void command_list_set_underline(struct command_list *list);
+
+/**
  * Reset the color and styling information.
  *
  * The following draw commands will have their formatting reset to the default.

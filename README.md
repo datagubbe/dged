@@ -21,7 +21,7 @@ expected pre-1.0.0.
 - [x] Terminal only
 - [x] Mouse-free editing
 - [x] Naive and incorrect unicode handling
-- [ ] LSP Client implementation (in progress)
+- [x] LSP Client implementation
 
 ## Contributing
 

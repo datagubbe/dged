@@ -51,6 +51,25 @@ void minibuffer_echo(const char *fmt, ...);
 void minibuffer_echo_timeout(uint32_t timeout, const char *fmt, ...);
 
 /**
+ * Echo a message to the minibuffer without saving it in the message buffer.
+ *
+ * @param fmt Format string for the message.
+ * @param ... Format arguments.
+ */
+void minibuffer_display(const char *fmt, ...);
+
+/**
+ * Echo a message to the minibuffer that disappears after @p timeout
+ * without saving it in the message buffer.
+ *
+ * @param timeout The timeout in seconds after which the message should
+ * disappear.
+ * @param fmt Format string for the message.
+ * @param ... Format arguments.
+ */
+void minibuffer_display_timeout(uint32_t timeout, const char *fmt, ...);
+
+/**
  * Prompt for user input in the minibuffer.
  *
  * This will move focus to the minibuffer and wait for user input, with the
@@ -65,6 +84,9 @@ int32_t minibuffer_prompt(struct command_ctx command_ctx, const char *fmt, ...);
 
 int32_t minibuffer_prompt_initial(struct command_ctx command_ctx,
                                   const char *initial, const char *fmt, ...);
+
+int32_t minibuffer_keymap_prompt(struct command_ctx command_ctx,
+                                 const char *fmt, struct keymap *keys, ...);
 
 void minibuffer_set_prompt(const char *fmt, ...);
 uint32_t minibuffer_draw_prompt(struct command_list *commands);

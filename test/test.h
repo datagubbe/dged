@@ -21,5 +21,6 @@ void run_minibuffer_tests(void);
 void run_settings_tests(void);
 void run_container_tests(void);
 void run_json_tests(void);
+void run_bufread_tests(void);
 
 #endif

@@ -1,6 +1,8 @@
 #ifndef _COMPLETION_H
 #define _COMPLETION_H
 
+#include <stddef.h>
+
 #include "dged/location.h"
 
 /** @file completion.h
@@ -9,28 +11,21 @@
 
 struct buffer;
 struct buffers;
+struct buffer_view;
 struct commands;
 
-/**
- * A single completion.
- */
+typedef struct region (*completion_render_fn)(void *, struct buffer *);
+typedef void (*completion_selected_fn)(void *, struct buffer_view *);
+typedef void (*completion_cleanup_fn)(void *);
+
 struct completion {
-  /** The display text for the completion. */
-  const char *display;
-
-  /** The text to insert for this completion. */
-  const char *insert;
-
-  /**
-   * True if this completion item represent a fully expanded value.
-   *
-   * One example might be when the file completion represents a
-   * file (and not a directory) which means that there is not
-   * going to be more to complete after picking this completion
-   * item.
-   */
-  bool complete;
+  void *data;
+  completion_render_fn render;
+  completion_selected_fn selected;
+  completion_cleanup_fn cleanup;
 };
+
+typedef void (*add_completions)(struct completion *, size_t);
 
 /**
  * Context for calculating completions.
@@ -40,20 +35,19 @@ struct completion_context {
   struct buffer *buffer;
 
   /** The current location in the buffer. */
-  const struct location location;
+  struct location location;
 
-  /** The capacity of @ref completion_context.completions. */
-  const uint32_t max_ncompletions;
-
-  /** The resulting completions */
-  struct completion *completions;
+  /** Callback for adding items to the completion list */
+  add_completions add_completions;
 };
 
 /**
  * A function that provides completions.
  */
-typedef uint32_t (*completion_fn)(struct completion_context ctx,
-                                  void *userdata);
+typedef void (*completion_fn)(struct completion_context ctx, bool deletion,
+                              void *userdata);
+
+typedef void (*provider_cleanup_fn)(void *);
 
 /**
  * A completion provider.
@@ -62,54 +56,21 @@ struct completion_provider {
   /** Name of the completion provider */
   char name[16];
 
-  /** Completion function. Called to get new completions. */
+  /** Completion function. Called to trigger retreival of new completions. */
   completion_fn complete;
+
+  /** Cleanup function called when provider is destroyed. */
+  provider_cleanup_fn cleanup;
 
   /** Userdata sent to @ref completion_provider.complete */
   void *userdata;
 };
 
 /**
- * Type of event that triggers a completion.
- */
-enum completion_trigger_kind {
-  /** Completion is triggered on any input. */
-  CompletionTrigger_Input = 0,
-
-  /** Completion is triggered on a specific char. */
-  CompletionTrigger_Char = 1,
-};
-
-/**
- * Description for @c CompletionTrigger_Input.
- */
-struct completion_trigger_input {
-  /** Trigger completion after this many chars */
-  uint32_t nchars;
-
-  /** Trigger an initial complete? */
-  bool trigger_initially;
-};
-
-/**
- * Completion trigger descriptor.
- */
-struct completion_trigger {
-  /** Type of trigger. */
-  enum completion_trigger_kind kind;
-  union completion_trigger_data {
-    uint32_t c;
-    struct completion_trigger_input input;
-  } data;
-};
-
-/**
  * Initialize the completion system.
  *
- * @param buffers The buffer list to complete from.
- * @param commands The command list to complete from.
  */
-void init_completion(struct buffers *buffers, struct commands *commands);
+void init_completion(struct buffers *buffers);
 
 /**
  * Tear down the completion system.
@@ -117,48 +78,23 @@ void init_completion(struct buffers *buffers, struct commands *commands);
 void destroy_completion(void);
 
 /**
- * Callback for completion inserted.
- */
-typedef void (*insert_cb)(void);
-
-/**
  * Enable completions in the buffer @p source.
  *
  * @param source [in] The buffer to provide completions for.
- * @param trigger [in] The completion trigger to use for this completion.
  * @param providers [in] The completion providers to use.
  * @param nproviders [in] The number of providers in @p providers.
- * @param on_completion_inserted [in] Callback to be called when a completion
- * has been inserted.
  */
-void enable_completion(struct buffer *source, struct completion_trigger trigger,
-                       struct completion_provider *providers,
-                       uint32_t nproviders, insert_cb on_completion_inserted);
+void add_completion_providers(struct buffer *source,
+                              struct completion_provider *providers,
+                              uint32_t nproviders);
 
 /**
- * Create a new path completion provider.
+ * Trigger a completion at @ref at in @ref buffer.
  *
- * This provider completes filesystem paths.
- * @returns A filesystem path @ref completion_provider.
+ * @param buffer [in] Buffer to complete in.
+ * @param at [in] The location in @ref buffer to provide completions at.
  */
-struct completion_provider path_provider(void);
-
-/**
- * Create a new buffer completion provider.
- *
- * This provider completes buffer names from the
- * buffer list.
- * @returns A buffer name @ref completion_provider.
- */
-struct completion_provider buffer_provider(void);
-
-/**
- * Create a new command completion provider.
- *
- * This provider completes registered command names.
- * @returns A command name @ref completion_provider.
- */
-struct completion_provider commands_provider(void);
+void complete(struct buffer *buffer, struct location at);
 
 /**
  * Abort any active completion.
@@ -173,10 +109,20 @@ void abort_completion(void);
 bool completion_active(void);
 
 /**
- * Disable completion for @ref buffer.
+ * Get a pointer to the buffer used to hold completion items.
+ *
+ * @returns A pointer to the buffer holding completions.
+ */
+struct buffer *completion_buffer(void);
+
+/**
+ * Disable completion for @ref buffer, removing all providers.
  *
  * @param buffer [in] Buffer to disable completions for.
  */
 void disable_completion(struct buffer *buffer);
+
+void pause_completion();
+void resume_completion();
 
 #endif

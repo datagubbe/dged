@@ -82,7 +82,7 @@ struct command {
 #define COMMAND_FN(name_, command_name, function, userdata_)                   \
   static struct command command_name##_command = {                             \
       .fn = function,                                                          \
-      .name = #name_,                                                          \
+      .name = name_,                                                           \
       .userdata = userdata_,                                                   \
   };
 

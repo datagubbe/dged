@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 
 #include "dged/binding.h"
+
 #include "dged/buffer.h"
 #include "dged/buffer_view.h"
 #include "dged/buffers.h"
@@ -18,6 +19,9 @@
 
 #include "bindings.h"
 #include "completion.h"
+#include "completion/buffer.h"
+#include "completion/command.h"
+#include "completion/path.h"
 #include "search-replace.h"
 
 static void (*g_terminate_cb)(void) = NULL;
@@ -32,7 +36,7 @@ static int32_t _abort(struct command_ctx ctx, int argc, const char *argv[]) {
   disable_completion(minibuffer_buffer());
   minibuffer_abort_prompt();
   buffer_view_clear_mark(window_buffer_view(ctx.active_window));
-  minibuffer_echo_timeout(4, "💣 aborted");
+  minibuffer_display_timeout(4, "💣 aborted");
   return 0;
 }
 
@@ -63,17 +67,13 @@ static int32_t write_file(struct command_ctx ctx, int argc,
                           const char *argv[]) {
   const char *pth = NULL;
   if (argc == 0) {
-    struct completion_provider providers[] = {path_provider()};
-    enable_completion(minibuffer_buffer(),
-                      ((struct completion_trigger){
-                          .kind = CompletionTrigger_Input,
-                          .data.input =
-                              (struct completion_trigger_input){
-                                  .nchars = 0, .trigger_initially = false}}),
-                      providers, 1, write_file_comp_inserted);
+    struct completion_provider providers[] = {
+        create_path_provider(write_file_comp_inserted)};
+    add_completion_providers(minibuffer_buffer(), providers, 1);
     return minibuffer_prompt(ctx, "write to file: ");
   }
 
+  disable_completion(minibuffer_buffer());
   pth = argv[0];
   buffer_set_filename(window_buffer(ctx.active_window), pth);
   buffer_to_file(window_buffer(ctx.active_window));
@@ -81,18 +81,16 @@ static int32_t write_file(struct command_ctx ctx, int argc,
   return 0;
 }
 
-static void run_interactive_comp_inserted(void) { minibuffer_execute(); }
+static void run_interactive_comp_inserted(struct command *cmd) {
+  (void)cmd;
+  minibuffer_execute();
+}
 
 int32_t run_interactive(struct command_ctx ctx, int argc, const char *argv[]) {
   if (argc == 0) {
-    struct completion_provider providers[] = {commands_provider()};
-    enable_completion(minibuffer_buffer(),
-                      ((struct completion_trigger){
-                          .kind = CompletionTrigger_Input,
-                          .data.input =
-                              (struct completion_trigger_input){
-                                  .nchars = 0, .trigger_initially = false}}),
-                      providers, 1, run_interactive_comp_inserted);
+    struct completion_provider providers[] = {
+        create_commands_provider(ctx.commands, run_interactive_comp_inserted)};
+    add_completion_providers(minibuffer_buffer(), providers, 1);
 
     return minibuffer_prompt(ctx, "execute: ");
   }
@@ -134,19 +132,18 @@ int32_t do_switch_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
 
 COMMAND_FN("do-switch-buffer", do_switch_buffer, do_switch_buffer, NULL)
 
-static void switch_buffer_comp_inserted(void) { minibuffer_execute(); }
+static void switch_buffer_comp_inserted(struct buffer *buffer) {
+  // TODO: do useful stuff with buffer here
+  (void)buffer;
+  minibuffer_execute();
+}
 
 int32_t switch_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
   if (argc == 0) {
     minibuffer_clear();
-    struct completion_provider providers[] = {buffer_provider()};
-    enable_completion(minibuffer_buffer(),
-                      ((struct completion_trigger){
-                          .kind = CompletionTrigger_Input,
-                          .data.input =
-                              (struct completion_trigger_input){
-                                  .nchars = 0, .trigger_initially = false}}),
-                      providers, 1, switch_buffer_comp_inserted);
+    struct completion_provider providers[] = {
+        create_buffer_provider(ctx.buffers, switch_buffer_comp_inserted)};
+    add_completion_providers(minibuffer_buffer(), providers, 1);
 
     ctx.self = &do_switch_buffer_command;
     if (window_has_prev_buffer_view(ctx.active_window)) {
@@ -184,19 +181,18 @@ int32_t do_kill_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
 
 COMMAND_FN("do-kill-buffer", do_kill_buffer, do_kill_buffer, NULL)
 
-static void kill_buffer_comp_inserted(void) { minibuffer_execute(); }
+static void kill_buffer_comp_inserted(struct buffer *buffer) {
+  // TODO: do something with buffer
+  (void)buffer;
+  minibuffer_execute();
+}
 
 int32_t kill_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
   if (argc == 0) {
     minibuffer_clear();
-    struct completion_provider providers[] = {buffer_provider()};
-    enable_completion(minibuffer_buffer(),
-                      ((struct completion_trigger){
-                          .kind = CompletionTrigger_Input,
-                          .data.input =
-                              (struct completion_trigger_input){
-                                  .nchars = 0, .trigger_initially = false}}),
-                      providers, 1, kill_buffer_comp_inserted);
+    struct completion_provider providers[] = {
+        create_buffer_provider(ctx.buffers, kill_buffer_comp_inserted)};
+    add_completion_providers(minibuffer_buffer(), providers, 1);
 
     ctx.self = &do_kill_buffer_command;
     return minibuffer_prompt(ctx, "kill buffer (default %s): ",
@@ -254,8 +250,11 @@ void buffer_to_list_line(struct buffer *buffer, void *userdata) {
   struct buffer *listbuf = (struct buffer *)userdata;
 
   const char *path = buffer->filename != NULL ? buffer->filename : "<no-file>";
+  const char *modified =
+      buffer->filename != NULL && buffer->modified ? "*" : "";
   char buf[1024];
-  size_t written = snprintf(buf, 1024, "%-24s %s", buffer->name, path);
+  size_t written =
+      snprintf(buf, 1024, "%-24s %s%s", buffer->name, path, modified);
 
   if (written > 0) {
     struct location begin = buffer_end(listbuf);
@@ -275,9 +274,9 @@ void buffer_to_list_line(struct buffer *buffer, void *userdata) {
     size_t pathlen = strlen(path);
     uint32_t nchars_path = utf8_nchars((uint8_t *)path, pathlen);
     buffer_add_text_property(
-        listbuf, (struct location){.line = begin.line, .col = begin.col + 24},
+        listbuf, (struct location){.line = begin.line, .col = begin.col + 25},
         (struct location){.line = begin.line,
-                          .col = begin.col + 24 + nchars_path},
+                          .col = begin.col + 25 + nchars_path},
         (struct text_property){.type = TextProperty_Colors,
                                .data.colors = (struct text_property_colors){
                                    .set_bg = false,
@@ -294,8 +293,7 @@ void buffer_to_list_line(struct buffer *buffer, void *userdata) {
   }
 }
 
-int32_t buflist_visit_cmd(struct command_ctx ctx, int argc,
-                          const char *argv[]) {
+int32_t buflist_visit_cmd(struct command_ctx ctx, int argc, const char **argv) {
   (void)argc;
   (void)argv;
 
@@ -321,7 +319,6 @@ int32_t buflist_close_cmd(struct command_ctx ctx, int argc,
                           const char *argv[]) {
   return execute_command(&do_switch_buffer_command, ctx.commands,
                          ctx.active_window, ctx.buffers, argc, argv);
-  return 0;
 }
 
 void buflist_refresh(struct buffer *buffer, void *userdata) {
@@ -371,6 +368,35 @@ int32_t buflist_kill_cmd(struct command_ctx ctx, int argc, const char *argv[]) {
   return 0;
 }
 
+int32_t buflist_save_cmd(struct command_ctx ctx, int argc, const char *argv[]) {
+  (void)argc;
+  (void)argv;
+
+  struct window *w = ctx.active_window;
+
+  struct buffer_view *bv = window_buffer_view(w);
+  struct text_chunk text = buffer_line(bv->buffer, bv->dot.line);
+
+  char *end = (char *)memchr(text.text, ' ', text.nbytes);
+
+  if (end != NULL) {
+    uint32_t len = end - (char *)text.text;
+    char *bufname = (char *)malloc(len + 1);
+    strncpy(bufname, (const char *)text.text, len);
+    bufname[len] = '\0';
+
+    struct buffer *buffer = buffers_find(ctx.buffers, bufname);
+    if (buffer != NULL) {
+      buffer_to_file(buffer);
+    }
+    free(bufname);
+    execute_command(&buflist_refresh_command, ctx.commands, ctx.active_window,
+                    ctx.buffers, 0, NULL);
+  }
+
+  return 0;
+}
+
 int32_t buffer_list(struct command_ctx ctx, int argc, const char *argv[]) {
   (void)argc;
   (void)argv;
@@ -401,10 +427,16 @@ int32_t buffer_list(struct command_ctx ctx, int argc, const char *argv[]) {
       .fn = buflist_close_cmd,
   };
 
+  static struct command buflist_save = {
+      .name = "buflist-save",
+      .fn = buflist_save_cmd,
+  };
+
   struct binding bindings[] = {
       ANONYMOUS_BINDING(ENTER, &buflist_visit),
       ANONYMOUS_BINDING(None, 'k', &buflist_kill),
       ANONYMOUS_BINDING(None, 'q', &buflist_close),
+      ANONYMOUS_BINDING(None, 's', &buflist_save),
       ANONYMOUS_BINDING(None, 'g', &buflist_refresh_command),
   };
   struct keymap km = keymap_create("buflist", 8);
@@ -456,15 +488,16 @@ static int32_t open_file(struct buffers *buffers, struct window *active_window,
 int32_t find_file(struct command_ctx ctx, int argc, const char *argv[]) {
   if (argc == 0) {
     minibuffer_clear();
-    struct completion_provider providers[] = {path_provider()};
-    enable_completion(minibuffer_buffer(),
-                      ((struct completion_trigger){
-                          .kind = CompletionTrigger_Input,
-                          .data.input =
-                              (struct completion_trigger_input){
-                                  .nchars = 0, .trigger_initially = true}}),
-                      providers, 1, find_file_comp_inserted);
-    return minibuffer_prompt(ctx, "find file: ");
+    struct completion_provider providers[] = {
+        create_path_provider(find_file_comp_inserted)};
+    add_completion_providers(minibuffer_buffer(), providers, 1);
+
+    int32_t r = minibuffer_prompt(ctx, "find file: ");
+
+    // Trigger directly
+    complete(minibuffer_buffer(), buffer_end(minibuffer_buffer()));
+
+    return r;
   }
 
   disable_completion(minibuffer_buffer());
@@ -487,14 +520,9 @@ int32_t find_file_relative(struct command_ctx ctx, int argc,
   size_t dirlen = strlen(dir);
   if (argc == 0) {
     minibuffer_clear();
-    struct completion_provider providers[] = {path_provider()};
-    enable_completion(minibuffer_buffer(),
-                      ((struct completion_trigger){
-                          .kind = CompletionTrigger_Input,
-                          .data.input =
-                              (struct completion_trigger_input){
-                                  .nchars = 0, .trigger_initially = true}}),
-                      providers, 1, find_file_comp_inserted);
+    struct completion_provider providers[] = {
+        create_path_provider(find_file_comp_inserted)};
+    add_completion_providers(minibuffer_buffer(), providers, 1);
 
     ctx.self = &find_file_command;
 
@@ -505,6 +533,9 @@ int32_t find_file_relative(struct command_ctx ctx, int argc,
     minibuffer_prompt_initial(ctx, dir_with_slash, "find file: ");
     free(filename);
     free(dir_with_slash);
+
+    complete(minibuffer_buffer(), buffer_end(minibuffer_buffer()));
+
     return 0;
   }
 

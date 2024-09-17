@@ -117,7 +117,11 @@ struct process_create_result process_create(char *const command[],
   };
 }
 
-void process_destroy(struct process *p) { (void)p; }
+void process_destroy(struct process *p) {
+  close(p->stdin);
+  close(p->stdout);
+  close(p->stderr);
+}
 
 bool process_running(const struct process *p) {
   return waitpid(p->id, NULL, WNOHANG) == 0;

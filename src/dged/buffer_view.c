@@ -7,10 +7,10 @@
 #include "timers.h"
 #include "utf8.h"
 
-struct modeline {
-  uint8_t *buffer;
-  uint32_t sz;
-};
+HOOK_IMPL(modeline, modeline_hook_cb);
+
+static modeline_hook_vec g_modeline_hooks = {0};
+static uint32_t g_modeline_hook_id = 0;
 
 static bool maybe_delete_region(struct buffer_view *view) {
   struct region reg = region_new(view->dot, view->mark);
@@ -32,17 +32,10 @@ struct buffer_view buffer_view_create(struct buffer *buffer, bool modeline,
       .mark_set = false,
       .scroll = (struct location){.line = 0, .col = 0},
       .buffer = buffer,
-      .modeline = NULL,
+      .modeline = modeline,
       .line_numbers = line_numbers,
       .fringe_width = 0,
   };
-
-  if (modeline) {
-    v.modeline = calloc(1, sizeof(struct modeline));
-    v.modeline->buffer = malloc(1024);
-    v.modeline->sz = 1024;
-    v.modeline->buffer[0] = '\0';
-  }
 
   return v;
 }
@@ -54,32 +47,22 @@ struct buffer_view buffer_view_clone(const struct buffer_view *view) {
       .mark_set = view->mark_set,
       .scroll = view->scroll,
       .buffer = view->buffer,
-      .modeline = NULL,
+      .modeline = view->modeline,
       .line_numbers = view->line_numbers,
   };
-
-  if (view->modeline) {
-    c.modeline = calloc(1, sizeof(struct modeline));
-    c.modeline->buffer = malloc(view->modeline->sz);
-    memcpy(c.modeline->buffer, view->modeline->buffer, view->modeline->sz);
-  }
 
   return c;
 }
 
-void buffer_view_destroy(struct buffer_view *view) {
-  if (view->modeline != NULL) {
-    free(view->modeline->buffer);
-    free(view->modeline);
-    view->modeline = NULL;
-  }
-
-  view->buffer = NULL;
-}
+void buffer_view_destroy(struct buffer_view *view) { view->buffer = NULL; }
 
 void buffer_view_add(struct buffer_view *view, uint8_t *txt, uint32_t nbytes) {
   maybe_delete_region(view);
+  struct location before = view->dot;
   view->dot = buffer_add(view->buffer, view->dot, txt, nbytes);
+  if (view->dot.line > before.line) {
+    buffer_push_undo_boundary(view->buffer);
+  }
 }
 
 void buffer_view_goto_beginning(struct buffer_view *view) {
@@ -107,7 +90,11 @@ void buffer_view_forward_word(struct buffer_view *view) {
 }
 
 void buffer_view_backward_word(struct buffer_view *view) {
+  struct location before = view->dot;
   view->dot = buffer_previous_word(view->buffer, view->dot);
+  if (before.col == 0 && view->dot.col == 0) {
+    buffer_view_backward_char(view);
+  }
 }
 
 void buffer_view_forward_line(struct buffer_view *view) {
@@ -138,6 +125,7 @@ void buffer_view_goto_beginning_of_line(struct buffer_view *view) {
 
 void buffer_view_newline(struct buffer_view *view) {
   view->dot = buffer_newline(view->buffer, view->dot);
+  buffer_push_undo_boundary(view->buffer);
 }
 
 void buffer_view_indent(struct buffer_view *view) {
@@ -202,6 +190,7 @@ void buffer_view_paste_older(struct buffer_view *view) {
 }
 
 void buffer_view_forward_delete_char(struct buffer_view *view) {
+  buffer_push_undo_boundary(view->buffer);
   if (maybe_delete_region(view)) {
     return;
   }
@@ -209,9 +198,11 @@ void buffer_view_forward_delete_char(struct buffer_view *view) {
   view->dot = buffer_delete(
       view->buffer,
       region_new(view->dot, buffer_next_char(view->buffer, view->dot)));
+  buffer_push_undo_boundary(view->buffer);
 }
 
 void buffer_view_backward_delete_char(struct buffer_view *view) {
+  buffer_push_undo_boundary(view->buffer);
   if (maybe_delete_region(view)) {
     return;
   }
@@ -219,9 +210,11 @@ void buffer_view_backward_delete_char(struct buffer_view *view) {
   view->dot = buffer_delete(
       view->buffer,
       region_new(buffer_previous_char(view->buffer, view->dot), view->dot));
+  buffer_push_undo_boundary(view->buffer);
 }
 
 void buffer_view_delete_word(struct buffer_view *view) {
+  buffer_push_undo_boundary(view->buffer);
   if (maybe_delete_region(view)) {
     return;
   }
@@ -232,9 +225,11 @@ void buffer_view_delete_word(struct buffer_view *view) {
     buffer_delete(view->buffer, word);
     view->dot = word.begin;
   }
+  buffer_push_undo_boundary(view->buffer);
 }
 
 void buffer_view_kill_line(struct buffer_view *view) {
+  buffer_push_undo_boundary(view->buffer);
   uint32_t ncols =
       buffer_line_length(view->buffer, view->dot.line) - view->dot.col;
 
@@ -254,6 +249,7 @@ void buffer_view_kill_line(struct buffer_view *view) {
                                             });
 
   buffer_cut(view->buffer, reg);
+  buffer_push_undo_boundary(view->buffer);
 }
 
 void buffer_view_sort_lines(struct buffer_view *view) {
@@ -354,51 +350,86 @@ static uint32_t render_line_numbers(struct buffer_view *view,
   return longest_nchars + 2;
 }
 
-static void render_modeline(struct modeline *modeline, struct buffer_view *view,
+static void render_modeline(struct buffer_view *view,
                             struct command_list *commands, uint32_t window_id,
                             uint32_t width, uint32_t height, float frame_time) {
-  char buf[width * 4];
-  memset(buf, 0, width * 4);
-
   time_t now = time(NULL);
   struct tm *lt = localtime(&now);
-  static char left[128] = {0};
-  static char right[128] = {0};
 
-  snprintf(left, 128, "  %c%c %d:%-16s (%d, %d) (%s)",
-           view->buffer->modified ? '*' : '-',
-           view->buffer->readonly ? '%' : '-', window_id, view->buffer->name,
-           view->dot.line + 1, view->dot.col, view->buffer->lang.name);
-  snprintf(right, 128, "(%.2f ms) %02d:%02d", frame_time / 1e6, lt->tm_hour,
-           lt->tm_min);
+  char left[1024] = {};
+  char right[1024] = {};
 
-  snprintf(buf, width * 4, "%s%*s%s", left,
-           (int)(width - (strlen(left) + strlen(right))), "", right);
+  size_t left_len = snprintf(left, 1024, "  %c%c %d:%-16s (%d, %d) (%s) ",
+                             view->buffer->modified ? '*' : '-',
+                             view->buffer->readonly ? '%' : '-', window_id,
+                             view->buffer->name, view->dot.line + 1,
+                             view->dot.col, view->buffer->lang.name);
 
-  if (strcmp(buf, (char *)modeline->buffer) != 0) {
-    modeline->buffer = realloc(modeline->buffer, width * 4);
-    modeline->sz = width * 4;
-
-    uint32_t len = strlen(buf);
-    len = (len + 1) > modeline->sz ? modeline->sz - 1 : len;
-    memcpy(modeline->buffer, buf, len);
-    modeline->buffer[len] = '\0';
+  /* insert hook content on the left */
+  VEC_FOR_EACH(&g_modeline_hooks, struct modeline_hook * hook) {
+    struct s8 content = hook->callback(view, hook->userdata);
+    if (content.l > 0) {
+      left_len += snprintf(left + left_len, 1024 - left_len, "[%.*s] ",
+                           content.l, content.s);
+      s8delete(content);
+    }
   }
 
-  command_list_set_index_color_bg(commands, Color_BrightBlack);
-  command_list_set_index_color_fg(commands, Color_White);
-  command_list_draw_text(commands, 0, height - 1, modeline->buffer,
-                         strlen((char *)modeline->buffer));
+  size_t right_len = snprintf(right, 1024, " (%.2f ms) %02d:%02d",
+                              frame_time / 1e6, lt->tm_hour, lt->tm_min);
+
+  /* clamp all the widths with priority:
+   * 1. left
+   * 2. right
+   * 3. mid
+   */
+  left_len = left_len > width ? width : left_len;
+  right_len = left_len + right_len > width ? width - left_len : right_len;
+  size_t mid_len =
+      left_len + right_len < width ? width - left_len - right_len : 0;
+
+  char mid[mid_len + 1] = {};
+  if (mid_len > 0) {
+    memset(mid, '-', mid_len);
+    mid[0] = ' ';
+    mid[mid_len - 1] = ' ';
+    mid[mid_len] = '\0';
+  }
+
+  if (left_len > 0) {
+    command_list_set_index_color_bg(commands, Color_BrightBlack);
+    command_list_set_index_color_fg(commands, Color_White);
+    command_list_draw_text_copy(commands, 0, height - 1, (uint8_t *)left,
+                                left_len);
+  }
+
+  if (mid_len > 0) {
+    command_list_set_index_color_bg(commands, Color_BrightBlack);
+    command_list_set_index_color_fg(commands, Color_White);
+    command_list_draw_text_copy(commands, left_len, height - 1, (uint8_t *)mid,
+                                mid_len);
+  }
+
+  if (right_len > 0) {
+    command_list_set_index_color_bg(commands, Color_BrightBlack);
+    command_list_set_index_color_fg(commands, Color_White);
+    command_list_draw_text_copy(commands, left_len + mid_len, height - 1,
+                                (uint8_t *)right, right_len);
+  }
+
   command_list_reset_color(commands);
 }
 
-void buffer_view_update(struct buffer_view *view,
+bool buffer_view_update(struct buffer_view *view,
                         struct buffer_view_update_params *params) {
 
+  bool needs_render = false;
   struct timer *buffer_update_timer =
       timer_start("update-windows.buffer-update");
   buffer_update(view->buffer);
   timer_stop(buffer_update_timer);
+
+  needs_render |= view->buffer->needs_render;
 
   uint32_t height = params->height;
   uint32_t width = params->width;
@@ -412,10 +443,10 @@ void buffer_view_update(struct buffer_view *view,
   struct timer *render_modeline_timer =
       timer_start("update-windows.modeline-render");
   uint32_t modeline_height = 0;
-  if (view->modeline != NULL) {
+  if (view->modeline) {
     modeline_height = 1;
-    render_modeline(view->modeline, view, params->commands, params->window_id,
-                    params->width, params->height, params->frame_time);
+    render_modeline(view, params->commands, params->window_id, params->width,
+                    params->height, params->frame_time);
   }
 
   height -= modeline_height;
@@ -494,4 +525,21 @@ void buffer_view_update(struct buffer_view *view,
   // draw buffer commands nested inside this command list
   command_list_draw_command_list(params->commands, buf_cmds);
   timer_stop(render_buffer_timer);
+
+  return needs_render;
+}
+
+uint32_t buffer_view_add_modeline_hook(modeline_hook_cb callback,
+                                       void *userdata) {
+  if (VEC_CAPACITY(&g_modeline_hooks) == 0) {
+    VEC_INIT(&g_modeline_hooks, 8);
+  }
+
+  return insert_modeline_hook(&g_modeline_hooks, &g_modeline_hook_id, callback,
+                              userdata);
+}
+
+void buffer_view_remove_modeline_hook(uint32_t hook_id,
+                                      remove_hook_cb callback) {
+  remove_modeline_hook(&g_modeline_hooks, hook_id, callback);
 }

@@ -2,7 +2,6 @@
 
 #include <ctype.h>
 #include <dlfcn.h>
-#include <errno.h>
 #include <fcntl.h>
 #include <regex.h>
 #include <string.h>
@@ -14,7 +13,6 @@
 
 #include "buffer.h"
 #include "display.h"
-#include "hash.h"
 #include "minibuffer.h"
 #include "path.h"
 #include "s8.h"
@@ -33,6 +31,7 @@ struct predicate {
 
   bool (*eval)(struct s8, uint32_t, struct s8[], struct s8, void *);
   uint32_t argc;
+
   struct s8 argv[32];
   void *data;
 
@@ -332,9 +331,8 @@ static bool eval_predicates(struct highlight *h, struct text *text,
 #define match_cname(cname, capture)                                            \
   (s8eq(cname, s8(capture)) || s8startswith(cname, s8(capture ".")))
 
-static void update_parser(struct buffer *buffer, void *userdata,
-                          struct location origin, uint32_t width,
-                          uint32_t height) {
+static void update_parser(struct buffer *buffer, struct location origin,
+                          uint32_t width, uint32_t height, void *userdata) {
 
   (void)width;
 
@@ -406,7 +404,8 @@ static void update_parser(struct buffer *buffer, void *userdata,
         highlight = false;
       } else if (match_cname(cname, "label")) {
         highlight = false;
-      } else if (match_cname(cname, "type")) {
+      } else if (match_cname(cname, "type") ||
+                 match_cname(cname, "constructor")) {
         highlight = true;
         color = Color_Cyan;
       } else if (match_cname(cname, "variable")) {

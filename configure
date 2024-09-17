@@ -4,14 +4,14 @@ _usage="./configure -- configure the DGED build.
 
 Options:
   --[enable|disable]-syntax    Enable or disable syntax highlighting support. Default: enabled.
-  --[enable|disable]-lsp       Enable or disable Language Server Protocol support. Default: disabled (experimental).
+  --[enable|disable]-lsp       Enable or disable Language Server Protocol support. Default: enabled.
   --enable-asan                Build DGED with address sanitizer enabled. Default: disabled.
   --prefix=<PREFIX>            Set the build prefix path to <PREFIX>. Default: /usr/local.
   -h/--help                    Show this help text.
 "
 
 enable_syntax=1
-enable_lsp=0
+enable_lsp=1
 enable_asan=0
 prefix=
 while [ "$#" -gt 0 ]; do

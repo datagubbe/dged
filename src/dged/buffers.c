@@ -1,5 +1,6 @@
 #include "buffers.h"
 #include "buffer.h"
+#include "s8.h"
 
 #include <stdbool.h>
 #include <stdlib.h>
@@ -112,7 +113,7 @@ struct buffer *buffers_find(struct buffers *buffers, const char *name) {
 struct buffer *buffers_find_by_filename(struct buffers *buffers,
                                         const char *path) {
   struct buffer_chunk *chunk = buffers->head;
-  size_t pathlen = strlen(path);
+  struct s8 needle = s8(path);
   while (chunk != NULL) {
     for (uint32_t i = 0; i < buffers->chunk_size; ++i) {
       if (!chunk->entries[i].occupied) {
@@ -124,8 +125,8 @@ struct buffer *buffers_find_by_filename(struct buffers *buffers,
         continue;
       }
 
-      size_t bnamelen = strlen(b->filename);
-      if (bnamelen == pathlen && memcmp(path, b->filename, bnamelen) == 0) {
+      struct s8 bname = s8(b->filename);
+      if (s8endswith(bname, needle)) {
         return b;
       }
     }

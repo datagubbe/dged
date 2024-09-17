@@ -2,13 +2,24 @@
 
 #include "hash.h"
 #include "hashmap.h"
-#include "utf8.h"
 #include "vec.h"
 
 #include <stddef.h>
 #include <stdio.h>
 
-HASHMAP_ENTRY_TYPE(json_object_member, struct json_value);
+struct json_key_value {
+  struct s8 key;
+  struct json_value value;
+};
+
+HASHMAP_ENTRY_TYPE(json_object_member, struct json_key_value);
+
+static char errbuf[1024] = {0};
+
+static const char *format_error(uint32_t line, uint32_t col, const char *msg) {
+  snprintf(errbuf, 1024, "(%d, %d): %s", line, col, msg);
+  return errbuf;
+}
 
 struct json_object {
   HASHMAP(struct json_object_member) members;
@@ -18,22 +29,176 @@ struct json_array {
   VEC(struct json_value) values;
 };
 
-static void setarray(struct json_value *val) {
-  val->type = Json_Array;
-  val->value.array = calloc(1, sizeof(struct json_array));
-  VEC_INIT(&val->value.array->values, 10);
+static struct json_value create_array(struct json_value *parent) {
+  struct json_value val = {0};
+  val.type = Json_Array;
+  val.parent = parent;
+  val.value.array = calloc(1, sizeof(struct json_array));
+  VEC_INIT(&val.value.array->values, 10);
+
+  return val;
 }
 
-static void setobject(struct json_value *val) {
-  val->type = Json_Object;
-  val->value.object = calloc(1, sizeof(struct json_object));
-  HASHMAP_INIT(&val->value.object->members, 10, hash_name);
+static struct json_value create_object(struct json_value *parent) {
+  struct json_value val = {0};
+  val.type = Json_Object;
+  val.parent = parent;
+  val.value.object = calloc(1, sizeof(struct json_object));
+  HASHMAP_INIT(&val.value.object->members, 10, hash_name);
+
+  return val;
 }
 
-static void setstring(struct json_value *val, uint8_t *current) {
-  val->type = Json_String;
-  val->value.string.s = current;
-  val->value.string.l = 0;
+struct s8 unescape_json_string(struct s8 input) {
+  /* FIXME: this is a bit funky and does not take
+  unicode characters into account and probably also
+  misses some escape codes. */
+  size_t new_size = 0;
+  bool escape = false;
+  for (size_t bi = 0; bi < input.l; ++bi) {
+    uint8_t b = input.s[bi];
+    if (b == '\\' && !escape) {
+      escape = true;
+      continue;
+    }
+
+    ++new_size;
+    escape = false;
+  }
+
+  escape = false;
+  uint8_t *buf = calloc(new_size, 1);
+  size_t bufi = 0;
+  for (size_t bi = 0; bi < input.l; ++bi) {
+    uint8_t b = input.s[bi];
+
+    if (b == '\\' && !escape) {
+      escape = true;
+      continue;
+    }
+
+    if (escape) {
+      switch (b) {
+      case 'b':
+        buf[bufi] = '\b';
+        break;
+      case '\\':
+        buf[bufi] = '\\';
+        break;
+      case 'f':
+        buf[bufi] = '\f';
+        break;
+      case 'n':
+        buf[bufi] = '\n';
+        break;
+      case 'r':
+        buf[bufi] = '\r';
+        break;
+      case 't':
+        buf[bufi] = '\t';
+        break;
+      case '"':
+        buf[bufi] = '"';
+        break;
+      default:
+        buf[bufi] = b;
+      }
+    } else {
+      buf[bufi] = b;
+    }
+
+    escape = false;
+    ++bufi;
+  }
+
+  return (struct s8){
+      .s = buf,
+      .l = new_size,
+  };
+}
+
+struct s8 escape_json_string(struct s8 input) {
+  size_t new_size = 0;
+  for (size_t bi = 0; bi < input.l; ++bi) {
+    uint8_t b = input.s[bi];
+    switch (b) {
+    case '\\':
+    case '\b':
+    case '\f':
+    case '\n':
+    case '\r':
+    case '\t':
+    case '"':
+      new_size += 2;
+      break;
+    default:
+      ++new_size;
+    }
+  }
+
+  uint8_t *buf = calloc(new_size, 1);
+  size_t bufi = 0;
+  for (size_t bi = 0; bi < input.l; ++bi) {
+    uint8_t b = input.s[bi];
+    switch (b) {
+    case '\\':
+      buf[bufi] = '\\';
+      buf[bufi + 1] = '\\';
+      bufi += 2;
+      break;
+    case '\b':
+      buf[bufi] = '\\';
+      buf[bufi + 1] = 'b';
+      bufi += 2;
+      break;
+    case '\f':
+      buf[bufi] = '\\';
+      buf[bufi + 1] = 'f';
+      bufi += 2;
+      break;
+    case '\n':
+      buf[bufi] = '\\';
+      buf[bufi + 1] = 'n';
+      bufi += 2;
+      break;
+    case '\r':
+      buf[bufi] = '\\';
+      buf[bufi + 1] = 'r';
+      bufi += 2;
+      break;
+    case '\t':
+      buf[bufi] = '\\';
+      buf[bufi + 1] = 't';
+      bufi += 2;
+      break;
+    case '"':
+      buf[bufi] = '\\';
+      buf[bufi + 1] = '"';
+      bufi += 2;
+      break;
+    default:
+      buf[bufi] = b;
+      ++bufi;
+    }
+  }
+
+  return (struct s8){
+      .s = buf,
+      .l = new_size,
+  };
+}
+
+static struct json_value create_string(const uint8_t *start, uint32_t len,
+                                       struct json_value *parent) {
+  struct json_value val = {0};
+  val.type = Json_String;
+  val.parent = parent;
+  val.value.string.s = (uint8_t *)start;
+  val.value.string.l = len;
+  val.start = start;
+  val.end = start + len;
+
+  return val;
 }
 
 static bool is_number(uint8_t byte) { return byte >= '0' && byte <= '9'; }
@@ -43,149 +208,299 @@ enum object_parse_state {
   ObjectParseState_Value,
 };
 
-struct json_result json_parse(uint8_t *buf, uint64_t size) {
-  struct json_result res = {
-      .ok = true,
-      .result.document.type = Json_Null,
+struct parser_state {
+  const uint8_t *buf;
+  uint64_t pos;
+  uint64_t len;
+  uint32_t line;
+  uint32_t col;
+};
+
+static struct json_result parse_string(struct parser_state *state,
+                                       struct json_value *parent) {
+  uint64_t start_pos = ++state->pos; /* ++ to skip start of string (") */
+  bool literal = false;
+  while (state->pos < state->len &&
+         (literal || state->buf[state->pos] != '"')) {
+
+    // skip literal " escaped with \"
+    literal = state->buf[state->pos] == '\\';
+    ++state->pos;
+    ++state->col;
+  }
+
+  if (state->pos < state->len) {
+    uint64_t len = state->pos - start_pos;
+
+    // skip over "
+    ++state->pos;
+    ++state->col;
+
+    return (struct json_result){
+        .ok = true,
+        .result.document = create_string(&state->buf[start_pos], len, parent),
+    };
+  }
+
+  return (struct json_result){
+      .ok = false,
+      .result.error = "expected end of string, found EOF",
+  };
+}
+
+static struct json_result parse_number(struct parser_state *state,
+                                       struct json_value *parent) {
+  uint64_t start_pos = state->pos;
+  while (state->pos < state->len &&
+         (is_number(state->buf[state->pos]) || state->buf[state->pos] == '-' ||
+          state->buf[state->pos] == '.')) {
+    ++state->pos;
+    ++state->col;
+  }
+
+  if (state->pos < state->len) {
+    uint64_t len = state->pos - start_pos;
+    char *nmbr =
+        s8tocstr((struct s8){.s = (uint8_t *)&state->buf[start_pos], .l = len});
+    struct json_result res = {
+        .ok = true,
+        .result.document.type = Json_Number,
+        .result.document.value.number = atof(nmbr),
+        .result.document.parent = parent,
+        .result.document.start = &state->buf[start_pos],
+        .result.document.end = &state->buf[state->pos],
+    };
+    free(nmbr);
+    return res;
+  }
+
+  return (struct json_result){
+      .ok = false,
+      .result.error = "expected end of number, found EOF",
+  };
+}
+
+static struct json_result parse_value(struct parser_state *state,
+                                      struct json_value *parent) {
+  uint8_t byte = state->buf[state->pos];
+  switch (byte) {
+  case '"':
+    return parse_string(state, parent);
+  case 't':
+    state->pos += 4;
+    state->col += 4;
+    return (struct json_result){
+        .ok = true,
+        .result.document.type = Json_Bool,
+        .result.document.start = &state->buf[state->pos - 4],
+        .result.document.end = &state->buf[state->pos],
+        .result.document.value.boolean = true,
+        .result.document.parent = parent,
+    };
+  case 'f':
+    state->pos += 5;
+    state->col += 5;
+    return (struct json_result){
+        .ok = true,
+        .result.document.type = Json_Bool,
+        .result.document.value.boolean = false,
+        .result.document.start = &state->buf[state->pos - 5],
+        .result.document.end = &state->buf[state->pos],
+        .result.document.parent = parent,
+    };
+  case 'n':
+    state->pos += 4;
+    state->col += 4;
+    return (struct json_result){
+        .ok = true,
+        .result.document.type = Json_Null,
+        .result.document.start = &state->buf[state->pos - 4],
+        .result.document.end = &state->buf[state->pos],
+        .result.document.parent = parent,
+    };
+  default:
+    if (is_number(byte) || byte == '-' || byte == '.') {
+      return parse_number(state, parent);
+    }
+    break;
+  }
+
+  return (struct json_result){
+      .ok = false,
+      .result.error = format_error(state->line, state->col, "expected value"),
+  };
+}
+
+struct json_value *insert(struct json_value *container, struct json_value *key_,
+                          struct json_value *value) {
+
+  struct json_value *inserted = NULL;
+  // where to put value?
+  if (container->type == Json_Object) {
+    // TODO: remove this alloc, should not be needed
+    char *k = s8tocstr(key_->value.string);
+    HASHMAP_APPEND(&container->value.object->members, struct json_object_member,
+                   k, struct json_object_member * val);
+
+    // TODO: duplicate key
+    if (val != NULL) {
+      inserted = &val->value.value;
+      val->value.value = *value;
+      val->value.key = s8dup(key_->value.string);
+    }
+
+    free(k);
+  } else if (container->type == Json_Array) {
+    VEC_APPEND(&container->value.array->values, struct json_value * val);
+    inserted = val;
+    *val = *value;
+  } else { // root
+    *container = *value;
+    inserted = container;
+  }
+
+  return inserted;
+}
+
+struct json_result json_parse(const uint8_t *buf, uint64_t size) {
+
+  enum object_parse_state expected = ObjectParseState_Value;
+  struct parser_state state = {
+      .buf = buf,
+      .pos = 0,
+      .len = size,
+      .line = 1,
+      .col = 0,
   };
 
-  struct json_value *parent = NULL;
-  struct json_value *current = &res.result.document;
-  struct json_value tmp_key = {0};
-  struct json_value tmp_val = {0};
-  uint32_t line = 1, col = 0;
+  struct json_value root = {0}, key = {0}, value = {0};
+  struct json_value *container = &root;
 
-  enum object_parse_state obj_parse_state = ObjectParseState_Key;
-  for (uint64_t bufi = 0; bufi < size; ++bufi) {
-    uint8_t byte = buf[bufi];
+  while (state.pos < state.len) {
+    switch (state.buf[state.pos]) {
+    case ',':
+    case ' ':
+    case ':':
+    case '\r':
+    case '\t':
+      ++state.col;
+      ++state.pos;
+      continue;
 
-    // handle appends to the current scope
-    if (current->type == Json_Array) {
-      VEC_PUSH(&current->value.array->values, tmp_val);
-      parent = current;
+    case '\n':
+      ++state.line;
+      ++state.pos;
+      state.col = 0;
+      continue;
 
-      // start looking for next value
-      tmp_val.type = Json_Null;
-      current = &tmp_val;
-    } else if (current->type == Json_Object &&
-               obj_parse_state == ObjectParseState_Key) {
-      // key is in tmp_key, start looking for value
-      obj_parse_state = ObjectParseState_Value;
-      parent = current;
-
-      tmp_val.type = Json_Null;
-      current = &tmp_val;
-    } else if (current->type == Json_Object &&
-               obj_parse_state == ObjectParseState_Value) {
-      // value is in tmp_val
-      // TODO: remove this alloc, should not be needed
-      char *k = s8tocstr(tmp_key.value.string);
-      uint32_t hash = 0;
-      HASHMAP_INSERT(&current->value.object->members, struct json_object_member,
-                     k, tmp_val, hash);
-      (void)hash;
-      free(k);
-
-      // start looking for next key
-      obj_parse_state = ObjectParseState_Key;
-      parent = current;
-
-      tmp_key.type = Json_Null;
-      current = &tmp_key;
-    }
-
-    switch (byte) {
-    case '[':
-      setarray(current);
-      parent = current;
-
-      tmp_val.type = Json_Null;
-      current = &tmp_val;
-      break;
     case ']':
-      current = parent;
+    case '}':
+      container->end = &state.buf[state.pos + 1];
+      container = container->parent;
+
+      if (container->type == Json_Object) {
+        expected = ObjectParseState_Key;
+      }
+
+      ++state.pos;
+      ++state.col;
+      continue;
+
+    case '[':
+      value = create_array(container);
+      value.start = &state.buf[state.pos];
+      ++state.pos;
+      ++state.col;
       break;
     case '{':
-      setobject(current);
-      obj_parse_state = ObjectParseState_Key;
-      parent = current;
-
-      tmp_key.type = Json_Null;
-      current = &tmp_key;
-      break;
-    case '}':
-      current = parent;
-      break;
-    case '"':
-      if (current->type == Json_String) {
-        // finish off the string
-        current->value.string.l = (buf + bufi) - current->value.string.s;
-        current = parent;
-      } else {
-        setstring(current, buf + bufi + 1 /* skip " */);
-      }
-      break;
-    case '\n':
-      ++line;
-      col = 0;
+      value = create_object(container);
+      value.start = &state.buf[state.pos];
+      ++state.pos;
+      ++state.col;
       break;
     default:
-      if (current->type == Json_String) {
-        // append to string
-      } else if (current->type == Json_Number &&
-                 !(is_number(byte) || byte == '-' || byte == '.')) {
-        // end of number
-        current->value.string.l = (buf + bufi) - current->value.string.s;
-        char *nmbr = s8tocstr(current->value.string);
-        current->value.number = atof(nmbr);
-        free(nmbr);
+      // parse out a value or a key
+      switch (expected) {
 
-        current = parent;
+      case ObjectParseState_Key: {
+        if (container->type == Json_Object) {
+          struct json_result res = parse_string(&state, container);
 
-      } else if (current->type == Json_Null &&
-                 (is_number(byte) || byte == '-' || byte == '.')) {
-        // borrow string storage in the value for storing number
-        // as a string
-        setstring(current, buf + bufi);
-        current->type = Json_Number;
-      } else if (byte == 't') {
-        current->type = Json_Bool;
-        current->value.boolean = true;
+          if (!res.ok) {
+            json_destroy(&root);
+            return res;
+          }
 
-        current = parent;
-      } else if (byte == 'f') {
-        current->type = Json_Bool;
-        current->value.boolean = false;
+          key = res.result.document;
+        }
+        expected = ObjectParseState_Value;
+        // dont insert anything now, we still need a value
+        continue;
+      }
 
-        current = parent;
-      } else if (byte == 'n') {
-        current->type = Json_Null;
+      case ObjectParseState_Value: {
+        struct json_result res = parse_value(&state, container);
 
-        current = parent;
+        if (!res.ok) {
+          json_destroy(&root);
+          return res;
+        }
+
+        value = res.result.document;
+
+        if (container->type == Json_Object) {
+          expected = ObjectParseState_Key;
+        }
+        break;
+      }
       }
       break;
     }
 
-    // TODO: not entirely correct
-    ++col;
+    // insert the value we have created into the
+    // structure
+    struct json_value *inserted = insert(container, &key, &value);
+
+    // did we insert a container?
+    // In this case, this is the current container and
+    // set the expectation for value or key correctly
+    // depending on the type
+    if (inserted != NULL &&
+        (value.type == Json_Object || value.type == Json_Array)) {
+      container = inserted;
+
+      if (value.type == Json_Object) {
+        expected = ObjectParseState_Key;
+      } else {
+        expected = ObjectParseState_Value;
+      }
+    }
   }
-  return res;
+
+  return (struct json_result){
+      .ok = true,
+      .result.document = root,
+  };
 }
 
 void json_destroy(struct json_value *value) {
   switch (value->type) {
-  case Json_Array:
+  case Json_Array: {
     struct json_array *arr = value->value.array;
     VEC_FOR_EACH(&arr->values, struct json_value * val) { json_destroy(val); }
     VEC_DESTROY(&arr->values);
-    break;
-  case Json_Object:
+    free(arr);
+  } break;
+  case Json_Object: {
     struct json_object *obj = value->value.object;
     HASHMAP_FOR_EACH(&obj->members, struct json_object_member * memb) {
-      json_destroy(&memb->value);
+      s8delete(memb->value.key);
+      json_destroy(&memb->value.value);
     }
 
     HASHMAP_DESTROY(&obj->members);
+    free(obj);
+  } break;
   case Json_Null:
   case Json_Number:
   case Json_String:
@@ -212,6 +527,8 @@ uint64_t json_len(struct json_object *obj) {
   return HASHMAP_SIZE(&obj->members);
 }
 
+bool json_empty(struct json_object *obj) { return json_len(obj) == 0; }
+
 bool json_contains(struct json_object *obj, struct s8 key) {
   // TODO: get rid of alloc
   char *k = s8tocstr(key);
@@ -222,13 +539,45 @@ bool json_contains(struct json_object *obj, struct s8 key) {
   return res;
 }
 
+void json_foreach(struct json_object *obj,
+                  void (*cb)(struct s8, struct json_value *, void *),
+                  void *userdata) {
+  HASHMAP_FOR_EACH(&obj->members, struct json_object_member * entry) {
+    cb(entry->value.key, &entry->value.value, userdata);
+  }
+}
+
 struct json_value *json_get(struct json_object *obj, struct s8 key) {
   // TODO: get rid of alloc
   char *k = s8tocstr(key);
   HASHMAP_GET(&obj->members, struct json_object_member, k,
-              struct json_value * result);
+              struct json_key_value * result);
 
   free(k);
 
-  return result;
+  return result != NULL ? &result->value : NULL;
+}
+
+void json_set(struct json_object *obj, struct s8 key_, struct json_value val) {
+  // TODO: get rid of alloc
+  char *k = s8tocstr(key_);
+  uint32_t hash = 0;
+
+  struct json_key_value v = {
+      .value = val,
+      .key = s8dup(key_),
+  };
+  HASHMAP_INSERT(&obj->members, struct json_object_member, k, v, hash);
+
+  (void)hash;
+  (void)key;
+  free(k);
+}
+
+void json_array_foreach(struct json_array *arr, void *userdata,
+                        void (*cb)(uint64_t, struct json_value *, void *)) {
+
+  VEC_FOR_EACH_INDEXED(&arr->values, struct json_value * val, i) {
+    cb(i, val, userdata);
+  }
 }

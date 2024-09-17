@@ -1,6 +1,10 @@
 #ifndef _LSP_H
 #define _LSP_H
 
+#include <stddef.h>
+
+#include "json.h"
+#include "jsonrpc.h"
 #include "location.h"
 #include "s8.h"
 
@@ -8,55 +12,59 @@ struct buffer;
 struct lsp;
 struct reactor;
 
-typedef uint32_t request_id;
+typedef uint64_t request_id;
+
+struct lsp_response_error {
+  int code;
+  struct s8 message;
+  struct json_value data;
+};
+
+enum lsp_message_type {
+  Lsp_Notification,
+  Lsp_Request,
+  Lsp_Response,
+};
 
 struct lsp_response {
   request_id id;
+
   bool ok;
-  union payload_data {
-    void *result;
-    struct s8 error;
-  } payload;
+  union data {
+    struct json_value result;
+    struct lsp_response_error error;
+  } value;
+};
+
+struct lsp_request {
+  request_id id;
+  struct s8 method;
+  struct json_value params;
 };
 
 struct lsp_notification {
-  int something;
+  struct s8 method;
+  struct json_value params;
 };
 
-struct lsp_client {
-  void (*log_message)(int type, struct s8 msg);
-};
+struct lsp_message {
+  enum lsp_message_type type;
+  bool parsed;
+  union message_data {
+    struct lsp_response response;
+    struct lsp_request request;
+    struct lsp_notification notification;
+  } message;
 
-struct hover {
-  struct s8 contents;
-
-  bool has_range;
-  struct region *range;
-};
-
-struct text_doc_item {
-  struct s8 uri;
-  struct s8 language_id;
-  uint32_t version;
-  struct s8 text;
-};
-
-struct text_doc_position {
-  struct s8 uri;
-  struct location pos;
-};
-
-struct initialize_params {
-  struct s8 client_name;
-  struct s8 client_version;
+  struct s8 payload;
+  struct jsonrpc_message jsonrpc_msg;
 };
 
 // lifecycle functions
 struct lsp *lsp_create(char *const command[], struct reactor *reactor,
-                       struct buffer *stderr_buffer,
-                       struct lsp_client client_impl, const char *name);
-uint32_t lsp_update(struct lsp *lsp, struct lsp_response **responses,
-                    uint32_t responses_capacity);
+                       struct buffer *stderr_buffer, const char *name);
+uint32_t lsp_update(struct lsp *lsp, struct lsp_message *msgs,
+                    uint32_t nmax_msgs);
 void lsp_destroy(struct lsp *lsp);
 
 // process control functions
@@ -67,9 +75,16 @@ bool lsp_server_running(const struct lsp *lsp);
 uint64_t lsp_server_pid(const struct lsp *lsp);
 const char *lsp_server_name(const struct lsp *lsp);
 
+// lsp message creation
+struct lsp_message lsp_create_request(request_id id, struct s8 method,
+                                      struct s8 payload);
+struct lsp_message lsp_create_notification(struct s8 method, struct s8 payload);
+struct lsp_message lsp_create_response(request_id id, bool ok,
+                                       struct s8 payload);
+
+void lsp_message_destroy(struct lsp_message *message);
+
 // protocol functions
-void lsp_initialize(struct lsp *lsp, struct initialize_params);
-void lsp_did_open_document(struct lsp *lsp, struct text_doc_item document);
-request_id lsp_hover(struct lsp *lsp, struct text_doc_position);
+void lsp_send(struct lsp *lsp, struct lsp_message message);
 
 #endif
