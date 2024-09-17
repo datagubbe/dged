@@ -75,9 +75,9 @@ void lsp_destroy(struct lsp *lsp) {
     free(lsp->process);
   }
   if (lsp->command != NULL) {
-    char *command = lsp->command[0];
+    char *const *command = &lsp->command[0];
     while (command != NULL) {
-      free(command);
+      free(*command);
       ++command;
     }
 

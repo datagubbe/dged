@@ -788,8 +788,9 @@ struct location buffer_end(struct buffer *buffer) {
   if (buffer->lazy_row_add) {
     return (struct location){.line = nlines, .col = 0};
   } else {
-    return (struct location){.line = nlines - 1,
-                             .col = buffer_line_length(buffer, nlines - 1)};
+    nlines = nlines == 0 ? 0 : nlines - 1;
+    return (struct location){.line = nlines,
+                             .col = buffer_line_length(buffer, nlines)};
   }
 }
 
