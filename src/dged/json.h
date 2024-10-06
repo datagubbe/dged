@@ -55,6 +55,15 @@ struct json_result json_parse(const uint8_t *buf, uint64_t size);
 void json_destroy(struct json_value *value);
 
 /**
+ * Check if a JSON object is empty.
+ *
+ * @param [in] obj The JSON object to check if empty.
+ *
+ * @returns True if @ref obj is empty, false otherwise.
+ */
+void json_empty(struct json_object *obj);
+
+/**
  * Return the number of members in a JSON object.
  *
  * @param [in] obj The JSON object to get number of members for.
