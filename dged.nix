@@ -18,6 +18,7 @@ stdenv.mkDerivation {
   src = ./.;
 
   doCheck = true;
+  separateDebugInfo = true;
 
   nativeBuildInputs = [
     bmake

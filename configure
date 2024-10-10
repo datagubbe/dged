@@ -56,6 +56,47 @@ while [ "$#" -gt 0 ]; do
             exit
             ;;
 
+        # TODO: support the *dir flags
+        --bindir=*)
+            shift 1
+            ;;
+
+        --sbindir=*)
+            shift 1
+            ;;
+
+        --includedir=*)
+            shift 1
+            ;;
+
+        --oldincludedir=*)
+            shift 1
+            ;;
+
+        --mandir=*)
+            shift 1
+            ;;
+
+        --infodir=*)
+            shift 1
+            ;;
+
+        --docdir=*)
+            shift 1
+            ;;
+
+        --libdir=*)
+            shift 1
+            ;;
+
+        --libexecdir=*)
+            shift 1
+            ;;
+
+        --localedir=*)
+            shift 1
+            ;;
+
         -*)
             echo "Unknown flag \"$1\". Usage:"
             echo "$_usage"
