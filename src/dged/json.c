@@ -322,9 +322,7 @@ uint64_t json_len(struct json_object *obj) {
   return HASHMAP_SIZE(&obj->members);
 }
 
-uint64_t json_empty(struct json_object *obj) {
-  return json_len(obj) == 0;
-}
+bool json_empty(struct json_object *obj) { return json_len(obj) == 0; }
 
 bool json_contains(struct json_object *obj, struct s8 key) {
   // TODO: get rid of alloc
@@ -345,4 +343,15 @@ struct json_value *json_get(struct json_object *obj, struct s8 key) {
   free(k);
 
   return result;
+}
+
+void json_set(struct json_object *obj, struct s8 key_, struct json_value val) {
+  // TODO: get rid of alloc
+  char *k = s8tocstr(key_);
+  uint32_t hash = 0;
+  HASHMAP_INSERT(&obj->members, struct json_object_member, k, val, hash);
+
+  (void)hash;
+  (void)key;
+  free(k);
 }

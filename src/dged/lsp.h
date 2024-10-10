@@ -1,6 +1,7 @@
 #ifndef _LSP_H
 #define _LSP_H
 
+#include "json.h"
 #include "location.h"
 #include "s8.h"
 
@@ -8,15 +9,23 @@ struct buffer;
 struct lsp;
 struct reactor;
 
-typedef uint32_t request_id;
+typedef uint64_t request_id;
+
+struct lsp_response_error {};
 
 struct lsp_response {
   request_id id;
+
   bool ok;
   union payload_data {
-    void *result;
-    struct s8 error;
+    struct json_value result;
+    struct lsp_response_error error;
   } payload;
+};
+
+struct lsp_request {
+  struct s8 method;
+  struct json_object *params;
 };
 
 struct lsp_notification {
@@ -25,30 +34,6 @@ struct lsp_notification {
 
 struct lsp_client {
   void (*log_message)(int type, struct s8 msg);
-};
-
-struct hover {
-  struct s8 contents;
-
-  bool has_range;
-  struct region *range;
-};
-
-struct text_doc_item {
-  struct s8 uri;
-  struct s8 language_id;
-  uint32_t version;
-  struct s8 text;
-};
-
-struct text_doc_position {
-  struct s8 uri;
-  struct location pos;
-};
-
-struct initialize_params {
-  struct s8 client_name;
-  struct s8 client_version;
 };
 
 // lifecycle functions
@@ -68,8 +53,6 @@ uint64_t lsp_server_pid(const struct lsp *lsp);
 const char *lsp_server_name(const struct lsp *lsp);
 
 // protocol functions
-void lsp_initialize(struct lsp *lsp, struct initialize_params);
-void lsp_did_open_document(struct lsp *lsp, struct text_doc_item document);
-request_id lsp_hover(struct lsp *lsp, struct text_doc_position);
+request_id lsp_request(struct lsp *lsp, struct lsp_request request);
 
 #endif

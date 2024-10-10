@@ -61,7 +61,7 @@ void json_destroy(struct json_value *value);
  *
  * @returns True if @ref obj is empty, false otherwise.
  */
-void json_empty(struct json_object *obj);
+bool json_empty(struct json_object *obj);
 
 /**
  * Return the number of members in a JSON object.
@@ -92,6 +92,15 @@ bool json_contains(struct json_object *obj, struct s8 key);
  * if it exists, NULL otherwise.
  */
 struct json_value *json_get(struct json_object *obj, struct s8 key);
+
+/**
+ * Set a value in a JSON object.
+ *
+ * @param [in] obj The JSON object to set in.
+ * @param [in] key The key of the value to set.
+ * @param [in] value The JSON value to set.
+ */
+void json_set(struct json_object *obj, struct s8 key, struct json_value val);
 
 /**
  * Get the length of a JSON array.

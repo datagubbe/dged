@@ -1,6 +1,8 @@
 #ifndef _JSONRPC_H
 #define _JSONRPC_H
 
+#include <stdint.h>
+
 #include "json.h"
 #include "s8.h"
 
@@ -8,6 +10,12 @@ struct jsonrpc_request {
   struct json_value id;
   struct s8 method;
   struct json_object *params;
+};
+
+struct jsonrpc_error {
+  int code;
+  struct s8 message;
+  struct json_value data;
 };
 
 struct jsonrpc_response {
@@ -19,14 +27,11 @@ struct jsonrpc_response {
   } value;
 };
 
-struct jsonrpc_error {
-  int code;
-  struct s8 message;
-  struct json_value data;
-};
-
-struct jsonrpc_request jsonrpc_request_create(struct s8 method, struct json_object *params);
-struct jsonrpc_response jsonrpc_parse_response(const uint8_t *buf, uint64_t size);
-struct s8 jsonrpc_request_to_string(const struct jsonprc_request *request);
+struct jsonrpc_request jsonrpc_request_create(struct json_value id,
+                                              struct s8 method,
+                                              struct json_object *params);
+struct jsonrpc_response jsonrpc_parse_response(const uint8_t *buf,
+                                               uint64_t size);
+struct s8 jsonrpc_request_to_string(const struct jsonrpc_request *request);
 
 #endif

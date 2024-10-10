@@ -79,8 +79,8 @@ ASAN ?= false
 .endif
 
 .if $(LSP_ENABLE) == true
-  HEADERS += src/dged/lsp.h src/main/lsp.h src/dged/json.h
-  SOURCES += src/dged/lsp.c src/dged/json.c
+  HEADERS += src/dged/lsp.h src/main/lsp.h src/dged/json.h src/dged/jsonrpc.h
+  SOURCES += src/dged/lsp.c src/dged/json.c src/dged/jsonrpc.c
   MAIN_SOURCES += src/main/lsp.c
   TEST_SOURCES += test/json.c
   CFLAGS += -DLSP_ENABLED
