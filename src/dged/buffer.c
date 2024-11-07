@@ -526,25 +526,26 @@ struct location buffer_add(struct buffer *buffer, struct location at,
 
   struct location at_bytes = buffer_location_to_byte_coords(buffer, at);
 
-  uint32_t lines_added;
+  uint32_t ignore_;
   text_insert_at(buffer->text, at_bytes.line, at_bytes.col, text, nbytes,
-                 &lines_added);
+                 &ignore_);
 
   // move to after inserted text
-  if (lines_added > 0) {
-    final = buffer_clamp(buffer, (int64_t)at.line + lines_added, 0);
-  } else {
-    uint32_t cols_added = 0, tab_width = get_tab_width(buffer);
-    struct utf8_codepoint_iterator iter =
-        create_utf8_codepoint_iterator(text, nbytes, 0);
-    struct codepoint *codepoint;
-    while ((codepoint = utf8_next_codepoint(&iter)) != NULL) {
-      cols_added += visual_char_width(codepoint, tab_width);
+  uint32_t cols_added = 0, lines_added = 0, tab_width = get_tab_width(buffer);
+  struct utf8_codepoint_iterator iter =
+      create_utf8_codepoint_iterator(text, nbytes, 0);
+  struct codepoint *codepoint;
+  while ((codepoint = utf8_next_codepoint(&iter)) != NULL) {
+    if (codepoint->codepoint == '\n') {
+      cols_added = 0;
+      ++lines_added;
+      continue;
     }
-    final =
-        buffer_clamp(buffer, (int64_t)at.line, (int64_t)at.col + cols_added);
-  }
 
+    cols_added += visual_char_width(codepoint, tab_width);
+  }
+  final = buffer_clamp(buffer, (int64_t)at.line + lines_added,
+                       (int64_t)at.col + cols_added);
   struct location final_bytes = buffer_location_to_byte_coords(buffer, final);
 
   undo_push_add(

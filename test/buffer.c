@@ -26,6 +26,17 @@ static void test_add(void) {
   ASSERT(loc.line == 1 && loc.col == strlen(txt),
          "Expected buffer to have one line with characters");
 
+  buffer_clear(&b);
+
+  // test inserting more than one line and that
+  // we end up after the inserted text
+  txt = "some chars\non a second line";
+  loc = buffer_add(&b, (struct location){.line = 0, .col = 0}, (uint8_t *)txt,
+                   strlen(txt));
+
+  ASSERT(loc.line == 1 && loc.col == 16,
+         "Expected to be at end of second line");
+
   // test callback
   uint32_t hook_id = buffer_add_insert_hook(&b, add_callback, NULL);
   buffer_add(&b, (struct location){.line = 0, .col = 0}, (uint8_t *)"hej", 3);
@@ -117,6 +128,8 @@ static void test_line_len(void) {
              strlen(txt));
   ASSERT(buffer_line_length(&b, 0) == 15,
          "Expected banana line to be 15 chars wide");
+
+  buffer_destroy(&b);
 }
 
 static void test_char_movement(void) {
@@ -150,6 +163,8 @@ static void test_char_movement(void) {
       &b, (struct location){.line = 0, .col = 16 + tab_width});
   ASSERT(prev.col == 16,
          "Expected a tab move backwards to step over the width of a tab");
+
+  buffer_destroy(&b);
 }
 
 static void test_word_movement(void) {
@@ -180,6 +195,8 @@ static void test_word_movement(void) {
   prev = buffer_previous_word(&b, (struct location){.line = 0, .col = 0});
   ASSERT(prev.col == 0 && prev.line == 0,
          "Expected previous word to not go before beginning of buffer");
+
+  buffer_destroy(&b);
 }
 
 void test_copy(void) {
@@ -191,8 +208,8 @@ void test_copy(void) {
   buffer_paste(&b, (struct location){.line = 0, .col = 4});
   ASSERT(buffer_line_length(&b, 0) == 8, "Expected text to be copied");
   struct text_chunk t = buffer_line(&b, 0);
-  ASSERT_STR_EQ((const char *)t.text, "copycopy",
-                "Expected copied text to match");
+  ASSERT(memcmp(t.text, "copycopy", t.nbytes) == 0,
+         "Expected copied text to match");
   if (t.allocated) {
     free(t.text);
   }
@@ -202,8 +219,8 @@ void test_copy(void) {
   buffer_paste(&b, (struct location){.line = 0, .col = 0});
   ASSERT(buffer_line_length(&b, 0) == 8, "Expected line length to be the same");
   t = buffer_line(&b, 0);
-  ASSERT_STR_EQ((const char *)t.text, "pycocopy",
-                "Expected cut+pasted text to match");
+  ASSERT(memcmp(t.text, "pycocopy", t.nbytes) == 0,
+         "Expected cut+pasted text to match");
   if (t.allocated) {
     free(t.text);
   }
@@ -213,8 +230,8 @@ void test_copy(void) {
   ASSERT(buffer_line_length(&b, 0) == 12,
          "Expected line length to have increased when pasting older");
   t = buffer_line(&b, 0);
-  ASSERT_STR_EQ((const char *)t.text, "copypycocopy",
-                "Expected pasted older text to match");
+  ASSERT(memcmp(t.text, "copypycocopy", t.nbytes) == 0,
+         "Expected pasted older text to match");
   if (t.allocated) {
     free(t.text);
   }
