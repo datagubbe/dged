@@ -545,7 +545,7 @@ struct location buffer_add(struct buffer *buffer, struct location at,
     cols_added += visual_char_width(codepoint, tab_width);
   }
   final = buffer_clamp(buffer, (int64_t)at.line + lines_added,
-                       (int64_t)at.col + cols_added);
+                       (int64_t)(lines_added > 0 ? 0 : at.col) + cols_added);
   struct location final_bytes = buffer_location_to_byte_coords(buffer, final);
 
   undo_push_add(

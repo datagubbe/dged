@@ -37,6 +37,15 @@ static void test_add(void) {
   ASSERT(loc.line == 1 && loc.col == 16,
          "Expected to be at end of second line");
 
+  // test newline
+  buffer_clear(&b);
+  txt = "some chars";
+  loc = buffer_add(&b, (struct location){.line = 0, .col = 0}, (uint8_t *)txt,
+                   strlen(txt));
+  loc = buffer_newline(&b, (struct location){.line = 0, .col = 4});
+  ASSERT(loc.line == 1 && loc.col == 0,
+         "Expected to be at start of second line after inserting newline");
+
   // test callback
   uint32_t hook_id = buffer_add_insert_hook(&b, add_callback, NULL);
   buffer_add(&b, (struct location){.line = 0, .col = 0}, (uint8_t *)"hej", 3);
