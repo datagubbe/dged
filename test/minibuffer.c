@@ -49,7 +49,7 @@ void test_minibuffer_echo(void) {
   g_alloc = &alloc;
 
   struct command_list *list =
-      command_list_create(10, alloc_fn, 0, 0, "minibuffer");
+      command_list_create(10, alloc_fn, 0, 0, 4, "minibuffer");
 
   init();
   ASSERT(!minibuffer_displaying(),

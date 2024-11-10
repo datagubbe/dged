@@ -3,6 +3,7 @@
 #include "buffer.h"
 #include "buffer_view.h"
 #include "display.h"
+#include "settings.h"
 #include "timers.h"
 #include "utf8.h"
 
@@ -458,9 +459,20 @@ void buffer_view_update(struct buffer_view *view,
   // render buffer
   struct timer *render_buffer_timer =
       timer_start("update-windows.buffer-render");
+
+  struct setting *tw = lang_setting(&view->buffer->lang, "tab-width");
+  if (tw == NULL) {
+    tw = settings_get("editor.tab-width");
+  }
+
+  uint32_t tab_width = 4;
+  if (tw != NULL && tw->value.type == Setting_Number) {
+    tab_width = tw->value.data.number_value;
+  }
+
   struct command_list *buf_cmds = command_list_create(
       width * height, params->frame_alloc, params->window_x + linum_width,
-      params->window_y, view->buffer->name);
+      params->window_y, tab_width, view->buffer->name);
   struct buffer_render_params render_params = {
       .commands = buf_cmds,
       .origin = view->scroll,

@@ -80,6 +80,8 @@ struct command_list {
   uint32_t xoffset;
   uint32_t yoffset;
 
+  uint32_t tab_width;
+
   void *(*allocator)(size_t);
 
   char name[16];
@@ -149,10 +151,10 @@ static void apply_fmt(uint8_t *fmt_stack, uint32_t fmt_stack_len) {
 }
 
 void putch_ws(uint8_t c, bool show_whitespace, uint8_t *fmt_stack,
-              uint32_t fmt_stack_len) {
-  // TODO: tab width needs to be sent here
+              uint32_t fmt_stack_len, uint32_t tab_width) {
   if (show_whitespace && c == '\t') {
-    fputs("\x1b[90m →  \x1b[39m", stdout);
+    fprintf(stdout, "\x1b[90m→%*s\x1b[39m", tab_width > 0 ? tab_width - 1 : 0,
+            "");
     apply_fmt(fmt_stack, fmt_stack_len);
   } else if (show_whitespace && c == ' ') {
     fputs("\x1b[90m·\x1b[39m", stdout);
@@ -163,9 +165,10 @@ void putch_ws(uint8_t c, bool show_whitespace, uint8_t *fmt_stack,
 }
 
 void putbytes(uint8_t *line_bytes, uint32_t line_length, bool show_whitespace,
-              uint8_t *fmt_stack, uint32_t fmt_stack_len) {
+              uint8_t *fmt_stack, uint32_t fmt_stack_len, uint32_t tab_width) {
   for (uint32_t bytei = 0; bytei < line_length; ++bytei) {
-    putch_ws(line_bytes[bytei], show_whitespace, fmt_stack, fmt_stack_len);
+    putch_ws(line_bytes[bytei], show_whitespace, fmt_stack, fmt_stack_len,
+             tab_width);
   }
 }
 
@@ -202,7 +205,7 @@ void display_clear(struct display *display) {
 struct command_list *command_list_create(uint32_t initial_capacity,
                                          void *(*allocator)(size_t),
                                          uint32_t xoffset, uint32_t yoffset,
-                                         const char *name) {
+                                         uint32_t tab_width, const char *name) {
   struct command_list *command_list = allocator(sizeof(struct command_list));
 
   command_list->capacity = initial_capacity;
@@ -210,6 +213,7 @@ struct command_list *command_list_create(uint32_t initial_capacity,
   command_list->xoffset = xoffset;
   command_list->yoffset = yoffset;
   command_list->next_list = NULL;
+  command_list->tab_width = tab_width;
   strncpy(command_list->name, name, 15);
 
   command_list->cmds =
@@ -232,7 +236,7 @@ struct render_command *add_command(struct command_list *list,
 
   if (l->ncmds == l->capacity && n == NULL) {
     l->next_list = command_list_create(l->capacity, l->allocator, l->xoffset,
-                                       l->yoffset, l->name);
+                                       l->yoffset, l->tab_width, l->name);
     l = l->next_list;
   }
 
@@ -380,7 +384,7 @@ void display_render(struct display *display,
                             txt_cmd->col + cl->xoffset);
         apply_fmt(fmt_stack, fmt_stack_len);
         putbytes(txt_cmd->data, txt_cmd->len, show_whitespace_state, fmt_stack,
-                 fmt_stack_len);
+                 fmt_stack_len, cl->tab_width);
         break;
       }
 
@@ -395,7 +399,8 @@ void display_render(struct display *display,
         if (codepoint != NULL) {
           for (uint32_t i = 0; i < repeat_cmd->nrepeat; ++i) {
             putbytes((uint8_t *)&repeat_cmd->c, codepoint->nbytes,
-                     show_whitespace_state, fmt_stack, fmt_stack_len);
+                     show_whitespace_state, fmt_stack, fmt_stack_len,
+                     cl->tab_width);
           }
         }
         break;

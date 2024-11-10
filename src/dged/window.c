@@ -200,7 +200,8 @@ void windows_update(void *(*frame_alloc)(size_t), float frame_time) {
 
   struct window *w = &g_minibuffer_window;
   w->x = 0;
-  w->commands = command_list_create(10, frame_alloc, w->x, w->y, "mb-prompt");
+  w->commands =
+      command_list_create(10, frame_alloc, w->x, w->y, 4, "mb-prompt");
 
   // draw the prompt here to make it off-limits for the buffer/buffer view
   uint32_t prompt_len = minibuffer_draw_prompt(w->commands);
@@ -208,7 +209,7 @@ void windows_update(void *(*frame_alloc)(size_t), float frame_time) {
   uint32_t width = prompt_len < w->width ? w->width - prompt_len : 1;
 
   struct command_list *inner_commands = command_list_create(
-      w->height * width, frame_alloc, w->x, w->y, "bufview-mb");
+      w->height * width, frame_alloc, w->x, w->y, 4, "bufview-mb");
 
   struct buffer_view_update_params p = {
       .commands = inner_commands,
@@ -260,7 +261,7 @@ void windows_update(void *(*frame_alloc)(size_t), float frame_time) {
       width += border_width * 2;
     }
 
-    w->commands = command_list_create(height * width, frame_alloc, w_x, w_y,
+    w->commands = command_list_create(height * width, frame_alloc, w_x, w_y, 4,
                                       "popup-decor");
     uint32_t x = 0, y = 0;
     if (draw_borders) {
@@ -299,8 +300,9 @@ void windows_update(void *(*frame_alloc)(size_t), float frame_time) {
       x += border_width;
     }
 
-    struct command_list *inner = command_list_create(
-        w->height * w->width, frame_alloc, w_x + x, w_y + y, "bufview-popup");
+    struct command_list *inner =
+        command_list_create(w->height * w->width, frame_alloc, w_x + x, w_y + y,
+                            4, "bufview-popup");
 
     struct buffer_view_update_params p = {
         .commands = inner,
@@ -326,7 +328,7 @@ void windows_update(void *(*frame_alloc)(size_t), float frame_time) {
       char name[16] = {0};
       snprintf(name, 15, "bufview-%s", w->buffer_view.buffer->name);
       w->commands = command_list_create(w->height * w->width, frame_alloc, w->x,
-                                        w->y, name);
+                                        w->y, 4, name);
 
       struct buffer_view_update_params p = {
           .commands = w->commands,

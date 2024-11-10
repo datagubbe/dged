@@ -103,12 +103,13 @@ void display_end_render(struct display *display);
  * @param xoffset Column offset to apply to all operations in the list.
  * @param yoffset Row offset to apply to all operations in the list.
  * @param name Name for the command list. Useful for debugging.
+ * @param tab_width Number of characters to use for displaying tabs.
  * @returns A pointer to the created command list.
  */
 struct command_list *command_list_create(uint32_t capacity,
                                          void *(*allocator)(size_t),
                                          uint32_t xoffset, uint32_t yoffset,
-                                         const char *name);
+                                         uint32_t tab_width, const char *name);
 
 /**
  * Enable/disable rendering of whitespace characters.
