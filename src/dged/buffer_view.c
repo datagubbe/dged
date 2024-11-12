@@ -144,8 +144,13 @@ void buffer_view_indent(struct buffer_view *view) {
   struct region reg = region_new(view->dot, view->mark);
   if (view->mark_set && region_has_size(reg)) {
     for (uint32_t line = reg.begin.line; line <= reg.end.line; ++line) {
-      view->dot = buffer_indent(view->buffer,
-                                (struct location){.line = line, .col = 0});
+      if (buffer_line_length(view->buffer, line) == 0) {
+        continue;
+      }
+
+      struct location after = buffer_indent(
+          view->buffer, (struct location){.line = line, .col = 0});
+      view->dot.col += after.col;
     }
   } else {
     view->dot = buffer_indent(view->buffer, view->dot);
@@ -156,8 +161,13 @@ void buffer_view_indent_alt(struct buffer_view *view) {
   struct region reg = region_new(view->dot, view->mark);
   if (view->mark_set && region_has_size(reg)) {
     for (uint32_t line = reg.begin.line; line <= reg.end.line; ++line) {
-      view->dot = buffer_indent_alt(view->buffer,
-                                    (struct location){.line = line, .col = 0});
+      if (buffer_line_length(view->buffer, line) == 0) {
+        continue;
+      }
+
+      struct location after = buffer_indent_alt(
+          view->buffer, (struct location){.line = line, .col = 0});
+      view->dot.col += after.col;
     }
   } else {
     view->dot = buffer_indent_alt(view->buffer, view->dot);
