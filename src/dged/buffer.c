@@ -1005,14 +1005,13 @@ struct location buffer_delete(struct buffer *buffer, struct region region) {
 
 static struct location paste(struct buffer *buffer, struct location at,
                              uint32_t ring_idx) {
+  uint32_t idx = ring_idx > 0 ? ring_idx - 1 : (KILL_RING_SZ - 1);
   struct location new_loc = at;
-  if (ring_idx > 0) {
-    struct text_chunk *curr = &g_kill_ring.buffer[ring_idx - 1];
-    if (curr->text != NULL) {
-      g_kill_ring.last_paste = at;
-      new_loc = buffer_add(buffer, at, curr->text, curr->nbytes);
-      g_kill_ring.paste_up_to_date = true;
-    }
+  struct text_chunk *curr = &g_kill_ring.buffer[idx];
+  if (curr->text != NULL) {
+    g_kill_ring.last_paste = at;
+    new_loc = buffer_add(buffer, at, curr->text, curr->nbytes);
+    g_kill_ring.paste_up_to_date = true;
   }
 
   return new_loc;
@@ -1030,7 +1029,7 @@ struct location buffer_paste_older(struct buffer *buffer, struct location at) {
     buffer_delete(buffer, region_new(g_kill_ring.last_paste, at));
 
     // paste older
-    if (g_kill_ring.paste_idx - 1 > 0) {
+    if (g_kill_ring.paste_idx > 0) {
       --g_kill_ring.paste_idx;
     } else {
       g_kill_ring.paste_idx = g_kill_ring.curr_idx;
