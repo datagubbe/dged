@@ -57,10 +57,20 @@ static int32_t exit_editor(struct command_ctx ctx, int argc,
   return 0;
 }
 
+static void write_file_comp_inserted(void) { minibuffer_execute(); }
+
 static int32_t write_file(struct command_ctx ctx, int argc,
                           const char *argv[]) {
   const char *pth = NULL;
   if (argc == 0) {
+    struct completion_provider providers[] = {path_provider()};
+    enable_completion(minibuffer_buffer(),
+                      ((struct completion_trigger){
+                          .kind = CompletionTrigger_Input,
+                          .data.input =
+                              (struct completion_trigger_input){
+                                  .nchars = 0, .trigger_initially = false}}),
+                      providers, 1, write_file_comp_inserted);
     return minibuffer_prompt(ctx, "write to file: ");
   }
 
