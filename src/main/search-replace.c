@@ -32,7 +32,7 @@ static struct replace {
   buffer_keymap_id keymap_id;
   uint32_t highlight_hook;
   struct window *window;
-} g_current_replace = {0};
+} g_current_replace = {.highlight_hook = (uint32_t)-1};
 
 static struct search {
   bool active;
@@ -43,7 +43,8 @@ static struct search {
   uint32_t current_match;
   uint32_t highlight_hook;
   buffer_keymap_id keymap_id;
-} g_current_search = {0};
+  bool oneshot;
+} g_current_search = {.highlight_hook = (uint32_t)-1};
 
 static void highlight_match(struct buffer *buffer, struct region match,
                             bool current) {
@@ -71,12 +72,33 @@ static void highlight_match(struct buffer *buffer, struct region match,
   }
 }
 
+static void clear_search(void) {
+  // n.b. leak the pattern on purpose so
+  // it can be used to recall previous searches.
+  free(g_current_search.matches);
+  g_current_search.matches = NULL;
+  g_current_search.nmatches = 0;
+
+  if (g_current_search.buffer != NULL &&
+      g_current_search.highlight_hook != (uint32_t)-1) {
+    buffer_remove_update_hook(g_current_search.buffer,
+                              g_current_search.highlight_hook, NULL);
+  }
+  g_current_search.highlight_hook = (uint32_t)-1;
+  g_current_search.active = false;
+}
+
 static void search_highlight_hook(struct buffer *buffer, void *userdata) {
   (void)userdata;
 
   for (uint32_t matchi = 0; matchi < g_current_search.nmatches; ++matchi) {
     highlight_match(buffer, g_current_search.matches[matchi],
                     matchi == g_current_search.current_match);
+  }
+
+  if (g_current_search.oneshot) {
+    g_current_search.oneshot = false;
+    clear_search();
   }
 }
 
@@ -115,25 +137,14 @@ void abort_replace(void) {
   minibuffer_abort_prompt();
 }
 
-static void clear_search(void) {
-  // n.b. leak the pattern on purpose so
-  // it can be used to recall previous searches.
-  free(g_current_search.matches);
-  g_current_search.matches = NULL;
-  g_current_search.nmatches = 0;
-
-  if (g_current_search.buffer != NULL &&
-      g_current_search.highlight_hook != (uint32_t)-1) {
-    buffer_remove_update_hook(g_current_search.buffer,
-                              g_current_search.highlight_hook, NULL);
-  }
-  g_current_search.highlight_hook = -1;
-  g_current_search.active = false;
+static void abort_search_delayed() {
+  g_current_search.oneshot = true;
+  buffer_remove_keymap(g_current_search.keymap_id);
+  minibuffer_abort_prompt();
 }
 
 void abort_search(void) {
   clear_search();
-
   buffer_remove_keymap(g_current_search.keymap_id);
   minibuffer_abort_prompt();
 }
@@ -482,14 +493,28 @@ int32_t find(struct command_ctx ctx, int argc, const char *argv[]) {
     return 0;
   }
 
-  buffer_remove_keymap(g_current_search.keymap_id);
-  bool found =
-      do_search(window_buffer_view(ctx.active_window), argv[0], reverse);
+  /* Below is the normal search, non-interactive.
+   * Use the full minibuffer content here, not individual
+   * arguments.
+   */
+  struct text_chunk line = minibuffer_content();
+  char *l = (char *)malloc(line.nbytes + 1);
+  memcpy(l, line.text, line.nbytes);
+  l[line.nbytes] = '\0';
 
-  abort_search();
-  if (!found) {
-    minibuffer_echo_timeout(4, "%s not found", argv[0]);
+  bool found = do_search(window_buffer_view(ctx.active_window), l, reverse);
+
+  if (line.allocated) {
+    free(line.text);
   }
+
+  // let the search results be highlighted once
+  abort_search_delayed();
+  if (!found) {
+    minibuffer_echo_timeout(4, "%s not found", l);
+  }
+
+  free(l);
 
   return 0;
 }
