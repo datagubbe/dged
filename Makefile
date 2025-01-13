@@ -46,7 +46,8 @@ MAIN_SOURCES = src/main/main.c src/main/cmds.c src/main/bindings.c src/main/sear
 
 TEST_SOURCES = test/assert.c test/buffer.c test/text.c test/utf8.c test/main.c \
 	test/command.c test/keyboard.c test/fake-reactor.c test/allocator.c \
-	test/minibuffer.c test/undo.c test/settings.c test/container.c
+	test/minibuffer.c test/undo.c test/settings.c test/container.c \
+	test/buflist.c
 
 prefix ?= /usr/local
 DESTDIR ?= $(prefix)

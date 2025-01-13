@@ -29,8 +29,11 @@ int main(void) {
   printf("\n⏪ \x1b[1;36mRunning undo tests...\x1b[0m\n");
   run_undo_tests();
 
-  printf("\n🕴️ \x1b[1;36mRunning buffer tests...\x1b[0m\n");
+  printf("\n🕴️  \x1b[1;36mRunning buffer tests...\x1b[0m\n");
   run_buffer_tests();
+
+  printf("\n📋 \x1b[1;36mRunning buffer list tests...\x1b[0m\n");
+  run_buflist_tests();
 
   printf("\n🐒 \x1b[1;36mRunning command tests...\x1b[0m\n");
   run_command_tests();
@@ -44,14 +47,14 @@ int main(void) {
   printf("\n🐜 \x1b[1;36mRunning minibuffer tests...\x1b[0m\n");
   run_minibuffer_tests();
 
-  printf("\n 📓 \x1b[1;36mRunning settings tests...\x1b[0m\n");
+  printf("\n📓 \x1b[1;36mRunning settings tests...\x1b[0m\n");
   run_settings_tests();
 
-  printf("\n 🎁 \x1b[1;36mRunning container tests...\x1b[0m\n");
+  printf("\n🎁 \x1b[1;36mRunning container tests...\x1b[0m\n");
   run_container_tests();
 
 #if defined(LSP_ENABLED)
-  printf("\n 📃 \x1b[1;36mRunning JSON tests...\x1b[0m\n");
+  printf("\n📃 \x1b[1;36mRunning JSON tests...\x1b[0m\n");
   run_json_tests();
 #endif
 

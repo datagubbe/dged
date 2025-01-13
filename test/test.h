@@ -10,6 +10,7 @@
   printf("\033[32mok!\033[0m\n");
 
 void run_buffer_tests(void);
+void run_buflist_tests(void);
 void run_utf8_tests(void);
 void run_text_tests(void);
 void run_undo_tests(void);
