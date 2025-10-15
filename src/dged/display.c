@@ -7,6 +7,7 @@
 
 #include <assert.h>
 #include <ctype.h>
+#include <fcntl.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -91,7 +92,15 @@ struct command_list {
 
 struct winsize getsize(void) {
   struct winsize ws;
-  ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws);
+  if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_row == 0 ||
+      ws.ws_col == 0) {
+    int fd = open("/dev/tty", O_RDONLY);
+    if (fd != -1) {
+      ioctl(fd, TIOCGWINSZ, &ws);
+      close(fd);
+    }
+  }
+
   return ws;
 }
 

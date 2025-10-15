@@ -56,7 +56,9 @@ datadir = share/dged
 .SUFFIXES:
 .SUFFIXES: .c .o .d
 
-CFLAGS += -Werror -Wall -Wextra -g -O2 -std=c99\
+CFLAGS ?= -g -O2
+
+CFLAGS += -Werror -Wall -Wextra -std=c99\
 	-I $(.CURDIR)/src\
 	-I $(.CURDIR)/src/main\
 	-DDATADIR="$(prefix)/$(datadir)"
@@ -97,6 +99,7 @@ UNAME_UPPER != uname -s | tr '[:lower:]' '[:upper:]'
 CFLAGS += -D$(UNAME_UPPER)
 
 FORMAT_TOOL ?= clang-format
+MAN_DEST ?= share/man/man1
 
 DEPS = $(SOURCES:.c=.d) $(MAIN_SOURCES:.c=.d) $(TEST_SOURCES:.c=.d)
 
@@ -174,8 +177,8 @@ install: dged
 	install -d $(DESTDIR)/bin
 	install -m 755 $(.OBJDIR)/dged $(DESTDIR)/bin/dged
 
-	install -d $(DESTDIR)/share/man/man1
-	install -m 644 $(.CURDIR)/dged.1 $(DESTDIR)/share/man/man1/dged.1
+	install -d $(DESTDIR)/$(MAN_DEST)/man1
+	install -m 644 $(.CURDIR)/dged.1 $(DESTDIR)/$(MAN_DEST)/dged.1
 
 	install -d $(DESTDIR)/$(datadir)/grammars
 	cp -RL $(.OBJDIR)/grammars "$(DESTDIR)/$(datadir)/"

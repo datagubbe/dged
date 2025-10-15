@@ -81,6 +81,7 @@ uint32_t reactor_register_interest(struct reactor *reactor, int fd,
 uint32_t reactor_watch_file(struct reactor *reactor, const char *path,
                             uint32_t mask) {
 
+  (void)mask;
   uint32_t fflags = NOTE_WRITE | NOTE_DELETE | NOTE_RENAME | NOTE_REVOKE;
   int fd = open(path, O_RDONLY);
   if (fd < 0) {
@@ -99,6 +100,7 @@ uint32_t reactor_watch_file(struct reactor *reactor, const char *path,
 }
 
 void reactor_unwatch_file(struct reactor *reactor, uint32_t id) {
+  (void)reactor;
   // all kevents for this fd are removed automatically when closed
   close(id);
 }

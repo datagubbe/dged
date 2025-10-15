@@ -567,7 +567,16 @@ static void create_parser(struct buffer *buffer, void *userdata) {
   struct highlight *hl =
       (struct highlight *)calloc(1, sizeof(struct highlight));
   hl->parser = ts_parser_new();
-  ts_parser_set_language(hl->parser, langsym());
+  struct TSLanguage *lang = langsym();
+  if (!ts_parser_set_language(hl->parser, lang)) {
+    message("failed to assign language to parser, abi version %d, lib version: "
+            "%d, min compatible lib version: %d",
+            ts_language_version(lang), TREE_SITTER_LANGUAGE_VERSION,
+            TREE_SITTER_MIN_COMPATIBLE_LANGUAGE_VERSION);
+    ts_parser_delete(hl->parser);
+    free((void *)lang_root);
+    return;
+  }
 
   TSInput i = (TSInput){
       .payload = buffer->text,
@@ -575,6 +584,11 @@ static void create_parser(struct buffer *buffer, void *userdata) {
       .encoding = TSInputEncodingUTF8,
   };
   hl->tree = ts_parser_parse(hl->parser, NULL, i);
+  if (hl->tree == NULL) {
+    ts_parser_delete(hl->parser);
+    free((void *)lang_root);
+    return;
+  }
   hl->query = setup_queries(lang_root, hl->tree);
 
   if (hl->query == NULL) {

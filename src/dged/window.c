@@ -85,11 +85,13 @@ void windows_init(uint32_t height, uint32_t width,
                   struct buffers *buffers) {
   BINTREE_INIT(&g_windows.windows);
 
+  uint32_t height_ = height > 0 ? height - 1 : 0;
+
   g_minibuffer_window = (struct window){
       .buffer_view = buffer_view_create(minibuffer, false, false),
       .has_prev_buffer_view = false,
       .x = 0,
-      .y = height - 1,
+      .y = height_,
       .height = 1,
       .width = width,
   };
@@ -97,7 +99,7 @@ void windows_init(uint32_t height, uint32_t width,
   struct window root_window = (struct window){
       .buffer_view = buffer_view_create(initial_buffer, true, true),
       .has_prev_buffer_view = false,
-      .height = height - 1,
+      .height = height_,
       .width = width,
       .x = 0,
       .y = 0,
