@@ -396,11 +396,17 @@ void buffer_to_file(struct buffer *buffer) {
   }
 
   char *fullname = expanduser(buffer->filename);
-  FILE *file = fopen(fullname, "w");
-  free(fullname);
+  size_t namelen = strlen(fullname);
+  char *backupname = malloc(namelen + 6);
+  memcpy(backupname, fullname, namelen);
+  memcpy(backupname + namelen, ".save", 5);
+  backupname[namelen + 5] = '\0';
+  FILE *file = fopen(backupname, "w+");
   if (file == NULL) {
-    minibuffer_echo("failed to open file %s for writing: %s", buffer->filename,
-                    strerror(errno));
+    minibuffer_echo("failed to open file \"%s\" (\"%s\") for writing: %s",
+                    buffer->filename, backupname, strerror(errno));
+    free(fullname);
+    free(backupname);
     return;
   }
 
@@ -417,6 +423,16 @@ void buffer_to_file(struct buffer *buffer) {
   minibuffer_echo_timeout(4, "wrote %d lines to %s", nlines_to_write,
                           buffer->filename);
   fclose(file);
+  if (rename(backupname, fullname) == -1) {
+    minibuffer_echo("failed to rename backup \"%s\" to \"%s\": %s", backupname,
+                    fullname, strerror(errno));
+    free(fullname);
+    free(backupname);
+    return;
+  }
+
+  free(fullname);
+  free(backupname);
 
   buffer->modified = false;
   undo_push_boundary(&buffer->undo, (struct undo_boundary){.save_point = true});
