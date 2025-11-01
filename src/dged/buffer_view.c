@@ -475,8 +475,9 @@ bool buffer_view_update(struct buffer_view *view,
 
   if (view->dot.col >= view->scroll.col + width ||
       view->dot.col < view->scroll.col) {
-    view->scroll.col =
-        buffer_clamp(view->buffer, view->dot.line, view->dot.col).col;
+    view->scroll.col = buffer_clamp(view->buffer, view->dot.line,
+                                    (int64_t)view->dot.col - params->width / 2)
+                           .col;
   }
   timer_stop(render_linenumbers_timer);
 

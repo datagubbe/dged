@@ -22,6 +22,7 @@
 #include "completion/buffer.h"
 #include "completion/command.h"
 #include "completion/path.h"
+#include "dged/window.h"
 #include "search-replace.h"
 
 static void (*g_terminate_cb)(void) = NULL;
@@ -626,8 +627,15 @@ static int32_t scroll_up_cmd(struct command_ctx ctx, int argc,
   (void)argc;
   (void)argv;
 
-  buffer_view_backward_nlines(window_buffer_view(ctx.active_window),
-                              window_height(ctx.active_window) - 1);
+  uint32_t height = window_height(ctx.active_window);
+  uint32_t amount = height;
+  if (height > 3) {
+    amount = height - 3;
+  }
+
+  struct buffer_view *bv = window_buffer_view(ctx.active_window);
+  buffer_view_backward_nlines(bv, amount);
+  bv->scroll.line = bv->dot.line;
   return 0;
 }
 
@@ -636,8 +644,18 @@ static int32_t scroll_down_cmd(struct command_ctx ctx, int argc,
   (void)argc;
   (void)argv;
 
-  buffer_view_forward_nlines(window_buffer_view(ctx.active_window),
-                             window_height(ctx.active_window) - 1);
+  uint32_t height = window_height(ctx.active_window);
+  uint32_t amount = height;
+  if (height > 3) {
+    amount = height - 3;
+  }
+
+  struct buffer_view *bv = window_buffer_view(ctx.active_window);
+  buffer_view_forward_nlines(bv, amount);
+  if (bv->dot.line < buffer_num_lines(bv->buffer)) {
+    bv->scroll.line = bv->dot.line;
+  }
+
   return 0;
 }
 
