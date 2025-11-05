@@ -10,6 +10,11 @@
 
 struct text;
 
+enum line_endings {
+  LineEnding_LF,
+  LineEnding_CRLF,
+};
+
 struct text_chunk {
   uint8_t *text;
   uint32_t nbytes;
@@ -33,6 +38,8 @@ void text_append(struct text *text, uint8_t *bytes, uint32_t nbytes,
 
 void text_delete(struct text *text, uint32_t start_line, uint32_t start_offset,
                  uint32_t end_line, uint32_t end_offset);
+
+enum line_endings text_get_line_ending(const struct text *);
 
 uint32_t text_num_lines(const struct text *text);
 uint32_t text_line_size(const struct text *text, uint32_t lineidx);

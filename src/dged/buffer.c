@@ -1,5 +1,6 @@
 #include "buffer.h"
 #include "binding.h"
+#include "dged/text.h"
 #include "dged/vec.h"
 #include "display.h"
 #include "errno.h"
@@ -237,11 +238,20 @@ static void buffer_read_from_file(struct buffer *b) {
   undo_push_boundary(&b->undo, (struct undo_boundary){.save_point = true});
 }
 
-static void write_line(struct text_chunk *chunk, void *userdata) {
+static void write_line_lf(struct text_chunk *chunk, void *userdata) {
   FILE *file = (FILE *)userdata;
   fwrite(chunk->text, 1, chunk->nbytes, file);
 
   // final newline is not optional!
+  fputc('\n', file);
+}
+
+static void write_line_crlf(struct text_chunk *chunk, void *userdata) {
+  FILE *file = (FILE *)userdata;
+  fwrite(chunk->text, 1, chunk->nbytes, file);
+
+  // final newline is not optional!
+  fputc('\r', file);
   fputc('\n', file);
 }
 
@@ -417,7 +427,14 @@ void buffer_to_file(struct buffer *buffer) {
   if (nlines > 0) {
     struct text_chunk lastline = text_get_line(buffer->text, nlines - 1);
     nlines_to_write = lastline.nbytes == 0 ? nlines - 1 : nlines;
-    text_for_each_line(buffer->text, 0, nlines_to_write, write_line, file);
+    switch (text_get_line_ending(buffer->text)) {
+    case LineEnding_CRLF:
+      text_for_each_line(buffer->text, 0, nlines_to_write, write_line_crlf,
+                         file);
+      break;
+    default:
+      text_for_each_line(buffer->text, 0, nlines_to_write, write_line_lf, file);
+    }
   }
 
   minibuffer_echo_timeout(4, "wrote %d lines to %s", nlines_to_write,

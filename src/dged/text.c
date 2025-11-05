@@ -38,6 +38,7 @@ struct text {
   struct property_layer property_layers[MAX_LAYERS];
   uint32_t nproperty_layers;
   layer_id current_layer_id;
+  enum line_endings line_ends;
 };
 
 struct text *text_create(uint32_t initial_capacity) {
@@ -46,6 +47,7 @@ struct text *text_create(uint32_t initial_capacity) {
   txt->capacity = initial_capacity;
   txt->nlines = 0;
   txt->current_layer_id = 1;
+  txt->line_ends = LineEnding_LF;
 
   VEC_INIT(&txt->properties, 32);
 
@@ -80,6 +82,10 @@ void text_clear(struct text *text) {
 
   text->nlines = 0;
   text_clear_properties(text);
+}
+
+enum line_endings text_get_line_ending(const struct text *text) {
+  return text->line_ends;
 }
 
 struct utf8_codepoint_iterator
@@ -253,9 +259,16 @@ static void text_insert_at_inner(struct text *text, uint32_t line,
     uint8_t byte = bytes[bytei];
     if (byte == '\n') {
       uint8_t *line_data = bytes + (bytei - linelen);
-      insert_at(text, line, offset, line_data, linelen);
 
-      offset += linelen;
+      uint32_t insertlen = linelen;
+      if (bytei > 0 && bytes[bytei - 1] == '\r') {
+        text->line_ends = LineEnding_CRLF;
+        --insertlen;
+      }
+
+      insert_at(text, line, offset, line_data, insertlen);
+
+      offset += insertlen;
       new_line_at(text, line, offset);
 
       ++line;
