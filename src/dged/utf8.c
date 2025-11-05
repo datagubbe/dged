@@ -123,7 +123,16 @@ uint32_t utf8_nbytes(uint8_t *bytes, uint32_t nbytes, uint32_t nchars) {
   return bi;
 }
 
+bool unicode_is_printable(const struct codepoint *codepoint) {
+  return ((codepoint->codepoint >= 0x20 && codepoint->codepoint <= 0x7E) ||
+          codepoint->codepoint >= 0xA0);
+}
+
 uint32_t unicode_visual_char_width(const struct codepoint *codepoint) {
+  if (!unicode_is_printable(codepoint)) {
+    return 1;
+  }
+
   if (codepoint->nbytes > 0) {
     // TODO: use unicode classification instead
     int w = wcwidth(codepoint->codepoint);

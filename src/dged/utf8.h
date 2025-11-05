@@ -28,6 +28,7 @@ struct codepoint *utf8_next_codepoint(struct utf8_codepoint_iterator *iter);
 uint32_t utf8_nchars(uint8_t *bytes, uint32_t nbytes);
 
 uint32_t unicode_visual_char_width(const struct codepoint *codepoint);
+bool unicode_is_printable(const struct codepoint *codepoint);
 
 bool utf8_byte_is_unicode_start(uint8_t byte);
 bool utf8_byte_is_unicode_continuation(uint8_t byte);
