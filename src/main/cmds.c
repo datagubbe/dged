@@ -619,8 +619,16 @@ BUFFER_VIEW_WRAPCMD(paste)
 BUFFER_VIEW_WRAPCMD(paste_older)
 BUFFER_VIEW_WRAPCMD(goto_beginning)
 BUFFER_VIEW_WRAPCMD(goto_end)
-BUFFER_VIEW_WRAPCMD(undo)
 BUFFER_VIEW_WRAPCMD(sort_lines)
+
+static int32_t undo_cmd(struct command_ctx ctx, int argc, const char *argv[]) {
+  (void)argc;
+  (void)argv;
+  pause_completion();
+  buffer_view_undo(window_buffer_view(ctx.active_window));
+  resume_completion();
+  return 0;
+}
 
 static int32_t scroll_up_cmd(struct command_ctx ctx, int argc,
                              const char *argv[]) {

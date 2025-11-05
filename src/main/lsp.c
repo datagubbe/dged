@@ -814,6 +814,7 @@ static void handle_response(struct lsp_server *server,
       message("received response for id %d, server %s, which has no handler "
               "registered",
               response.id, lsp_server_name(server->lsp));
+      return;
     }
 
     if (pending->handler != NULL) {
