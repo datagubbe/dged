@@ -36,6 +36,13 @@ static void handle_help_response(struct lsp_server *server,
     return;
   }
 
+  struct hover help = hover_from_json(&response->value.result);
+  if (s8empty(help.contents)) {
+    minibuffer_echo_timeout(4, "help: no help found");
+    hover_free(&help);
+    return;
+  }
+
   struct buffer *b = buffers_find(buffers, "*lsp-help*");
   if (b == NULL) {
     b = buffers_add(buffers, buffer_create("*lsp-help*"));
@@ -51,8 +58,6 @@ static void handle_help_response(struct lsp_server *server,
     keymap_bind_keys(&km, bindings, sizeof(bindings) / sizeof(bindings[0]));
     buffer_add_keymap(b, km);
   }
-
-  struct hover help = hover_from_json(&response->value.result);
 
   buffer_set_readonly(b, false);
   buffer_clear(b);
