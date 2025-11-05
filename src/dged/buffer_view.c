@@ -35,6 +35,7 @@ struct buffer_view buffer_view_create(struct buffer *buffer, bool modeline,
       .modeline = modeline,
       .line_numbers = line_numbers,
       .fringe_width = 0,
+      .needs_render = false,
   };
 
   return v;
@@ -66,14 +67,17 @@ void buffer_view_add(struct buffer_view *view, uint8_t *txt, uint32_t nbytes) {
 }
 
 void buffer_view_goto_beginning(struct buffer_view *view) {
+  view->needs_render = true;
   view->dot = (struct location){.line = 0, .col = 0};
 }
 
 void buffer_view_goto_end(struct buffer_view *view) {
+  view->needs_render = true;
   view->dot = buffer_end(view->buffer);
 }
 
 void buffer_view_goto(struct buffer_view *view, struct location to) {
+  view->needs_render = true;
   view->dot = buffer_clamp(view->buffer, (int64_t)to.line, (int64_t)to.col);
 }
 
@@ -423,7 +427,7 @@ static void render_modeline(struct buffer_view *view,
 bool buffer_view_update(struct buffer_view *view,
                         struct buffer_view_update_params *params) {
 
-  bool needs_render = false;
+  bool needs_render = view->needs_render;
   struct timer *buffer_update_timer =
       timer_start("update-windows.buffer-update");
   buffer_update(view->buffer);
@@ -527,6 +531,7 @@ bool buffer_view_update(struct buffer_view *view,
   command_list_draw_command_list(params->commands, buf_cmds);
   timer_stop(render_buffer_timer);
 
+  view->needs_render = false;
   return needs_render;
 }
 

@@ -38,6 +38,8 @@ struct buffer_view {
 
   /** True if the start of a selection has been set */
   bool mark_set;
+
+  bool needs_render;
 };
 
 struct buffer_view buffer_view_create(struct buffer *buffer, bool modeline,
