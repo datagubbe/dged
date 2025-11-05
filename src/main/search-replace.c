@@ -487,9 +487,20 @@ int32_t find(struct command_ctx ctx, int argc, const char *argv[]) {
     return minibuffer_prompt(ctx, search_prompt(reverse));
   }
 
-  // allow enter to end the interactive search
-  if (g_current_search.active) {
+  // allow enter to end the interactive search if it is already
+  // what we are searching for.
+  struct text_chunk line = minibuffer_content();
+  char *l = (char *)malloc(line.nbytes + 1);
+  memcpy(l, line.text, line.nbytes);
+  l[line.nbytes] = '\0';
+
+  if (g_current_search.active && strcmp(g_current_search.pattern, l) == 0) {
     abort_search();
+
+    if (line.allocated) {
+      free(line.text);
+    }
+    free(l);
     return 0;
   }
 
@@ -497,13 +508,7 @@ int32_t find(struct command_ctx ctx, int argc, const char *argv[]) {
    * Use the full minibuffer content here, not individual
    * arguments.
    */
-  struct text_chunk line = minibuffer_content();
-  char *l = (char *)malloc(line.nbytes + 1);
-  memcpy(l, line.text, line.nbytes);
-  l[line.nbytes] = '\0';
-
   bool found = do_search(window_buffer_view(ctx.active_window), l, reverse);
-
   if (line.allocated) {
     free(line.text);
   }

@@ -879,39 +879,56 @@ struct location buffer_undo(struct buffer *buffer, struct location dot) {
 struct search_data {
   VEC(struct region) matches;
   const char *pattern;
+  uint32_t tab_width;
 };
 
-// TODO: maybe should live in text
 static void search_line(struct text_chunk *chunk, void *userdata) {
   struct search_data *data = (struct search_data *)userdata;
-  size_t pattern_len = strlen(data->pattern);
-  uint32_t pattern_nchars = utf8_nchars((uint8_t *)data->pattern, pattern_len);
+  struct s8 pattern = s8(data->pattern);
 
-  char *line = malloc(chunk->nbytes + 1);
-  strncpy(line, (const char *)chunk->text, chunk->nbytes);
-  line[chunk->nbytes] = '\0';
-  char *hit = NULL;
-  uint32_t byteidx = 0;
-  while ((hit = strstr(line + byteidx, data->pattern)) != NULL) {
-    byteidx = hit - line;
-    uint32_t begin = utf8_nchars(chunk->text, byteidx);
-    struct region match =
-        region_new((struct location){.col = begin, .line = chunk->line},
-                   (struct location){.col = begin + pattern_nchars - 1,
-                                     .line = chunk->line});
-    VEC_PUSH(&data->matches, match);
+  struct utf8_codepoint_iterator iter =
+      create_utf8_codepoint_iterator(chunk->text, chunk->nbytes, 0);
+  struct utf8_codepoint_iterator pattern_iter =
+      create_utf8_codepoint_iterator(pattern.s, pattern.l, 0);
+  struct codepoint *codepoint,
+      *pattern_codepoint = utf8_next_codepoint(&pattern_iter);
 
-    // proceed to after match
-    byteidx += pattern_len;
+  if (pattern_codepoint == NULL) {
+    return;
   }
 
-  free(line);
+  uint32_t col = 0, start_col = 0, tab_width = data->tab_width;
+  bool reset = false;
+  while ((codepoint = utf8_next_codepoint(&iter)) != NULL) {
+    if (pattern_codepoint->codepoint == codepoint->codepoint) {
+      pattern_codepoint = utf8_next_codepoint(&pattern_iter);
+      if (pattern_codepoint == NULL) {
+        // this is a match, add and reset iterator
+        VEC_PUSH(
+            &data->matches,
+            region_new((struct location){.line = chunk->line, .col = start_col},
+                       (struct location){.line = chunk->line, .col = col}));
+        reset = true;
+      }
+    } else {
+      reset = true;
+    }
+
+    col += visual_char_width(codepoint, tab_width);
+    if (reset) {
+      start_col = col;
+      pattern_iter = create_utf8_codepoint_iterator(pattern.s, pattern.l, 0);
+      pattern_codepoint = utf8_next_codepoint(&pattern_iter);
+      reset = false;
+    }
+  }
 }
 
 void buffer_find(struct buffer *buffer, const char *pattern,
                  struct region **matches, uint32_t *nmatches) {
 
-  struct search_data data = (struct search_data){.pattern = pattern};
+  struct search_data data = (struct search_data){
+      .pattern = pattern, .tab_width = get_tab_width(buffer)};
   VEC_INIT(&data.matches, 16);
   text_for_each_line(buffer->text, 0, text_num_lines(buffer->text), search_line,
                      &data);
@@ -1237,8 +1254,11 @@ void render_line(struct text_chunk *line, void *userdata) {
     // and re-apply current properties
     uint64_t new_properties_hash = properties_hash(properties, nproperties);
     if (new_properties_hash != prev_properties_hash) {
-      command_list_draw_text(cmdbuf->cmds, drawn_coli, visual_line,
-                             line->text + drawn_bytei, bytei - drawn_bytei);
+      size_t nbytes = bytei - drawn_bytei;
+      if (nbytes > 0) {
+        command_list_draw_text(cmdbuf->cmds, drawn_coli, visual_line,
+                               line->text + drawn_bytei, nbytes);
+      }
       command_list_reset_color(cmdbuf->cmds);
 
       drawn_coli = coli;
