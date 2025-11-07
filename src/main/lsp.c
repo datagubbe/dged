@@ -33,11 +33,13 @@ struct lsp_pending_request {
   void *userdata;
 };
 
+#define MAX_PENDING_REQUESTS 64
+
 struct lsp_server {
   struct lsp *lsp;
   uint32_t restarts;
   struct s8 lang_id;
-  struct lsp_pending_request pending_requests[16];
+  struct lsp_pending_request pending_requests[MAX_PENDING_REQUESTS];
 
   bool initialized;
 
@@ -160,9 +162,9 @@ struct region lsp_range_to_coordinates(struct lsp_server *server,
 
 uint64_t new_pending_request(struct lsp_server *server,
                              response_handler handler, void *userdata) {
-  for (int i = 0; i < 16; ++i) {
+  ++g_lsp_data.current_request_id;
+  for (int i = 0; i < MAX_PENDING_REQUESTS; ++i) {
     if (server->pending_requests[i].request_id == (uint64_t)-1) {
-      ++g_lsp_data.current_request_id;
       server->pending_requests[i].request_id = g_lsp_data.current_request_id;
       server->pending_requests[i].handler = handler;
       server->pending_requests[i].userdata = userdata;
@@ -170,13 +172,13 @@ uint64_t new_pending_request(struct lsp_server *server,
     }
   }
 
-  return -1;
+  return g_lsp_data.current_request_id;
 }
 
 static bool
 request_response_received(struct lsp_server *server, uint64_t id,
                           struct lsp_pending_request **pending_request) {
-  for (int i = 0; i < 16; ++i) {
+  for (int i = 0; i < MAX_PENDING_REQUESTS; ++i) {
     if (server->pending_requests[i].request_id == id) {
       server->pending_requests[i].request_id = (uint64_t)-1;
       *pending_request = &server->pending_requests[i];
