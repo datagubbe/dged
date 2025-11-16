@@ -6,9 +6,9 @@
 #include "utf8.h"
 
 #include <assert.h>
-#include <ctype.h>
 #include <fcntl.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -90,6 +90,24 @@ struct command_list {
   struct command_list *next_list;
 };
 
+static void put_ansiparm(uint64_t n);
+
+static void use_alternate_buffer() {
+  putc(ESC, stdout);
+  putc('[', stdout);
+  putc('?', stdout);
+  put_ansiparm(1049);
+  putc('h', stdout);
+}
+
+static void use_normal_buffer() {
+  putc(ESC, stdout);
+  putc('[', stdout);
+  putc('?', stdout);
+  put_ansiparm(1049);
+  putc('l', stdout);
+}
+
 struct winsize getsize(void) {
   struct winsize ws;
   if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_row == 0 ||
@@ -122,6 +140,8 @@ struct display *display_create(void) {
     return NULL;
   }
 
+  use_alternate_buffer();
+
   struct display *d = calloc(1, sizeof(struct display));
   d->orig_term = orig_term;
   d->term = term;
@@ -137,6 +157,9 @@ void display_resize(struct display *display) {
 }
 
 void display_destroy(struct display *display) {
+
+  use_normal_buffer();
+
   // reset old terminal mode
   tcsetattr(0, TCSADRAIN, &display->orig_term);
 
@@ -181,16 +204,23 @@ void putbytes(uint8_t *line_bytes, uint32_t line_length, bool show_whitespace,
   }
 }
 
-void put_ansiparm(int n) {
-  int q = n / 10;
-  if (q != 0) {
-    int r = q / 10;
-    if (r != 0) {
-      putc((r % 10) + '0', stdout);
-    }
-    putc((q % 10) + '0', stdout);
+static void put_ansiparm(uint64_t n) {
+  if (n == 0) {
+    putc('0', stdout);
+    return;
   }
-  putc((n % 10) + '0', stdout);
+
+  char chars[20] = {0};
+  size_t nchars = 0;
+  while (n > 0 && nchars < 20) {
+    chars[nchars] = '0' + (n % 10);
+    ++nchars;
+    n /= 10;
+  }
+
+  for (ssize_t i = nchars - 1; i >= 0; --i) {
+    putc(chars[i], stdout);
+  }
 }
 
 void display_move_cursor(struct display *display, uint32_t row, uint32_t col) {
