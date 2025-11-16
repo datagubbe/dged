@@ -379,9 +379,6 @@ int main(int argc, char *argv[]) {
   init_frame_hooks();
 
   float frame_time = 0.f;
-  static char keyname[64] = {0};
-  static uint32_t nkeychars = 0;
-
   bool needs_render = true;
 
   while (running) {
@@ -470,21 +467,9 @@ int main(int argc, char *argv[]) {
             }
           }
           current_keymap = NULL;
-          nkeychars = 0;
-          keyname[0] = '\0';
           break;
         }
         case BindingType_Keymap: {
-          if (nkeychars > 0 && nkeychars < 64) {
-            keyname[nkeychars] = '-';
-            ++nkeychars;
-          }
-
-          if (nkeychars < 64) {
-            nkeychars += key_name(k, keyname + nkeychars, 64 - nkeychars);
-            minibuffer_display("%s", keyname);
-          }
-
           current_keymap = res.data.keymap;
           break;
         }
@@ -503,8 +488,6 @@ int main(int argc, char *argv[]) {
                                      current_keymap->name, keyname);
         }
         current_keymap = NULL;
-        nkeychars = 0;
-        keyname[0] = '\0';
       }
     }
     timer_stop(update_keyboard);

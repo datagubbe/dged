@@ -7,6 +7,7 @@ struct buffer;
 struct buffers;
 struct command_ctx;
 struct command_list;
+struct commands;
 struct keymap;
 
 /**
