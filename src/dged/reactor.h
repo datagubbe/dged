@@ -20,7 +20,7 @@ struct reactor;
 
 struct reactor *reactor_create(void);
 void reactor_destroy(struct reactor *reactor);
-void reactor_update(struct reactor *reactor);
+void reactor_update(struct reactor *reactor, int timeout_ms);
 bool reactor_poll_event(struct reactor *reactor, uint32_t ev_id);
 uint32_t reactor_register_interest(struct reactor *reactor, int fd,
                                    enum interest interest);

@@ -112,9 +112,9 @@ bool reactor_next_file_event(struct reactor *reactor, struct file_event *out) {
   return false;
 }
 
-void reactor_update(struct reactor *reactor) {
+void reactor_update(struct reactor *reactor, int timeout_ms) {
   struct events *events = reactor->events;
-  int nfds = epoll_wait(reactor->epoll_fd, events->events, 10, -1);
+  int nfds = epoll_wait(reactor->epoll_fd, events->events, 10, timeout_ms);
 
   if (nfds == -1) {
     events->nevents = 0;

@@ -34,8 +34,14 @@ void reactor_destroy(struct reactor *reactor) {
   free(reactor);
 }
 
-void reactor_update(struct reactor *reactor) {
-  int events = kevent(reactor->queue, NULL, 0, reactor->events, 16, NULL);
+void reactor_update(struct reactor *reactor, int timeout_ms) {
+  struct timespec timeout = {0};
+  if (timeout_ms >= 0) {
+    timeout.tv_nsec = timeout_ms * 1e6;
+  }
+
+  int events = kevent(reactor->queue, NULL, 0, reactor->events, 16,
+                      timeout_ms >= 0 ? &timeout : NULL);
   if (events == -1) {
     // TODO: what to do here?
     return;

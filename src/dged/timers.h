@@ -22,4 +22,6 @@ void timers_for_each(timer_callback callback, void *userdata);
 void timers_end_frame(void);
 void timers_destroy(void);
 
+uint64_t instant_ns(void);
+
 #endif

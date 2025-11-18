@@ -11,7 +11,11 @@ struct reactor *reactor_create(void) {
 
 void reactor_destroy(struct reactor *reactor) { free(reactor); }
 
-void reactor_update(struct reactor *reactor) { (void)reactor; }
+void reactor_update(struct reactor *reactor, int timeout_ms) {
+  (void)reactor;
+  (void)timeout_ms;
+}
+
 bool reactor_poll_event(struct reactor *reactor, uint32_t ev_id) {
   if (reactor->impl != NULL) {
     return reactor->impl->poll_event(reactor->impl->userdata, ev_id);

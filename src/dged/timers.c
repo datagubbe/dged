@@ -108,3 +108,10 @@ void timers_for_each(timer_callback callback, void *userdata) {
     callback(timer, userdata);
   }
 }
+
+uint64_t instant_ns(void) {
+  struct timespec ts = {0};
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+
+  return ts.tv_sec * 1e9 + ts.tv_nsec;
+}

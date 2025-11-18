@@ -23,6 +23,7 @@ struct display {
   struct termios orig_term;
   uint32_t width;
   uint32_t height;
+  bool render_in_progress;
 };
 
 enum render_cmd_type {
@@ -32,6 +33,7 @@ enum render_cmd_type {
   RenderCommand_ClearFormat = 3,
   RenderCommand_SetShowWhitespace = 4,
   RenderCommand_DrawList = 5,
+  RenderCommand_ClearLine = 6,
 };
 
 struct render_command {
@@ -42,6 +44,7 @@ struct render_command {
     struct repeat_cmd *repeat;
     struct show_ws_cmd *show_ws;
     struct draw_list_cmd *draw_list;
+    struct clear_line_cmd *clear_line;
   } data;
 };
 
@@ -71,6 +74,11 @@ struct show_ws_cmd {
 
 struct draw_list_cmd {
   struct command_list *list;
+};
+
+struct clear_line_cmd {
+  uint32_t col;
+  uint32_t row;
 };
 
 struct command_list {
@@ -147,6 +155,7 @@ struct display *display_create(void) {
   d->term = term;
   d->height = ws.ws_row;
   d->width = ws.ws_col;
+  d->render_in_progress = false;
   return d;
 }
 
@@ -241,6 +250,15 @@ void display_clear(struct display *display) {
   putc('J', stdout);
 }
 
+static void display_clear_line(struct display *display, uint32_t row,
+                               uint32_t col) {
+  display_move_cursor(display, row, col);
+  putc(ESC, stdout);
+  putc('[', stdout);
+  putc('0', stdout);
+  putc('K', stdout);
+}
+
 struct command_list *command_list_create(uint32_t initial_capacity,
                                          void *(*allocator)(size_t),
                                          uint32_t xoffset, uint32_t yoffset,
@@ -261,6 +279,8 @@ struct command_list *command_list_create(uint32_t initial_capacity,
 
   return command_list;
 }
+
+bool command_list_empty(struct command_list *list) { return list->ncmds == 0; }
 
 struct render_command *add_command(struct command_list *list,
                                    enum render_cmd_type tp) {
@@ -299,6 +319,9 @@ struct render_command *add_command(struct command_list *list,
   case RenderCommand_DrawList:
     cmd->data.draw_list = l->allocator(sizeof(struct draw_list_cmd));
     break;
+  case RenderCommand_ClearLine:
+    cmd->data.clear_line = l->allocator(sizeof(struct clear_line_cmd));
+    break;
   default:
     assert(false);
   }
@@ -332,6 +355,14 @@ void command_list_draw_repeated(struct command_list *list, uint32_t col,
   cmd->row = row;
   cmd->c = c;
   cmd->nrepeat = nrepeat;
+}
+
+void command_list_clear_line(struct command_list *list, uint32_t col,
+                             uint32_t row) {
+  struct clear_line_cmd *cmd =
+      add_command(list, RenderCommand_ClearLine)->data.clear_line;
+  cmd->col = col;
+  cmd->row = row;
 }
 
 void command_list_draw_command_list(struct command_list *list,
@@ -420,7 +451,6 @@ void display_render(struct display *display,
   bool show_whitespace_state = false;
 
   while (cl != NULL) {
-
     for (uint64_t cmdi = 0; cmdi < cl->ncmds; ++cmdi) {
       struct render_command *cmd = &cl->cmds[cmdi];
       switch (cmd->type) {
@@ -467,6 +497,13 @@ void display_render(struct display *display,
         fmt_stack_len = 3;
         break;
 
+      case RenderCommand_ClearLine: {
+        apply_fmt(fmt_stack, fmt_stack_len);
+        struct clear_line_cmd *clear_cmd = cmd->data.clear_line;
+        display_clear_line(display, cl->yoffset + clear_cmd->row,
+                           cl->xoffset + clear_cmd->col);
+      } break;
+
       case RenderCommand_SetShowWhitespace:
         show_whitespace_state = cmd->data.show_ws->show;
         break;
@@ -500,13 +537,33 @@ void show_cursor(void) {
   putc('h', stdout);
 }
 
+static void begin_update(void) {
+  putc(ESC, stdout);
+  putc('[', stdout);
+  putc('?', stdout);
+  put_ansiparm(2026);
+  putc('h', stdout);
+}
+
+static void end_update(void) {
+  putc(ESC, stdout);
+  putc('[', stdout);
+  putc('?', stdout);
+  put_ansiparm(2026);
+  putc('l', stdout);
+}
+
 void display_begin_render(struct display *display) {
-  (void)display;
+  assert(!display->render_in_progress);
+
+  display->render_in_progress = true;
+  begin_update();
   hide_cursor();
+  fflush(stdout);
 }
 void display_end_render(struct display *display) {
-  (void)display;
-
   show_cursor();
+  end_update();
   fflush(stdout);
+  display->render_in_progress = false;
 }

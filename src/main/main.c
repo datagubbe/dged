@@ -380,6 +380,8 @@ int main(int argc, char *argv[]) {
 
   float frame_time = 0.f;
   bool needs_render = true;
+  uint64_t last_render_ns = 0;
+  const uint64_t target_render_ns = 7 * 1e6 /* 7 ms */;
 
   while (running) {
     timers_start_frame();
@@ -404,7 +406,9 @@ int main(int argc, char *argv[]) {
      * from updating the buffers.
      */
     struct timer *update_display = timer_start("display");
-    if (needs_render) {
+    int64_t time_to_render_ns =
+        (last_render_ns + target_render_ns) - instant_ns();
+    if (needs_render && time_to_render_ns < 0) {
       display_begin_render(display);
       windows_render(display);
       struct buffer_view *view = window_buffer_view(active_window);
@@ -414,6 +418,7 @@ int main(int argc, char *argv[]) {
                           winpos.x + cursor.col);
       display_end_render(display);
       needs_render = false;
+      last_render_ns = instant_ns();
     }
     timer_stop(update_display);
 
@@ -426,7 +431,7 @@ int main(int argc, char *argv[]) {
        * reason. This is also the reason that there is no timed scope around
        * this, it simply makes no sense.
        */
-      reactor_update(reactor);
+      reactor_update(reactor, needs_render ? (time_to_render_ns / 1e6) : -1);
     }
 
     struct timer *update_keyboard = timer_start("update-keyboard");

@@ -215,7 +215,11 @@ static void open_completion(struct completion_state *state) {
   if (!completion_active() || state->target != buffer) {
 
     // clear any previous keymaps
-    abort_completion();
+    if (g_state.keymap_id != (uint64_t)-1) {
+      buffer_remove_keymap(g_state.keymap_id);
+    }
+
+    g_state.keymap_id = (uint64_t)-1;
 
     struct keymap km = keymap_create("completion", 8);
     struct binding comp_bindings[] = {
@@ -227,6 +231,7 @@ static void open_completion(struct completion_state *state) {
                      sizeof(comp_bindings) / sizeof(comp_bindings[0]));
 
     state->keymap_id = buffer_add_keymap(buffer, km);
+    state->target = buffer;
   }
 
   // need to run next frame to have the correct position

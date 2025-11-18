@@ -111,6 +111,8 @@ struct command_list *command_list_create(uint32_t capacity,
                                          uint32_t xoffset, uint32_t yoffset,
                                          uint32_t tab_width, const char *name);
 
+bool command_list_empty(struct command_list *list);
+
 /**
  * Enable/disable rendering of whitespace characters.
  *
@@ -248,3 +250,6 @@ void command_list_draw_repeated(struct command_list *list, uint32_t col,
 
 void command_list_draw_command_list(struct command_list *list,
                                     struct command_list *to_draw);
+
+void command_list_clear_line(struct command_list *list, uint32_t col,
+                             uint32_t row);

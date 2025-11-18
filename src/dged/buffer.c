@@ -1301,6 +1301,8 @@ void render_line(struct text_chunk *line, void *userdata) {
   command_list_set_show_whitespace(cmdbuf->cmds, false);
 
   if (drawn_coli < cmdbuf->width) {
+    // TODO: should really be (causes some issues in popups)
+    // command_list_clear_line(cmdbuf->cmds, drawn_coli, visual_line);
     command_list_draw_repeated(cmdbuf->cmds, drawn_coli, visual_line, ' ',
                                cmdbuf->width - drawn_coli);
   }

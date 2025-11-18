@@ -7,6 +7,7 @@
 #include "display.h"
 #include "minibuffer.h"
 
+#include <assert.h>
 #include <math.h>
 
 enum window_type {
@@ -283,8 +284,8 @@ bool windows_update(void *(*frame_alloc)(size_t), float frame_time) {
     }
 
     // is there space for borders?
-    if (w_y > 1 && w_y + height <= rw->height && w_x > 1 &&
-        w_x + width + border_width <= rw->width) {
+    if ((w_y > 1 && w_y + height <= rw->height) &&
+        (w_x > 1 && w_x + width + border_width <= rw->width)) {
       draw_borders = true;
 
       w_x -= border_width;
@@ -296,6 +297,7 @@ bool windows_update(void *(*frame_alloc)(size_t), float frame_time) {
 
     w->commands = command_list_create(height * width, frame_alloc, w_x, w_y, 4,
                                       "popup-decor");
+
     uint32_t x = 0, y = 0;
     if (draw_borders) {
       // top
@@ -330,7 +332,7 @@ bool windows_update(void *(*frame_alloc)(size_t), float frame_time) {
         command_list_draw_repeated(w->commands, w->width + x + 1, line, ' ',
                                    hpadding);
       }
-      x += border_width;
+      x += hpadding;
     }
 
     struct command_list *inner =
@@ -350,6 +352,8 @@ bool windows_update(void *(*frame_alloc)(size_t), float frame_time) {
 
     needs_render |= buffer_view_update(&w->buffer_view, &p);
     command_list_draw_command_list(w->commands, inner);
+  } else {
+    g_popup_window.commands = NULL;
   }
 
   return needs_render;
@@ -367,7 +371,8 @@ void windows_render(struct display *display) {
   }
 
   display_render(display, g_minibuffer_window.commands);
-  if (g_popup_visible) {
+  if (g_popup_window.commands != NULL &&
+      !command_list_empty(g_popup_window.commands)) {
     display_render(display, g_popup_window.commands);
   }
 }
