@@ -6,8 +6,10 @@
 
 #include "dged/buffer.h"
 #include "dged/display.h"
+#include "dged/json.h"
 #include "dged/path.h"
 #include "dged/s8.h"
+#include "dged/vec.h"
 
 struct s8 initialize_params_to_json(struct initialize_params *params) {
   char *cwd = getcwd(NULL, 0);
@@ -730,6 +732,46 @@ static void changes_from_json(struct s8 key, struct json_value *json,
   VEC_PUSH(vec, pair);
 }
 
+static void document_change_from_json(uint64_t id, struct json_value *value,
+                                      void *userdata) {
+  (void)id;
+  text_document_edit_vec *vec = (text_document_edit_vec *)userdata;
+
+  if (value->type != Json_Object) {
+    return;
+  }
+
+  struct json_object *obj = value->value.object;
+
+  struct json_value *text_doc = json_get(obj, s8("textDocument"));
+
+  struct versioned_text_document_identifier doc_id = {0};
+
+  if (text_doc != NULL && text_doc->type == Json_Object) {
+    struct json_object *text_doc_object = text_doc->value.object;
+    struct json_value *uri = json_get(text_doc_object, s8("uri"));
+    if (uri != NULL && uri->type == Json_String) {
+      doc_id.uri = unescape_json_string(uri->value.string);
+    }
+
+    struct json_value *version = json_get(text_doc_object, s8("version"));
+    if (version != NULL && version->type == Json_Number) {
+      doc_id.version = uri->value.number;
+    }
+  } else {
+    return;
+  }
+
+  struct json_value *edits = json_get(obj, s8("edits"));
+  if (edits == NULL || edits->type != Json_Array) {
+    return;
+  }
+
+  struct text_document_edit edit = {.text_document = doc_id,
+                                    .edits = text_edits_from_json(edits)};
+  VEC_PUSH(vec, edit);
+}
+
 struct workspace_edit workspace_edit_from_json(struct json_value *json) {
   struct workspace_edit edit;
   struct json_object *obj = json->value.object;
@@ -747,6 +789,16 @@ struct workspace_edit workspace_edit_from_json(struct json_value *json) {
     VEC_INIT(&edit.changes, 0);
   }
 
+  struct json_value *document_changes = json_get(obj, s8("documentChanges"));
+  if (document_changes != NULL && document_changes->type == Json_Array) {
+    struct json_array *doc_changes_arr = document_changes->value.array;
+    VEC_INIT(&edit.document_changes, json_array_len(doc_changes_arr));
+    json_array_foreach(doc_changes_arr, &edit.document_changes,
+                       document_change_from_json);
+  } else {
+    VEC_INIT(&edit.document_changes, 0);
+  }
+
   return edit;
 }
 
@@ -759,6 +811,13 @@ void workspace_edit_free(struct workspace_edit *edit) {
     VEC_DESTROY(&pair->edits);
   }
   VEC_DESTROY(&edit->changes);
+
+  VEC_FOR_EACH(&edit->document_changes, struct text_document_edit * doc_edit) {
+    versioned_text_document_identifier_free(&doc_edit->text_document);
+    text_edits_free(doc_edit->edits);
+  }
+
+  VEC_DESTROY(&edit->document_changes);
 }
 
 uint32_t diag_severity_color(enum diagnostic_severity severity) {

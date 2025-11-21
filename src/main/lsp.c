@@ -12,6 +12,7 @@
 #include "dged/minibuffer.h"
 #include "dged/reactor.h"
 #include "dged/settings.h"
+#include "dged/vec.h"
 #include "dged/window.h"
 
 #include "lsp/references.h"
@@ -787,6 +788,25 @@ bool apply_edits(struct lsp_server *server,
     free((void *)p);
     buffer_push_undo_boundary(b);
     apply_edits_buffer(server, b, pair->edits, NULL);
+    buffer_push_undo_boundary(b);
+  }
+
+  VEC_FOR_EACH(&ws_edit->document_changes, struct text_document_edit * edit) {
+    if (VEC_EMPTY(&edit->edits)) {
+      continue;
+    }
+
+    const char *p = s8tocstr(edit->text_document.uri);
+    struct buffer *b = buffers_find_by_filename(g_lsp_data.buffers, &p[7]);
+
+    if (b == NULL) {
+      struct buffer new_buf = buffer_from_file(&p[7]);
+      b = buffers_add(g_lsp_data.buffers, new_buf);
+    }
+
+    free((void *)p);
+    buffer_push_undo_boundary(b);
+    apply_edits_buffer(server, b, edit->edits, NULL);
     buffer_push_undo_boundary(b);
   }
 

@@ -181,8 +181,16 @@ struct text_edit_pair {
 
 typedef VEC(struct text_edit_pair) change_vec;
 
+struct text_document_edit {
+  struct versioned_text_document_identifier text_document;
+  text_edit_vec edits;
+};
+
+typedef VEC(struct text_document_edit) text_document_edit_vec;
+
 struct workspace_edit {
   change_vec changes;
+  text_document_edit_vec document_changes;
 };
 
 struct lsp_command {
