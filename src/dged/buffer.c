@@ -1395,10 +1395,12 @@ void buffer_get_text_properties_filtered(struct buffer *buffer,
 }
 
 void buffer_clear_text_properties(struct buffer *buffer) {
+  buffer->needs_render = true;
   text_clear_properties(buffer->text);
 }
 
 void buffer_clear_text_property_layer(struct buffer *buffer, layer_id layer) {
+  buffer->needs_render = true;
   text_clear_property_layer(buffer->text, layer);
 }
 

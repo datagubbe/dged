@@ -431,7 +431,8 @@ int main(int argc, char *argv[]) {
        * reason. This is also the reason that there is no timed scope around
        * this, it simply makes no sense.
        */
-      reactor_update(reactor, needs_render ? (time_to_render_ns / 1e6) : -1);
+      reactor_update(reactor,
+                     needs_render ? ((time_to_render_ns + 1e6 - 1) / 1e6) : -1);
     }
 
     struct timer *update_keyboard = timer_start("update-keyboard");
