@@ -398,6 +398,23 @@ int32_t buflist_save_cmd(struct command_ctx ctx, int argc, const char *argv[]) {
   return 0;
 }
 
+static void save_buffer(struct buffer *buffer, void *userdata) {
+  (void)userdata;
+  if (buffer->filename == NULL || !buffer->modified) {
+    return;
+  }
+
+  buffer_to_file(buffer);
+}
+
+int32_t buflist_save_all_cmd(struct command_ctx ctx, int argc,
+                             const char *argv[]) {
+  (void)argc;
+  (void)argv;
+  buffers_for_each(ctx.buffers, save_buffer, NULL);
+  return 0;
+}
+
 int32_t buffer_list(struct command_ctx ctx, int argc, const char *argv[]) {
   (void)argc;
   (void)argv;
@@ -433,11 +450,17 @@ int32_t buffer_list(struct command_ctx ctx, int argc, const char *argv[]) {
       .fn = buflist_save_cmd,
   };
 
+  static struct command buflist_save_all = {
+      .name = "buflist-save-all",
+      .fn = buflist_save_all_cmd,
+  };
+
   struct binding bindings[] = {
       ANONYMOUS_BINDING(ENTER, &buflist_visit),
       ANONYMOUS_BINDING(None, 'k', &buflist_kill),
       ANONYMOUS_BINDING(None, 'q', &buflist_close),
       ANONYMOUS_BINDING(None, 's', &buflist_save),
+      ANONYMOUS_BINDING(None, 'S', &buflist_save_all),
       ANONYMOUS_BINDING(None, 'g', &buflist_refresh_command),
   };
   struct keymap km = keymap_create("buflist", 8);
