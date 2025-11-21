@@ -477,6 +477,7 @@ int main(int argc, char *argv[]) {
         }
         case BindingType_Keymap: {
           current_keymap = res.data.keymap;
+          abort_completion();
           break;
         }
         }
