@@ -11,11 +11,6 @@
 #include "main/bindings.h"
 #include "main/lsp.h"
 
-struct lsp_buffer_diagnostics {
-  struct buffer *buffer;
-  diagnostic_vec diagnostics;
-};
-
 #define DIAGNOSTIC_BUFNAME "*lsp-diagnostics*"
 
 typedef VEC(struct lsp_buffer_diagnostics) buffer_diagnostics_vec;
@@ -40,11 +35,12 @@ static struct s8 diagnostics_modeline(struct buffer_view *view,
                                       void *userdata) {
   struct lsp_diagnostics *diag = (struct lsp_diagnostics *)userdata;
 
-  diagnostic_vec *diags = diagnostics_for_buffer(diag, view->buffer);
+  struct lsp_buffer_diagnostics *diags =
+      diagnostics_for_buffer(diag, view->buffer);
 
   size_t nerrs = 0, nwarn = 0;
   if (diags != NULL) {
-    VEC_FOR_EACH(diags, struct diagnostic * d) {
+    VEC_FOR_EACH(&diags->diagnostics, struct diagnostic * d) {
       if (d->severity == LspDiagnostic_Error) {
         ++nerrs;
       } else if (d->severity == LspDiagnostic_Warning) {
@@ -81,11 +77,11 @@ void diagnostics_destroy(struct lsp_diagnostics *d) {
   free(d);
 }
 
-diagnostic_vec *diagnostics_for_buffer(struct lsp_diagnostics *d,
-                                       struct buffer *buffer) {
+struct lsp_buffer_diagnostics *diagnostics_for_buffer(struct lsp_diagnostics *d,
+                                                      struct buffer *buffer) {
   VEC_FOR_EACH(&d->buffer_diagnostics, struct lsp_buffer_diagnostics * diag) {
     if (diag->buffer == buffer) {
-      return &diag->diagnostics;
+      return diag;
     }
   }
 
@@ -254,26 +250,28 @@ void handle_publish_diagnostics(struct lsp_server *server,
 
     if (b != NULL) {
       struct lsp_diagnostics *ld = lsp_server_diagnostics(server);
-      diagnostic_vec *diagnostics = diagnostics_for_buffer(ld, b);
+      struct lsp_buffer_diagnostics *diagnostics =
+          diagnostics_for_buffer(ld, b);
       if (diagnostics == NULL) {
         VEC_APPEND(&ld->buffer_diagnostics,
                    struct lsp_buffer_diagnostics * new_diag);
         new_diag->buffer = b;
+        new_diag->layer = buffer_add_text_property_layer(b);
         new_diag->diagnostics.nentries = 0;
         new_diag->diagnostics.capacity = 0;
         new_diag->diagnostics.temp = NULL;
         new_diag->diagnostics.entries = NULL;
 
-        diagnostics = &new_diag->diagnostics;
+        diagnostics = new_diag;
       }
 
-      VEC_FOR_EACH(diagnostics, struct diagnostic * diag) {
+      VEC_FOR_EACH(&diagnostics->diagnostics, struct diagnostic * diag) {
         diagnostic_free(diag);
       }
-      VEC_DESTROY(diagnostics);
+      VEC_DESTROY(&diagnostics->diagnostics);
 
-      *diagnostics = params.diagnostics;
-      update_diagnostics_buffer(server, buffers, *diagnostics, b);
+      diagnostics->diagnostics = params.diagnostics;
+      update_diagnostics_buffer(server, buffers, diagnostics->diagnostics, b);
     } else {
       VEC_FOR_EACH(&params.diagnostics, struct diagnostic * diag) {
         diagnostic_free(diag);
@@ -307,25 +305,25 @@ int32_t next_diagnostic_cmd(struct command_ctx ctx, int argc,
     return 0;
   }
 
-  diagnostic_vec *diagnostics =
+  struct lsp_buffer_diagnostics *diagnostics =
       diagnostics_for_buffer(lsp_diagnostics_from_server(server), bv->buffer);
   if (diagnostics == NULL) {
     return 0;
   }
 
-  if (VEC_EMPTY(diagnostics)) {
+  if (VEC_EMPTY(&diagnostics->diagnostics)) {
     minibuffer_echo_timeout(4, "no more diagnostics");
     return 0;
   }
 
-  VEC_FOR_EACH(diagnostics, struct diagnostic * diag) {
+  VEC_FOR_EACH(&diagnostics->diagnostics, struct diagnostic * diag) {
     if (location_compare(bv->dot, diag->region.begin) < 0) {
       buffer_view_goto(bv, diag->region.begin);
       return 0;
     }
   }
 
-  buffer_view_goto(bv, VEC_FRONT(diagnostics)->region.begin);
+  buffer_view_goto(bv, VEC_FRONT(&diagnostics->diagnostics)->region.begin);
   return 0;
 }
 
@@ -342,26 +340,26 @@ int32_t prev_diagnostic_cmd(struct command_ctx ctx, int argc,
     return 0;
   }
 
-  diagnostic_vec *diagnostics =
+  struct lsp_buffer_diagnostics *diagnostics =
       diagnostics_for_buffer(lsp_diagnostics_from_server(server), bv->buffer);
 
   if (diagnostics == NULL) {
     return 0;
   }
 
-  if (VEC_EMPTY(diagnostics)) {
+  if (VEC_EMPTY(&diagnostics->diagnostics)) {
     minibuffer_echo_timeout(4, "no more diagnostics");
     return 0;
   }
 
-  VEC_FOR_EACH(diagnostics, struct diagnostic * diag) {
+  VEC_FOR_EACH(&diagnostics->diagnostics, struct diagnostic * diag) {
     if (location_compare(bv->dot, diag->region.begin) > 0) {
       buffer_view_goto(bv, diag->region.begin);
       return 0;
     }
   }
 
-  buffer_view_goto(bv, VEC_BACK(diagnostics)->region.begin);
+  buffer_view_goto(bv, VEC_BACK(&diagnostics->diagnostics)->region.begin);
   return 0;
 }
 
@@ -377,9 +375,10 @@ int32_t diagnostics_cmd(struct command_ctx ctx, int argc, const char **argv) {
     return 0;
   }
 
-  diagnostic_vec *d =
+  struct lsp_buffer_diagnostics *d =
       diagnostics_for_buffer(lsp_diagnostics_from_server(server), b);
-  struct buffer *db = update_diagnostics_buffer(server, ctx.buffers, *d, b);
+  struct buffer *db =
+      update_diagnostics_buffer(server, ctx.buffers, d->diagnostics, b);
   window_set_buffer(ctx.active_window, db);
 
   return 0;

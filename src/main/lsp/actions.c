@@ -108,10 +108,10 @@ int32_t code_actions_cmd(struct command_ctx ctx, int argc, const char **argv) {
 
   VEC_INIT(&params.context.diagnostics, 8);
 
-  diagnostic_vec *d =
+  struct lsp_buffer_diagnostics *d =
       diagnostics_for_buffer(lsp_server_diagnostics(server), bv->buffer);
   if (d != NULL) {
-    VEC_FOR_EACH(d, struct diagnostic * diag) {
+    VEC_FOR_EACH(&d->diagnostics, struct diagnostic * diag) {
       if (location_is_between(bv->dot, diag->region.begin, diag->region.end)) {
         VEC_PUSH(&params.context.diagnostics, *diag);
       }

@@ -50,7 +50,6 @@ struct lsp_server {
   enum position_encoding_kind position_encoding;
 
   struct lsp_diagnostics *diagnostics;
-  layer_id diagnostics_layer_id;
   struct completion_ctx *completion_ctx;
 };
 
@@ -193,15 +192,15 @@ request_response_received(struct lsp_server *server, uint64_t id,
 static void buffer_updated(struct buffer *buffer, void *userdata) {
   struct lsp_server *server = (struct lsp_server *)userdata;
 
-  buffer_clear_text_property_layer(buffer, server->diagnostics_layer_id);
-
-  diagnostic_vec *diagnostics =
+  struct lsp_buffer_diagnostics *diagnostics =
       diagnostics_for_buffer(server->diagnostics, buffer);
   if (diagnostics == NULL) {
     return;
   }
 
-  VEC_FOR_EACH(diagnostics, struct diagnostic * diag) {
+  buffer_clear_text_property_layer(buffer, diagnostics->layer);
+
+  VEC_FOR_EACH(&diagnostics->diagnostics, struct diagnostic * diag) {
     struct text_property prop;
     prop.type = TextProperty_Colors;
     uint32_t color = diag_severity_color(diag->severity);
@@ -217,7 +216,7 @@ static void buffer_updated(struct buffer *buffer, void *userdata) {
         diag->region.begin, buffer_previous_char(buffer, diag->region.end));
 
     buffer_add_text_property_to_layer(buffer, reg.begin, reg.end, prop,
-                                      server->diagnostics_layer_id);
+                                      diagnostics->layer);
 
     if (window_buffer(windows_get_active()) == buffer) {
       struct buffer_view *bv = window_buffer_view(windows_get_active());
@@ -593,7 +592,6 @@ static void create_lsp_client(struct buffer *buffer, void *userdata) {
     }
 
     new->value.diagnostics = diagnostics_create();
-    new->value.diagnostics_layer_id = buffer_add_text_property_layer(buffer);
 
     // support for this is determined later
     new->value.completion_ctx = NULL;
