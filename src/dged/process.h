@@ -13,9 +13,9 @@ typedef int fd_t;
 struct platform_process;
 struct process {
   uint64_t id;
-  fd_t stdin;
-  fd_t stdout;
-  fd_t stderr;
+  fd_t stdin_;
+  fd_t stdout_;
+  fd_t stderr_;
   struct platform_process *impl;
 };
 

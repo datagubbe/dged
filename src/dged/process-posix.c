@@ -105,9 +105,9 @@ struct process_create_result process_create(char *const command[],
     close(stdout_write);
     close(stderr_write);
 
-    result->stdin = stdin_write;
-    result->stdout = stdout_read;
-    result->stderr = stderr_read;
+    result->stdin_ = stdin_write;
+    result->stdout_ = stdout_read;
+    result->stderr_ = stderr_read;
     result->id = (fd_t)pid;
     result->impl = NULL;
   }
@@ -118,9 +118,9 @@ struct process_create_result process_create(char *const command[],
 }
 
 void process_destroy(struct process *p) {
-  close(p->stdin);
-  close(p->stdout);
-  close(p->stderr);
+  close(p->stdin_);
+  close(p->stdout_);
+  close(p->stderr_);
 }
 
 bool process_running(const struct process *p) {

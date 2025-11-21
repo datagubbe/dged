@@ -233,7 +233,7 @@ uint32_t lsp_update(struct lsp *lsp, struct lsp_message *msgs,
     uint8_t buf[1024];
     if (reactor_poll_event(lsp->reactor, lsp->stderr_event)) {
       ssize_t nb = 0;
-      while ((nb = read(lsp->process->stderr, buf, 1024)) > 0) {
+      while ((nb = read(lsp->process->stderr_, buf, 1024)) > 0) {
         buffer_set_readonly(lsp->stderr_buffer, false);
         buffer_add(lsp->stderr_buffer, buffer_end(lsp->stderr_buffer), buf, nb);
         buffer_set_readonly(lsp->stderr_buffer, true);
@@ -250,7 +250,8 @@ uint32_t lsp_update(struct lsp *lsp, struct lsp_message *msgs,
       // write headers first
       if (w->written < w->headers_len) {
         to_write = w->headers_len - w->written;
-        written = write(lsp->process->stdin, w->headers + w->written, to_write);
+        written =
+            write(lsp->process->stdin_, w->headers + w->written, to_write);
       }
 
       // did an error occur
@@ -267,7 +268,7 @@ uint32_t lsp_update(struct lsp *lsp, struct lsp_message *msgs,
       if (w->written >= w->headers_len) {
         to_write = w->payload.l + w->headers_len - w->written;
         size_t offset = w->written - w->headers_len;
-        written = write(lsp->process->stdin, w->payload.s + offset, to_write);
+        written = write(lsp->process->stdin_, w->payload.s + offset, to_write);
       }
 
       // did an error occur
@@ -355,16 +356,16 @@ int lsp_start_server(struct lsp *lsp) {
   memcpy(lsp->process, &p, sizeof(struct process));
 
   lsp->stdout_event = reactor_register_interest(
-      lsp->reactor, lsp->process->stdout, ReadInterest);
+      lsp->reactor, lsp->process->stdout_, ReadInterest);
 
   if (lsp->stdout_event == (uint32_t)-1) {
     return -3;
   }
 
   lsp->stderr_event = reactor_register_interest(
-      lsp->reactor, lsp->process->stderr, ReadInterest);
+      lsp->reactor, lsp->process->stderr_, ReadInterest);
 
-  lsp->reader = bufread_create(lsp->process->stdout, 8192);
+  lsp->reader = bufread_create(lsp->process->stdout_, 8192);
 
   return 0;
 }
@@ -481,7 +482,7 @@ void lsp_send(struct lsp *lsp, struct lsp_message message) {
 
   if (lsp->stdin_event == (uint32_t)-1) {
     lsp->stdin_event = reactor_register_interest(
-        lsp->reactor, lsp->process->stdin, WriteInterest);
+        lsp->reactor, lsp->process->stdin_, WriteInterest);
   }
 }
 
