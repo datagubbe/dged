@@ -392,13 +392,13 @@ static void render_modeline(struct buffer_view *view,
   size_t mid_len =
       left_len + right_len < width ? width - left_len - right_len : 0;
 
-  char mid[mid_len + 1] = {};
+  char mid[mid_len + 1];
   if (mid_len > 0) {
     memset(mid, '-', mid_len);
     mid[0] = ' ';
     mid[mid_len - 1] = ' ';
-    mid[mid_len] = '\0';
   }
+  mid[mid_len] = '\0';
 
   if (left_len > 0) {
     command_list_set_index_color_bg(commands, Color_BrightBlack);
