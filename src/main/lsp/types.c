@@ -520,9 +520,9 @@ static struct s8 diagnostic_to_json(struct diagnostic *diag) {
       "{ \"range\": %.*s, \"message\": \"%.*s\", \"severity\": %d }";
 
   struct s8 range = region_to_json(diag->region);
-  struct s8 json =
-      s8from_fmt(fmt, range.l, range.s, diag->message.l, diag->message.s,
-                 severity_to_json(diag->severity));
+  struct s8 message = escape_json_string(diag->message);
+  struct s8 json = s8from_fmt(fmt, range.l, range.s, message.l, message.s,
+                              severity_to_json(diag->severity));
 
   s8delete(range);
   return json;
@@ -543,17 +543,14 @@ static struct s8 diagnostic_vec_to_json(diagnostic_vec diagnostics) {
   }
 
   uint8_t *final = (uint8_t *)calloc(len, 1);
-  struct s8 json = {
-      .s = final,
-      .l = len,
-  };
-
   final[0] = '[';
 
   size_t offset = 1;
   for (uint32_t i = 0; i < ndiags; ++i) {
     memcpy(&final[offset], strings[i].s, strings[i].l);
     offset += strings[i].l;
+    final[offset] = ',';
+    ++offset;
 
     s8delete(strings[i]);
   }
@@ -561,8 +558,7 @@ static struct s8 diagnostic_vec_to_json(diagnostic_vec diagnostics) {
   final[len - 1] = ']';
 
   free(strings);
-
-  return json;
+  return (struct s8){.s = final, .l = len};
 }
 
 struct s8 code_action_params_to_json(struct code_action_params *params) {
