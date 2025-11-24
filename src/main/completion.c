@@ -12,6 +12,7 @@
 #include "dged/buffer.h"
 #include "dged/buffer_view.h"
 #include "dged/buffers.h"
+#include "dged/command.h"
 #include "dged/display.h"
 #include "dged/minibuffer.h"
 #include "dged/path.h"
@@ -36,7 +37,6 @@ struct completion_item {
 static struct completion_state {
   VEC(struct buffer_completion) buffer_completions;
   VEC(struct completion_item) completions;
-  uint64_t completion_index;
   struct buffer *completions_buffer;
   buffer_keymap_id keymap_id;
   struct buffer *target;
@@ -45,11 +45,20 @@ static struct completion_state {
   bool paused;
 } g_state;
 
+static uint64_t completion_index() {
+  if (!completion_active()) {
+    return 0;
+  }
+
+  struct buffer_view *view = window_buffer_view(popup_window());
+  return view->dot.line;
+}
+
 static struct region active_completion_region(struct completion_state *state) {
   struct region reg =
       region_new((struct location){0, 0}, (struct location){0, 0});
-  if (state->completion_index < VEC_SIZE(&state->completions)) {
-    reg = VEC_ENTRIES(&state->completions)[state->completion_index].area;
+  if (completion_index() < VEC_SIZE(&state->completions)) {
+    reg = VEC_ENTRIES(&state->completions)[completion_index()].area;
   }
 
   return reg;
@@ -65,24 +74,10 @@ static int32_t goto_next_completion(struct command_ctx ctx, int argc,
     return 0;
   }
 
-  if (VEC_EMPTY(&g_state.completions)) {
-    g_state.completion_index = 0;
-    return 0;
+  struct buffer_view *view = window_buffer_view(popup_window());
+  if (view->dot.line + 1 < VEC_SIZE(&g_state.completions)) {
+    buffer_view_forward_line(view);
   }
-
-  size_t ncompletions = VEC_SIZE(&g_state.completions);
-  if (g_state.completion_index >= ncompletions - 1) {
-    g_state.completion_index = ncompletions - 1;
-    return 0;
-  }
-
-  ++g_state.completion_index;
-
-  if (completion_active()) {
-    buffer_view_goto(window_buffer_view(popup_window()),
-                     active_completion_region(&g_state).begin);
-  }
-
   return 0;
 }
 
@@ -92,21 +87,7 @@ static int32_t goto_prev_completion(struct command_ctx ctx, int argc,
   (void)argc;
   (void)argv;
 
-  if (!completion_active()) {
-    return 0;
-  }
-
-  if (g_state.completion_index == 0) {
-    return 0;
-  }
-
-  --g_state.completion_index;
-
-  if (completion_active()) {
-    buffer_view_goto(window_buffer_view(popup_window()),
-                     active_completion_region(&g_state).begin);
-  }
-
+  buffer_view_backward_line(window_buffer_view(popup_window()));
   return 0;
 }
 
@@ -135,9 +116,77 @@ static int32_t insert_completion(struct command_ctx ctx, int argc,
   return 0;
 }
 
+static int32_t scroll_up_completions(struct command_ctx ctx, int argc,
+                                     const char *argv[]) {
+  if (!completion_active()) {
+    return 0;
+  }
+
+  struct command *command = lookup_command(ctx.commands, "scroll-up");
+  if (command != NULL) {
+    return execute_command(command, ctx.commands, popup_window(), ctx.buffers,
+                           argc, argv);
+  }
+
+  return 0;
+}
+
+static int32_t scroll_down_completions(struct command_ctx ctx, int argc,
+                                       const char *argv[]) {
+  if (!completion_active()) {
+    return 0;
+  }
+
+  struct command *command = lookup_command(ctx.commands, "scroll-down");
+  if (command != NULL) {
+    return execute_command(command, ctx.commands, popup_window(), ctx.buffers,
+                           argc, argv);
+  }
+
+  return 0;
+}
+
+static int32_t goto_first_completion(struct command_ctx ctx, int argc,
+                                     const char *argv[]) {
+  if (!completion_active()) {
+    return 0;
+  }
+
+  struct command *command = lookup_command(ctx.commands, "goto-beginning");
+  if (command != NULL) {
+    return execute_command(command, ctx.commands, popup_window(), ctx.buffers,
+                           argc, argv);
+  }
+
+  return 0;
+}
+
+static int32_t goto_last_completion(struct command_ctx ctx, int argc,
+                                    const char *argv[]) {
+  if (!completion_active()) {
+    return 0;
+  }
+
+  struct command *command = lookup_command(ctx.commands, "goto-end");
+  if (command != NULL) {
+    return execute_command(command, ctx.commands, popup_window(), ctx.buffers,
+                           argc, argv);
+  }
+
+  return 0;
+}
+
 COMMAND_FN("next-completion", next_completion, goto_next_completion, NULL)
 COMMAND_FN("prev-completion", prev_completion, goto_prev_completion, NULL)
 COMMAND_FN("insert-completion", insert_completion, insert_completion, NULL)
+COMMAND_FN("scroll-up-completions", scroll_up_completions,
+           scroll_up_completions, NULL);
+COMMAND_FN("scroll-down-completions", scroll_down_completions,
+           scroll_down_completions, NULL);
+COMMAND_FN("goto-first-completion", goto_first_completion,
+           goto_first_completion, NULL);
+COMMAND_FN("goto-last-completion", goto_last_completion, goto_last_completion,
+           NULL);
 
 static void clear_completions(struct completion_state *state) {
   if (g_state.completions_buffer != NULL) {
@@ -151,7 +200,6 @@ static void clear_completions(struct completion_state *state) {
   }
 
   VEC_CLEAR(&state->completions);
-  state->completion_index = 0;
 
   if (completion_active()) {
     buffer_view_goto(window_buffer_view(popup_window()),
@@ -228,7 +276,17 @@ static void open_completion(struct completion_state *state) {
     struct binding comp_bindings[] = {
         ANONYMOUS_BINDING(Ctrl, 'N', &next_completion_command),
         ANONYMOUS_BINDING(Ctrl, 'P', &prev_completion_command),
+        ANONYMOUS_BINDING(DOWN, &next_completion_command),
+        ANONYMOUS_BINDING(UP, &prev_completion_command),
         ANONYMOUS_BINDING(ENTER, &insert_completion_command),
+
+        ANONYMOUS_BINDING(Ctrl, 'V', &scroll_down_completions_command),
+        ANONYMOUS_BINDING(Meta, 'v', &scroll_up_completions_command),
+        ANONYMOUS_BINDING(Spec, '6', &scroll_down_completions_command),
+        ANONYMOUS_BINDING(Spec, '5', &scroll_up_completions_command),
+
+        ANONYMOUS_BINDING(Meta, '<', &goto_first_completion_command),
+        ANONYMOUS_BINDING(Meta, '>', &goto_last_completion_command),
     };
     keymap_bind_keys(&km, comp_bindings,
                      sizeof(comp_bindings) / sizeof(comp_bindings[0]));
@@ -357,7 +415,6 @@ void init_completion(struct buffers *buffers) {
 
   VEC_INIT(&g_state.buffer_completions, 50);
   VEC_INIT(&g_state.completions, 50);
-  g_state.completion_index = 0;
   g_state.insert_in_progress = false;
   g_state.paused = false;
 }
