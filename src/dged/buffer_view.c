@@ -228,6 +228,12 @@ void buffer_view_delete_word(struct buffer_view *view) {
   if (region_has_size(word)) {
     buffer_delete(view->buffer, word);
     view->dot = word.begin;
+  } else {
+    // fall back to being a normal delete to keep
+    // progressing
+    view->dot = buffer_delete(
+        view->buffer,
+        region_new(view->dot, buffer_next_char(view->buffer, view->dot)));
   }
   buffer_push_undo_boundary(view->buffer);
 }
