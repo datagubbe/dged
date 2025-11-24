@@ -208,7 +208,7 @@ static void buffer_updated(struct buffer *buffer, void *userdata) {
     prop.data.colors = (struct text_property_colors){
         .set_bg = true,
         .set_fg = true,
-        .fg = Color_White,
+        .fg = Color_BrightWhite,
         .bg = color,
         .underline = true,
     };
