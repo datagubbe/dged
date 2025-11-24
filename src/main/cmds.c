@@ -334,7 +334,10 @@ int32_t buflist_refresh_cmd(struct command_ctx ctx, int argc,
                             const char *argv[]) {
   (void)argc;
   (void)argv;
-  buflist_refresh(window_buffer(ctx.active_window), ctx.buffers);
+  struct buffer *b = buffers_find(ctx.buffers, "*buffers*");
+  if (b != NULL) {
+    buflist_refresh(b, ctx.buffers);
+  }
   return 0;
 }
 

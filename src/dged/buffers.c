@@ -143,10 +143,13 @@ bool buffers_remove(struct buffers *buffers, const char *name) {
   size_t namelen = strlen(name);
   while (chunk != NULL) {
     for (uint32_t i = 0; i < buffers->chunk_size; ++i) {
+      if (!chunk->entries[i].occupied) {
+        continue;
+      }
+
       struct buffer *b = &chunk->entries[i].buffer;
       size_t bnamelen = strlen(b->name);
-      if (chunk->entries[i].occupied && namelen == bnamelen &&
-          memcmp(name, b->name, bnamelen) == 0) {
+      if (namelen == bnamelen && memcmp(name, b->name, bnamelen) == 0) {
         buf_entry = &chunk->entries[i];
         goto found;
       }

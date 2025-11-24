@@ -140,7 +140,10 @@ COMMAND_FN("prev-completion", prev_completion, goto_prev_completion, NULL)
 COMMAND_FN("insert-completion", insert_completion, insert_completion, NULL)
 
 static void clear_completions(struct completion_state *state) {
-  buffer_clear(state->completions_buffer);
+  if (g_state.completions_buffer != NULL) {
+    buffer_clear(state->completions_buffer);
+  }
+
   VEC_FOR_EACH(&state->completions, struct completion_item * item) {
     if (item->completion.cleanup != NULL) {
       item->completion.cleanup(item->completion.data);
@@ -326,6 +329,12 @@ static void on_buffer_delete(struct buffer *buffer, struct edit_location edit,
   on_buffer_changed(buffer, edit, true, userdata);
 }
 
+static void completions_buffer_deleted(struct buffer *buffer, void *userdata) {
+  (void)buffer;
+  struct completion_state *state = (struct completion_state *)userdata;
+  state->completions_buffer = NULL;
+}
+
 void init_completion(struct buffers *buffers) {
   if (g_state.completions_buffer == NULL) {
     struct buffer b = buffer_create("*completions*");
@@ -339,6 +348,9 @@ void init_completion(struct buffers *buffers) {
       buffer_add_text_property_layer(g_state.completions_buffer);
   buffer_add_update_hook(g_state.completions_buffer, update_comp_buffer,
                          &g_state);
+
+  buffer_add_destroy_hook(g_state.completions_buffer,
+                          completions_buffer_deleted, &g_state);
 
   g_state.keymap_id = (uint64_t)-1;
   g_state.target = NULL;

@@ -391,6 +391,11 @@ int main(int argc, char *argv[]) {
       needs_render = true;
     }
 
+    if (buffers_num_buffers(&buflist) == 0) {
+      running = false;
+      continue;
+    }
+
     // TODO: maybe this should be hidden behind something
     // The placement is correct though.
     buffers_for_each(&buflist, clear_buffer_props, NULL);
