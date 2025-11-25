@@ -64,8 +64,6 @@ CFLAGS ?= -g -O2
 CFLAGS += -Werror -Wall -Wextra -std=c99\
 	-I $(.CURDIR)/src\
 	-I $(.CURDIR)/src/main\
-	-I $(.OBJDIR)/src\
-	-I $(.OBJDIR)/src/main\
 	-DDATADIR="$(prefix)/$(datadir)"\
 	-DTEST_ROOT="$(.CURDIR)/test"
 
@@ -122,24 +120,19 @@ FILES = $(DEPS) \
 		$(MAIN_OBJS) \
 		$(OBJS) \
 		$(TEST_OBJS) \
-		src/main/revision.h \
 		dged \
 		libdged.a
 
-src/main/revision.h: scripts/generate-revision
-	@$(.CURDIR)/scripts/generate-revision $@
-
 # dependency generation
-.c.d: config.mk src/main/revision.h
+.c.d: config.mk
 	@mkdir -p $(@D)
 	$(CC) -MM $(CFLAGS) -MT $*.o $< > $@
 	@sed -i 's,\($*\)\.o[ :]*,\1.o $@ : ,g' $@
 
-.c.o: config.mk src/main/revision.h
+.c.o: config.mk
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# TODO: remove this
 grammars:
 	@if [ "$(SYNTAX_ENABLE)" = "true" ] && [ -n "$$BUNDLE_TREESITTER_GRAMMARS" ]; then \
 		IFS=":"; for p in "$$BUNDLE_TREESITTER_GRAMMARS"; do \
@@ -149,7 +142,7 @@ grammars:
 		mkdir -p ./grammars; \
 	fi
 
-dged: src/main/revision.h $(MAIN_OBJS) libdged.a grammars
+dged: $(MAIN_OBJS) libdged.a grammars
 	$(CC) $(LDFLAGS) $(MAIN_OBJS) libdged.a -o dged -lm
 
 libdged.a: $(OBJS)
