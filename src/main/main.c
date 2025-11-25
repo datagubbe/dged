@@ -39,6 +39,7 @@
 #include "cmds.h"
 #include "completion.h"
 #include "frame-hooks.h"
+#include "revision.h"
 #include "version.h"
 
 /* welcome.h is generated from welcome.inc with
@@ -169,7 +170,7 @@ static void usage(void) {
 }
 
 static void version(void) {
-  printf("dged - %s\n© Albert Cervin 2024\n", DGED_VERSION);
+  printf("dged - %s (%s)\n© Albert Cervin 2025\n", DGED_VERSION, DGED_REVISION);
 }
 
 int main(int argc, char *argv[]) {

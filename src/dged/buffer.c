@@ -440,6 +440,8 @@ void buffer_to_file(struct buffer *buffer) {
   minibuffer_echo_timeout(4, "wrote %d lines to %s", nlines_to_write,
                           buffer->filename);
   fclose(file);
+  struct stat sb;
+  stat(buffer->filename, &sb);
   if (rename(backupname, fullname) == -1) {
     minibuffer_echo("failed to rename backup \"%s\" to \"%s\": %s", backupname,
                     fullname, strerror(errno));
@@ -447,6 +449,7 @@ void buffer_to_file(struct buffer *buffer) {
     free(backupname);
     return;
   }
+  chmod(buffer->filename, sb.st_mode);
 
   free(fullname);
   free(backupname);
@@ -454,7 +457,6 @@ void buffer_to_file(struct buffer *buffer) {
   buffer->modified = false;
   undo_push_boundary(&buffer->undo, (struct undo_boundary){.save_point = true});
 
-  struct stat sb;
   stat(buffer->filename, &sb);
   buffer->last_write = sb.st_mtim;
 

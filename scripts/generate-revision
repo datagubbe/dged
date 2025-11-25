@@ -1,0 +1,8 @@
+#! /bin/sh
+rev="$(git rev-parse --verify --quiet HEAD)"
+cat << EOF > "$1"
+#ifndef _REVISION_H
+#define _REVISION_H
+#define DGED_REVISION "$rev"
+#endif
+EOF
