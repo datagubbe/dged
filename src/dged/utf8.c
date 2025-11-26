@@ -36,7 +36,7 @@ static const uint8_t utf8d[] = {
 // clang-format on
 
 /*
- * emoji decoding algorithm from
+ * unicode decoding algorithm from
  * https://bjoern.hoehrmann.de/utf-8/decoder/dfa/
  */
 static enum utf8_state decode(enum utf8_state *state, uint32_t *codep,
@@ -140,4 +140,28 @@ uint32_t unicode_visual_char_width(const struct codepoint *codepoint) {
   } else {
     return 0;
   }
+}
+
+size_t utf8_encode(uint32_t codepoint, uint8_t buf[4]) {
+  if (codepoint <= 0x7F) {
+    buf[0] = (uint8_t)codepoint & 0xff;
+    return 1;
+  } else if (codepoint <= 0x7FF) {
+    buf[0] = 0xC0 | (codepoint >> 6);
+    buf[1] = 0x80 | (codepoint & 0x3F);
+    return 2;
+  } else if (codepoint <= 0xFFFF) {
+    buf[0] = 0xE0 | (codepoint >> 12);
+    buf[1] = 0x80 | ((codepoint >> 6) & 0x3F);
+    buf[2] = 0x80 | (codepoint & 0x3F);
+    return 3;
+  } else if (codepoint <= 0x10FFFF) {
+    buf[0] = 0xF0 | (codepoint >> 18);
+    buf[1] = 0x80 | ((codepoint >> 12) & 0x3F);
+    buf[2] = 0x80 | ((codepoint >> 6) & 0x3F);
+    buf[3] = 0x80 | (codepoint & 0x3F);
+    return 4;
+  }
+
+  return 0;
 }

@@ -2,6 +2,7 @@
 #define _UTF8_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 struct codepoint {
@@ -34,5 +35,7 @@ bool utf8_byte_is_unicode_start(uint8_t byte);
 bool utf8_byte_is_unicode_continuation(uint8_t byte);
 bool utf8_byte_is_unicode(uint8_t byte);
 bool utf8_byte_is_ascii(uint8_t byte);
+
+size_t utf8_encode(uint32_t codepoint, uint8_t buf[4]);
 
 #endif

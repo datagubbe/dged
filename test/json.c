@@ -190,6 +190,12 @@ static void test_str_escape(void) {
   struct s8 res2 = unescape_json_string(s8("    \\\\\\n"));
   ASSERT(s8eq(res2, s8("    \\\n")), "Expected \\ and \\n to not be removed");
   s8delete(res2);
+
+  struct s8 res3 = unescape_json_string(
+      s8("\\n \\u26f0 \\u2702 \\u00a0\\u00a0\\u00a0\\u00a0"));
+  ASSERT(s8eq(res3, s8("\n ⛰ ✂ \u00a0\u00a0\u00a0\u00a0")),
+         "Expected unicode decoding to work.");
+  s8delete(res3);
 }
 
 void run_json_tests(void) {

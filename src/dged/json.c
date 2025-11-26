@@ -2,10 +2,13 @@
 
 #include "hash.h"
 #include "hashmap.h"
+#include "utf8.h"
 #include "vec.h"
 
+#include <assert.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 struct json_key_value {
   struct s8 key;
@@ -49,20 +52,49 @@ static struct json_value create_object(struct json_value *parent) {
   return val;
 }
 
+static uint32_t codepoint_from_hex(uint8_t bytes[4]) {
+  uint32_t nmbr = 0;
+  for (size_t i = 0; i < 4; ++i) {
+    uint8_t byte = bytes[i];
+    uint32_t value = 0;
+    if (byte >= '0' && byte <= '9') {
+      value = byte - '0';
+    } else if (byte >= 'A' && byte <= 'F') {
+      value = byte - 'A' + 10;
+    } else if (byte >= 'a' && byte <= 'f') {
+      value = byte - 'a' + 10;
+    }
+
+    // 16 ^ (3-i)
+    uint32_t multiplier = 1 << (4 * (3 - i));
+    nmbr += value * multiplier;
+  }
+
+  return nmbr;
+}
+
 struct s8 unescape_json_string(struct s8 input) {
-  /* FIXME: this is a bit funky and does not take
-  unicode characters into account and probably also
-  misses some escape codes. */
   size_t new_size = 0;
   bool escape = false;
   for (size_t bi = 0; bi < input.l; ++bi) {
     uint8_t b = input.s[bi];
+
+    size_t sz = 1;
     if (b == '\\' && !escape) {
       escape = true;
       continue;
     }
 
-    ++new_size;
+    if (b == 'u' && escape) {
+      // unicode codepoint, calculate byte-width
+      // format is \uXXXX where X is a hex digit.
+      uint8_t chars[4];
+      uint32_t codepoint = codepoint_from_hex(&input.s[bi + 1]);
+      sz = utf8_encode(codepoint, chars);
+      bi += 4;
+    }
+
+    new_size += sz;
     escape = false;
   }
 
@@ -77,6 +109,7 @@ struct s8 unescape_json_string(struct s8 input) {
       continue;
     }
 
+    size_t skip = 1;
     if (escape) {
       switch (b) {
       case 'b':
@@ -97,6 +130,14 @@ struct s8 unescape_json_string(struct s8 input) {
       case 't':
         buf[bufi] = '\t';
         break;
+      case 'u': {
+        uint8_t chars[4] = {0};
+        uint32_t codepoint = codepoint_from_hex(&input.s[bi + 1]);
+        size_t size = utf8_encode(codepoint, chars);
+        memcpy(&buf[bufi], chars, size);
+        skip = size;
+        bi += 4;
+      } break;
       case '"':
         buf[bufi] = '"';
         break;
@@ -108,7 +149,7 @@ struct s8 unescape_json_string(struct s8 input) {
     }
 
     escape = false;
-    ++bufi;
+    bufi += skip;
   }
 
   return (struct s8){
