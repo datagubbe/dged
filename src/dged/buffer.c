@@ -441,7 +441,7 @@ void buffer_to_file(struct buffer *buffer) {
                           buffer->filename);
   fclose(file);
   struct stat sb;
-  stat(buffer->filename, &sb);
+  int statret = stat(buffer->filename, &sb);
   if (rename(backupname, fullname) == -1) {
     minibuffer_echo("failed to rename backup \"%s\" to \"%s\": %s", backupname,
                     fullname, strerror(errno));
@@ -449,7 +449,10 @@ void buffer_to_file(struct buffer *buffer) {
     free(backupname);
     return;
   }
-  chmod(buffer->filename, sb.st_mode);
+
+  if (statret == 0) {
+    chmod(buffer->filename, sb.st_mode);
+  }
 
   free(fullname);
   free(backupname);
@@ -457,8 +460,11 @@ void buffer_to_file(struct buffer *buffer) {
   buffer->modified = false;
   undo_push_boundary(&buffer->undo, (struct undo_boundary){.save_point = true});
 
-  stat(buffer->filename, &sb);
-  buffer->last_write = sb.st_mtim;
+  statret = stat(buffer->filename, &sb);
+
+  if (statret == 0) {
+    buffer->last_write = sb.st_mtim;
+  }
 
   dispatch_hook(&buffer->hooks->post_save_hooks, struct post_save_hook, buffer);
 }
