@@ -113,7 +113,7 @@ static void test_word_at(void) {
   ASSERT(word1.begin.col == 0 && word1.end.col == 5,
          "Expected only word to end at col 5");
 
-  const char *txt2 = " (word2). Another";
+  const char *txt2 = " (word2). word3. Another";
   buffer_add(&b, at, (uint8_t *)txt2, strlen(txt2));
   word1 = buffer_word_at(&b, (struct location){.line = 0, .col = 0});
   ASSERT(region_has_size(word1), "expected 0,0 to be a word");
@@ -131,8 +131,13 @@ static void test_word_at(void) {
   // test that clamping works correctly
   struct region word3 = buffer_word_at(&b, buffer_clamp(&b, 0, 100));
   ASSERT(region_has_size(word3), "expected 0,100 to be in the last word");
-  ASSERT(word3.begin.col == 15 && word3.end.col == 22,
-         "Expected word to span cols 15..22");
+  ASSERT(word3.begin.col == 22 && word3.end.col == 29,
+         "Expected word to span cols 22..29");
+
+  // test that the dot is not considered a word
+  struct region word4 =
+      buffer_word_at(&b, (struct location){.line = 0, .col = 20});
+  ASSERT(!region_has_size(word4), "dot should not be a word");
 
   buffer_destroy(&b);
 }

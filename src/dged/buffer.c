@@ -304,7 +304,8 @@ find_prev_in_line(struct buffer *buffer, struct location start,
       text_line_codepoint_iterator(buffer->text, start.line);
   uint32_t coli = 0, tab_width = get_tab_width(buffer), found_at;
   struct codepoint *codepoint;
-  while (coli < start.col && (codepoint = utf8_next_codepoint(&iter)) != NULL) {
+  while (coli <= start.col &&
+         (codepoint = utf8_next_codepoint(&iter)) != NULL) {
     if (predicate(codepoint)) {
       found = true;
       found_at = coli;
