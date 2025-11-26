@@ -6,7 +6,6 @@
 #include <string.h>
 
 #include "display.h"
-#include "signal.h"
 #include "utf8.h"
 #include "vec.h"
 
@@ -166,6 +165,15 @@ uint32_t text_line_size(const struct text *text, uint32_t lineidx) {
 }
 
 uint32_t text_num_lines(const struct text *text) { return text->nlines; }
+
+size_t text_size(const struct text *text) {
+  size_t total = 0;
+  for (uint64_t linei = 0; linei < text->nlines; ++linei) {
+    total += text->lines[linei].nbytes;
+  }
+
+  return total;
+}
 
 static void split_line(struct text *text, uint32_t offset, uint32_t lineidx,
                        uint32_t newlineidx) {
@@ -484,6 +492,44 @@ struct text_chunk text_get_region(struct text *text, uint32_t start_line,
       .nbytes = total_bytes,
       .allocated = true,
   };
+}
+
+struct copy_chunk_params {
+  enum line_endings line_endings;
+  struct text_chunk *target_chunk;
+};
+
+static void copy_chunk(struct text_chunk *src, void *userdata) {
+  struct copy_chunk_params *params = (struct copy_chunk_params *)userdata;
+  struct text_chunk *target = params->target_chunk;
+
+  memcpy(target->text + target->nbytes, src->text, src->nbytes);
+  target->nbytes += src->nbytes;
+  if (params->line_endings == LineEnding_CRLF) {
+    target->text[target->nbytes] = '\r';
+    ++target->nbytes;
+  }
+
+  target->text[target->nbytes] = '\n';
+  ++target->nbytes;
+}
+
+struct text_chunk text_get(struct text *text, void *(*alloc)(size_t size)) {
+  size_t needed = text_size(text);
+  size_t line_end_bytes = 1;
+  if (text->line_ends == LineEnding_CRLF) {
+    line_end_bytes = 2;
+  }
+  needed += text_num_lines(text) * line_end_bytes;
+
+  struct text_chunk ret = {0};
+  ret.text = alloc(needed);
+  ret.allocated = true;
+
+  struct copy_chunk_params params = {.target_chunk = &ret,
+                                     .line_endings = text->line_ends};
+  text_for_each_chunk(text, copy_chunk, &params);
+  return ret;
 }
 
 static property_vec *find_property_layer(struct text *text, layer_id layer) {

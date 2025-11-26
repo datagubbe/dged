@@ -9,6 +9,7 @@
 #include "dged/hash.h"
 #include "dged/hashmap.h"
 #include "dged/lang.h"
+#include "dged/location.h"
 #include "dged/minibuffer.h"
 #include "dged/reactor.h"
 #include "dged/settings.h"
@@ -190,6 +191,57 @@ request_response_received(struct lsp_server *server, uint64_t id,
   return false;
 }
 
+static struct region edit_location_to_lsp(struct buffer *buffer,
+                                          struct edit_location edit,
+                                          struct lsp_server *server) {
+
+  struct region res = edit.coordinates;
+  if (server->position_encoding == PositionEncoding_Utf8) {
+    /* In this case, the buffer hook has already
+     * done the job for us. */
+    res.begin.col = edit.bytes.begin.col;
+    res.end.col = edit.bytes.end.col;
+    return res;
+  }
+
+  return region_to_lsp(buffer, res, server);
+}
+
+static void buffer_reloaded(struct buffer *buffer, void *userdata) {
+  struct lsp_server *server = (struct lsp_server *)userdata;
+
+  struct text_chunk new_text = buffer_text(buffer);
+
+  struct text_document_content_change_event evt = {
+      .full_document = true,
+      .text = s8new((const char *)new_text.text, new_text.nbytes),
+      .range = region_new(
+          (struct location){.col = 0, .line = 0},
+          (struct location){.col = 0, .line = buffer_num_lines(buffer)}),
+  };
+
+  struct versioned_text_document_identifier text_document =
+      versioned_identifier_from_buffer(buffer);
+  struct did_change_text_document_params params = {
+      .text_document = text_document,
+      .content_changes = &evt,
+      .ncontent_changes = 1,
+  };
+
+  struct s8 json_payload = did_change_text_document_params_to_json(&params);
+
+  lsp_send(server->lsp,
+           lsp_create_notification(s8("textDocument/didChange"), json_payload));
+
+  versioned_text_document_identifier_free(&text_document);
+  s8delete(json_payload);
+  s8delete(evt.text);
+
+  if (new_text.allocated) {
+    free(new_text.text);
+  }
+}
+
 static void buffer_updated(struct buffer *buffer, void *userdata) {
   struct lsp_server *server = (struct lsp_server *)userdata;
 
@@ -318,22 +370,6 @@ static uint32_t count_bytes(struct text_chunk *chunk, uint32_t target_col) {
   return nbytes;
 }
 
-static struct region edit_location_to_lsp(struct buffer *buffer,
-                                          struct edit_location edit,
-                                          struct lsp_server *server) {
-
-  struct region res = edit.coordinates;
-  if (server->position_encoding == PositionEncoding_Utf8) {
-    /* In this case, the buffer hook has already
-     * done the job for us. */
-    res.begin.col = edit.bytes.begin.col;
-    res.end.col = edit.bytes.end.col;
-    return res;
-  }
-
-  return region_to_lsp(buffer, res, server);
-}
-
 struct region region_to_lsp(struct buffer *buffer, struct region region,
                             struct lsp_server *server) {
   struct region res = region;
@@ -386,9 +422,7 @@ static void buffer_text_changed(struct buffer *buffer,
     return;
 
   case TextDocumentSync_Full:
-    new_text =
-        buffer_region(buffer, region_new((struct location){.line = 0, .col = 0},
-                                         buffer_end(buffer)));
+    new_text = buffer_text(buffer);
     break;
 
   case TextDocumentSync_Incremental:
@@ -475,6 +509,7 @@ static void lsp_buffer_initialized(struct lsp_server *server,
     buffer_add_update_hook(buffer, buffer_updated, server);
     buffer_add_pre_save_hook(buffer, buffer_pre_save, server);
     buffer_add_post_save_hook(buffer, buffer_post_save, server);
+    buffer_add_reload_hook(buffer, buffer_reloaded, server);
 
     send_did_open(server, buffer);
     setup_completion(server, buffer);

@@ -234,8 +234,6 @@ static void buffer_read_from_file(struct buffer *b) {
     free(fullname);
     return;
   }
-
-  undo_push_boundary(&b->undo, (struct undo_boundary){.save_point = true});
 }
 
 static void write_line_lf(struct text_chunk *chunk, void *userdata) {
@@ -388,6 +386,7 @@ struct buffer buffer_from_file(const char *path) {
   char *full_path = to_abspath(path);
   struct buffer b = create_internal(basename((char *)path), full_path);
   buffer_read_from_file(&b);
+  undo_push_boundary(&b.undo, (struct undo_boundary){.save_point = true});
 
   dispatch_hook(&g_create_hooks, struct create_hook, &b);
 
@@ -470,6 +469,8 @@ void buffer_set_filename(struct buffer *buffer, const char *filename) {
   buffer->modified = true;
 }
 
+static void *text_alloc(size_t sz) { return calloc(sz, 1); }
+
 void buffer_reload(struct buffer *buffer) {
   if (buffer->filename == NULL) {
     return;
@@ -484,8 +485,26 @@ void buffer_reload(struct buffer *buffer) {
 
   if (sb.st_mtim.tv_sec != buffer->last_write.tv_sec ||
       sb.st_mtim.tv_nsec != buffer->last_write.tv_nsec) {
+
+    undo_push_boundary(&buffer->undo,
+                       (struct undo_boundary){.save_point = false});
+
+    struct text_chunk txt = buffer_text(buffer);
+    undo_push_delete(
+        &buffer->undo,
+        (struct undo_delete){.data = txt.text,
+                             .nbytes = txt.nbytes,
+                             .pos = ((struct position){.col = 0, .row = 0})});
     text_clear(buffer->text);
+
     buffer_read_from_file(buffer);
+    undo_push_add(
+        &buffer->undo,
+        (struct undo_add){.begin = (struct position){.col = 0, .row = 0},
+                          .end = (struct position){
+                              .col = 0, .row = buffer_num_lines(buffer)}});
+    undo_push_boundary(&buffer->undo,
+                       (struct undo_boundary){.save_point = true});
     dispatch_hook(&buffer->hooks->reload_hooks, struct reload_hook, buffer);
   }
 }
@@ -1079,6 +1098,10 @@ struct location buffer_paste_older(struct buffer *buffer, struct location at) {
 
 struct text_chunk buffer_line(struct buffer *buffer, uint32_t line) {
   return text_get_line(buffer->text, line);
+}
+
+struct text_chunk buffer_text(struct buffer *buffer) {
+  return text_get(buffer->text, text_alloc);
 }
 
 struct text_chunk buffer_region(struct buffer *buffer, struct region region) {

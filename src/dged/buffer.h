@@ -435,6 +435,15 @@ struct text_chunk buffer_line(struct buffer *buffer, uint32_t line);
 struct text_chunk buffer_region(struct buffer *buffer, struct region region);
 
 /**
+ * Get all text in the buffer.
+ *
+ * @param buffer The buffer to get text from.
+ *
+ * @returns A text chunk describing the full buffer
+ */
+struct text_chunk buffer_text(struct buffer *buffer);
+
+/**
  * Add a text property to a region of the buffer.
  *
  * @param buffer The buffer to add a text property to.

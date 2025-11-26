@@ -272,7 +272,7 @@ struct s8 did_change_text_document_params_to_json(
 
       event_buf_size += num;
     } else {
-      const char *item_fmt = "{ \"text\", \"%.*s\" }%s";
+      const char *item_fmt = "{ \"text\": \"%.*s\" }%s";
       ssize_t num = snprintf(NULL, 0, item_fmt, escaped.l, escaped.s,
                              i == params->ncontent_changes - 1 ? "" : ", ");
 
@@ -309,7 +309,7 @@ struct s8 did_change_text_document_params_to_json(
 
       offset += num;
     } else {
-      const char *item_fmt = "{ \"text\", \"%.*s\" }%s";
+      const char *item_fmt = "{ \"text\": \"%.*s\" }%s";
       ssize_t num =
           snprintf(&buf[offset], event_buf_size - offset, item_fmt, escaped.l,
                    escaped.s, i == params->ncontent_changes - 1 ? "" : ", ");

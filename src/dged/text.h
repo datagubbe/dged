@@ -41,6 +41,7 @@ void text_delete(struct text *text, uint32_t start_line, uint32_t start_offset,
 
 enum line_endings text_get_line_ending(const struct text *);
 
+size_t text_size(const struct text *text);
 uint32_t text_num_lines(const struct text *text);
 uint32_t text_line_size(const struct text *text, uint32_t lineidx);
 struct utf8_codepoint_iterator
@@ -58,6 +59,8 @@ struct text_chunk text_get_line(struct text *text, uint32_t line);
 struct text_chunk text_get_region(struct text *text, uint32_t start_line,
                                   uint32_t start_offset, uint32_t end_line,
                                   uint32_t end_offset);
+
+struct text_chunk text_get(struct text *text, void *(*alloc)(size_t size));
 
 enum text_property_type {
   TextProperty_Colors,
