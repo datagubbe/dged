@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <string.h>
 
 #include "buffer.h"
@@ -5,7 +6,6 @@
 #include "display.h"
 #include "settings.h"
 #include "timers.h"
-#include "utf8.h"
 
 HOOK_IMPL(modeline, modeline_hook_cb);
 
@@ -61,7 +61,10 @@ void buffer_view_add(struct buffer_view *view, uint8_t *txt, uint32_t nbytes) {
   maybe_delete_region(view);
   struct location before = view->dot;
   view->dot = buffer_add(view->buffer, view->dot, txt, nbytes);
+
   if (view->dot.line > before.line) {
+    buffer_push_undo_boundary(view->buffer);
+  } else if (nbytes == 1 && !isalnum(txt[0])) {
     buffer_push_undo_boundary(view->buffer);
   }
 }
