@@ -460,6 +460,7 @@ int32_t buffer_list(struct command_ctx ctx, int argc, const char *argv[]) {
 
   struct binding bindings[] = {
       ANONYMOUS_BINDING(ENTER, &buflist_visit),
+      ANONYMOUS_BINDING(NUMPAD_ENTER, &buflist_visit),
       ANONYMOUS_BINDING(None, 'k', &buflist_kill),
       ANONYMOUS_BINDING(None, 'q', &buflist_close),
       ANONYMOUS_BINDING(None, 's', &buflist_save),

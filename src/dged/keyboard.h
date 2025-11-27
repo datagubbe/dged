@@ -27,6 +27,8 @@ enum modifiers {
 #define TAB Ctrl, 'I'
 /** Enter key */
 #define ENTER Ctrl, 'M'
+/** Numpad Enter key */
+#define NUMPAD_ENTER Ctrl, 'J'
 /** Delete key */
 #define DELETE Spec, '3'
 

@@ -279,6 +279,7 @@ static void open_completion(struct completion_state *state) {
         ANONYMOUS_BINDING(DOWN, &next_completion_command),
         ANONYMOUS_BINDING(UP, &prev_completion_command),
         ANONYMOUS_BINDING(ENTER, &insert_completion_command),
+        ANONYMOUS_BINDING(NUMPAD_ENTER, &insert_completion_command),
 
         ANONYMOUS_BINDING(Ctrl, 'V', &scroll_down_completions_command),
         ANONYMOUS_BINDING(Meta, 'v', &scroll_up_completions_command),

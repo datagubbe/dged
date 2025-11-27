@@ -118,6 +118,7 @@ static void handle_references_response(struct lsp_server *server,
     struct binding bindings[] = {
         ANONYMOUS_BINDING(None, 'q', &ref_close),
         ANONYMOUS_BINDING(ENTER, &ref_visit_cmd),
+        ANONYMOUS_BINDING(NUMPAD_ENTER, &ref_visit_cmd),
     };
     struct keymap km = keymap_create("references", 2);
     keymap_bind_keys(&km, bindings, sizeof(bindings) / sizeof(bindings[0]));

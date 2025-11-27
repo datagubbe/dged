@@ -120,6 +120,7 @@ choice_buffer_create(struct s8 title, struct buffers *buffers,
 
   struct binding bindings[] = {
       ANONYMOUS_BINDING(ENTER, &b->enter_pressed),
+      ANONYMOUS_BINDING(NUMPAD_ENTER, &b->enter_pressed),
       ANONYMOUS_BINDING(None, 'q', &b->q_pressed),
   };
 

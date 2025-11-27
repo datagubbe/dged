@@ -167,6 +167,7 @@ static struct buffer *update_diagnostics_buffer(struct lsp_server *server,
 
     struct binding bindings[] = {
         ANONYMOUS_BINDING(ENTER, &diagnostics_goto),
+        ANONYMOUS_BINDING(NUMPAD_ENTER, &diagnostics_goto),
         ANONYMOUS_BINDING(None, 'q', &diagnostics_close),
     };
     struct keymap km = keymap_create("diagnostics", 8);

@@ -55,6 +55,7 @@ void set_default_buffer_bindings(struct keymap *keymap) {
       BINDING(Spec, '5', "scroll-up"),
 
       BINDING(ENTER, "newline"),
+      BINDING(NUMPAD_ENTER, "newline"),
       BINDING(TAB, "indent"),
       BINDING(Spec, 'Z', "indent-alt"),
 
@@ -158,6 +159,7 @@ void init_bindings(void) {
    */
   struct binding minibuffer_binds[] = {
       ANONYMOUS_BINDING(ENTER, &execute_minibuffer_command),
+      ANONYMOUS_BINDING(NUMPAD_ENTER, &execute_minibuffer_command),
   };
   struct keymap minibuffer_map = keymap_create("minibuffer", 8);
   keymap_bind_keys(&minibuffer_map, minibuffer_binds,
