@@ -211,6 +211,7 @@ static void lsp_item_selected(void *data, struct buffer_view *view) {
 
     s8delete(symbol.symbol);
 
+    buffer_push_undo_boundary(buffer);
     struct location at = buffer_add(buffer, view->dot, insert.s, insert.l);
     buffer_view_goto(view, at);
 
@@ -227,6 +228,7 @@ static void lsp_item_selected(void *data, struct buffer_view *view) {
       at = buffer_delete(buffer, reg);
     }
 
+    buffer_push_undo_boundary(buffer);
     at = buffer_add(buffer, at, ed->new_text.s, ed->new_text.l);
     buffer_view_goto(view, at);
   } break;
@@ -244,6 +246,7 @@ static void lsp_item_selected(void *data, struct buffer_view *view) {
       buffer_delete(buffer, reg);
     }
 
+    buffer_push_undo_boundary(buffer);
     struct location at =
         buffer_add(buffer, ed->insert.begin, ed->new_text.s, ed->new_text.l);
     buffer_view_goto(view, at);
