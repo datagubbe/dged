@@ -29,7 +29,8 @@ struct symbol {
 };
 
 static struct symbol current_symbol(struct buffer *buffer, struct location at) {
-  struct region word = buffer_word_at(buffer, at);
+  // use previous char here since the cursor has moved after typing
+  struct region word = buffer_word_at(buffer, buffer_previous_char(buffer, at));
   if (!region_has_size(word)) {
     return (struct symbol){
         .symbol =
