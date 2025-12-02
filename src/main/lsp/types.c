@@ -524,6 +524,7 @@ static struct s8 diagnostic_to_json(struct diagnostic *diag) {
   struct s8 json = s8from_fmt(fmt, range.l, range.s, message.l, message.s,
                               severity_to_json(diag->severity));
 
+  s8delete(message);
   s8delete(range);
   return json;
 }
