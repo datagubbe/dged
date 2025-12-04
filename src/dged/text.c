@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "display.h"
+#include "minibuffer.h"
 #include "utf8.h"
 #include "vec.h"
 
@@ -561,6 +562,7 @@ void text_add_property_to_layer(struct text *text, uint32_t start_line,
   property_vec *target_vec = find_property_layer(text, layer);
 
   if (target_vec == NULL) {
+    message("tried to add property to non-existent layer %d", layer);
     return;
   }
 
