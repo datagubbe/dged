@@ -400,10 +400,19 @@ void buffer_to_file(struct buffer *buffer) {
     return;
   }
 
+  static size_t unneeded_save_count = 0;
   if (!buffer->modified) {
-    minibuffer_echo_timeout(4, "buffer already saved");
+    ++unneeded_save_count;
+    if (unneeded_save_count > 1) {
+      minibuffer_echo_timeout(4, "buffer already saved (%d times)",
+                              unneeded_save_count);
+    } else {
+      minibuffer_echo_timeout(4, "buffer already saved");
+    }
     return;
   }
+
+  unneeded_save_count = 0;
 
   char *fullname = expanduser(buffer->filename);
   size_t namelen = strlen(fullname);
