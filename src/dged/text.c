@@ -648,6 +648,7 @@ layer_id text_add_property_layer(struct text *text) {
     return layer->id;
   }
 
+  message("Out of layers %d (%d)", text->nproperty_layers, MAX_LAYERS);
   return (layer_id)-1;
 }
 
