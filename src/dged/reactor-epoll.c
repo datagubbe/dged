@@ -119,6 +119,7 @@ void reactor_update(struct reactor *reactor, int timeout_ms) {
   if (nfds == -1) {
     events->nevents = 0;
     message("failed update epoll reactor: %s", strerror(errno));
+    return;
   }
 
   events->nevents = nfds;
