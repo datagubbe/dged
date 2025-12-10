@@ -79,7 +79,7 @@ ASAN ?= false
   SOURCES += src/dged/syntax.c
 
   treesitterflags != pkg-config tree-sitter --cflags
-  CFLAGS += ${treesitterflags}
+  CFLAGS += ${treesitterflags} -DSYNTAX_ENABLE
 
   treesitterld != pkg-config tree-sitter --libs
   LDFLAGS += ${treesitterld}
@@ -95,7 +95,7 @@ ASAN ?= false
 				src/main/lsp/diagnostics.c src/main/lsp/goto.c src/main/lsp/format.c src/main/lsp/completion.c \
 				src/main/lsp/rename.c src/main/lsp/help.c src/main/lsp/references.c
   TEST_SOURCES += test/json.c
-  CFLAGS += -DLSP_ENABLED
+  CFLAGS += -DLSP_ENABLE
 .endif
 
 UNAME_S != uname -s | tr '[:upper:]' '[:lower:]'

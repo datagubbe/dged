@@ -1,3 +1,6 @@
+#ifndef _ALLOCATOR_H
+#define _ALLOCATOR_H
+
 #include <stddef.h>
 #include <stdint.h>
 
@@ -43,3 +46,5 @@ void *frame_allocator_alloc(struct frame_allocator *alloc, size_t sz);
  * @param alloc The frame allocator to clear
  */
 void frame_allocator_clear(struct frame_allocator *alloc);
+
+#endif

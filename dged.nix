@@ -12,6 +12,7 @@
 , fetchFromGitHub
 , glibcLocalesUtf8
 , strace
+, gdb
 }:
 stdenv.mkDerivation {
   name = "dged";
@@ -27,6 +28,7 @@ stdenv.mkDerivation {
     bear
     doxygen
     valgrind
+    gdb
   ];
 
   buildPhase = ''

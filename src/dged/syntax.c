@@ -44,11 +44,41 @@ struct highlight {
   TSQuery *query;
   VEC(struct predicate) predicates;
   void *dlhandle;
+  struct buffer *buffer;
 };
 
-static void delete_parser(struct buffer *buffer, void *userdata) {
-  (void)buffer;
+VEC(struct highlight *) g_buffer_highlights;
 
+static struct highlight *highlight_for_buffer(struct buffer *buffer) {
+  VEC_FOR_EACH(&g_buffer_highlights, struct highlight * *hl) {
+    if ((*hl)->buffer == buffer) {
+      return *hl;
+    }
+  }
+
+  return NULL;
+}
+
+static void remove_buffer_highlight(struct buffer *buffer) {
+  size_t sz = VEC_SIZE(&g_buffer_highlights);
+  VEC_FOR_EACH_INDEXED(&g_buffer_highlights, struct highlight * *hl, idx) {
+    if ((*hl)->buffer == buffer) {
+      if (sz > 1 && idx != sz - 1) {
+        VEC_SWAP(&g_buffer_highlights, idx, sz - 1);
+      }
+
+      VEC_POP(&g_buffer_highlights, struct highlight * removed);
+      (void)removed;
+    }
+  }
+}
+
+static void add_buffer_highlight(struct highlight *hl) {
+  VEC_PUSH(&g_buffer_highlights, hl);
+}
+
+static void delete_parser(struct buffer *buffer, void *userdata) {
+  remove_buffer_highlight(buffer);
   struct highlight *highlight = (struct highlight *)userdata;
 
   if (highlight->query != NULL) {
@@ -338,6 +368,16 @@ static void update_parser(struct buffer *buffer, struct location origin,
 
   struct highlight *h = (struct highlight *)userdata;
 
+  // FIXME: this should really be in
+  // parser creation but it cannot since
+  // the buffer pointer is not the
+  // correct one in that case (not added to
+  // buffer list yet).
+  if (h->buffer == NULL) {
+    h->buffer = buffer;
+    add_buffer_highlight(h);
+  }
+
   if (h->query == NULL) {
     return;
   }
@@ -615,7 +655,6 @@ static void create_parser(struct buffer *buffer, void *userdata) {
 }
 
 void syntax_init(uint32_t grammar_path_len, const char *grammar_path[]) {
-
   treesitter_path_len = grammar_path_len < 256 ? grammar_path_len : 256;
   for (uint32_t i = 0; i < treesitter_path_len; ++i) {
     treesitter_path[i] = strdup(grammar_path[i]);
@@ -641,11 +680,46 @@ void syntax_init(uint32_t grammar_path_len, const char *grammar_path[]) {
     lang_destroy(&l);
   }
 
+  VEC_INIT(&g_buffer_highlights, 16);
   buffer_add_create_hook(create_parser, NULL);
+}
+
+struct syntax_node syntax_node_at(struct buffer *buffer, struct location at) {
+
+  struct highlight *hl = highlight_for_buffer(buffer);
+  if (hl == NULL) {
+    return (struct syntax_node){.valid = false};
+  }
+
+  TSNode root = ts_tree_root_node(hl->tree);
+  TSPoint pos = {.column = at.col, .row = at.line};
+  TSNode node = ts_node_descendant_for_point_range(root, pos, pos);
+
+  if (ts_node_is_null(node) || ts_node_is_error(node)) {
+    return (struct syntax_node){.valid = false};
+  } else {
+    char *expr = ts_node_string(node);
+    return (struct syntax_node){
+        .valid = true,
+        .type = s8dup(s8(ts_node_type(node))),
+        .grammar_type = s8dup(s8(ts_node_grammar_type(node))),
+        .expr = s8(expr),
+    };
+  }
+}
+
+void syntax_node_free(struct syntax_node *node) {
+  if (node->valid) {
+    s8delete(node->expr);
+    s8delete(node->grammar_type);
+    s8delete(node->type);
+  }
 }
 
 void syntax_teardown(void) {
   for (uint32_t i = 0; i < treesitter_path_len; ++i) {
     free((void *)treesitter_path[i]);
   }
+
+  VEC_DESTROY(&g_buffer_highlights);
 }

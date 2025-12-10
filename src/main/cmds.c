@@ -14,6 +14,9 @@
 #include "dged/minibuffer.h"
 #include "dged/path.h"
 #include "dged/settings.h"
+#if defined(SYNTAX_ENABLE)
+#include "dged/syntax.h"
+#endif
 #include "dged/timers.h"
 #include "dged/utf8.h"
 
@@ -580,6 +583,30 @@ int32_t find_file_relative(struct command_ctx ctx, int argc,
   return 0;
 }
 
+#if defined(SYNTAX_ENABLE)
+static int32_t syntax_at_point_cmd(struct command_ctx ctx, int argc,
+                                   const char *argv[]) {
+
+  (void)argc;
+  (void)argv;
+
+  struct buffer_view *view = window_buffer_view(ctx.active_window);
+  if (view == NULL || buffer_is_empty(view->buffer)) {
+    return 0;
+  }
+
+  struct syntax_node node = syntax_node_at(view->buffer, view->dot);
+  if (!node.valid) {
+    return 0;
+  }
+
+  minibuffer_display_timeout(4, "syntax node at (%d, %d): %.*s", view->dot.line,
+                             view->dot.col, node.expr.l, node.expr.s);
+  syntax_node_free(&node);
+  return 0;
+}
+#endif
+
 void register_global_commands(struct commands *commands,
                               void (*terminate_cb)(void)) {
   g_terminate_cb = terminate_cb;
@@ -593,6 +620,9 @@ void register_global_commands(struct commands *commands,
       {.name = "abort", .fn = _abort},
       {.name = "timers", .fn = timers},
       {.name = "buffer-list", .fn = buffer_list},
+#if defined(SYNTAX_ENABLE)
+      {.name = "syntax-info-at-point", .fn = syntax_at_point_cmd},
+#endif
       {.name = "exit", .fn = exit_editor}};
 
   register_commands(commands, global_commands,
