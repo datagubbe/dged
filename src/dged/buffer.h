@@ -70,6 +70,8 @@ struct buffer {
 
   bool needs_render;
 
+  bool updated;
+
   /**
    * Version that increases with each edit (including undo).
    * Can be used to check if a buffer has changed.

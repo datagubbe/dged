@@ -198,7 +198,35 @@ void windows_resize(uint32_t height, uint32_t width) {
   window_tree_resize(BINTREE_ROOT(&g_windows.windows), height - 1, width);
 }
 
+static void begin_frame() {
+  struct window_node *n = BINTREE_ROOT(&g_windows.windows);
+  BINTREE_FIRST(n);
+  while (n != NULL) {
+    struct window *w = &BINTREE_VALUE(n);
+    if (w->type == Window_Buffer) {
+      struct buffer *buffer = w->buffer_view.buffer;
+      if (!buffer->retain_properties) {
+        buffer_clear_text_properties(buffer);
+      }
+
+      // this makes sure that buffers are only updated once
+      // but rendered as many times as needed, depending on
+      // how many windows they appear in.
+      buffer->updated = false;
+    }
+
+    BINTREE_NEXT(n);
+  }
+
+  g_minibuffer_window.buffer_view.buffer->updated = false;
+  if (g_popup_visible) {
+    g_popup_window.buffer_view.buffer->updated = false;
+  }
+}
+
 bool windows_update(void *(*frame_alloc)(size_t), float frame_time) {
+  begin_frame();
+
   bool needs_render = false;
   struct window_node *n = BINTREE_ROOT(&g_windows.windows);
   BINTREE_FIRST(n);

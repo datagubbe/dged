@@ -1,8 +1,10 @@
 #include "timers.h"
+#include "dged/vec.h"
 #include "hash.h"
 #include "hashmap.h"
 
 #include <stdbool.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -107,6 +109,26 @@ void timers_for_each(timer_callback callback, void *userdata) {
     const struct timer *timer = &entry->value;
     callback(timer, userdata);
   }
+}
+
+static int compare_timer_name(const void *t1, const void *t2) {
+  const struct timer *timer1 = *(const struct timer **)t1;
+  const struct timer *timer2 = *(const struct timer **)t2;
+  return strcmp(timer1->name, timer2->name);
+}
+
+timer_vec timers_sorted() {
+  timer_vec vec;
+  VEC_INIT(&vec, 16);
+
+  HASHMAP_FOR_EACH(&g_timers.timers, struct timer_entry * entry) {
+    VEC_PUSH(&vec, &entry->value);
+  }
+
+  qsort(VEC_ENTRIES(&vec), VEC_SIZE(&vec), sizeof(struct timer *),
+        compare_timer_name);
+
+  return vec;
 }
 
 uint64_t instant_ns(void) {

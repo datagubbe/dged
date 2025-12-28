@@ -1,5 +1,6 @@
 #include <errno.h>
 #include <libgen.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -13,7 +14,9 @@
 #include "dged/display.h"
 #include "dged/minibuffer.h"
 #include "dged/path.h"
+#include "dged/s8.h"
 #include "dged/settings.h"
+#include "dged/vec.h"
 #if defined(SYNTAX_ENABLE)
 #include "dged/syntax.h"
 #endif
@@ -209,28 +212,77 @@ int32_t kill_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
                          ctx.active_window, ctx.buffers, argc, argv);
 }
 
-void timer_to_list_line(const struct timer *timer, void *userdata) {
-  struct buffer *target = (struct buffer *)userdata;
+static struct location draw_timer_value(struct buffer *buffer, double value,
+                                        struct location start) {
+  struct s8 strval = s8from_fmt("%.2f", value);
+  struct location end = buffer_add(buffer, start, strval.s, strval.l);
+  s8delete(strval);
 
-  static char buf[128];
-  const char *name = timer_name(timer);
-  size_t len =
-      snprintf(buf, 128, "%s - %.2f ms (min: %.2f, max: %.2f)", name,
-               (timer_average(timer) / 1e6), timer_min(timer) / (float)1e6,
-               timer_max(timer) / (float)1e6);
-  buffer_add(target, buffer_end(target), (uint8_t *)buf, len);
+  uint32_t color = Color_Green;
+  if (value > 5.f) {
+    color = Color_Red;
+  } else if (value > 2.f) {
+    color = Color_Yellow;
+  }
+
+  buffer_add_text_property(
+      buffer, start,
+      (struct location){.col = end.col > 0 ? end.col - 1 : 0, .line = end.line},
+      (struct text_property){.type = TextProperty_Colors,
+                             .data.colors = (struct text_property_colors){
+                                 .set_bg = false,
+                                 .set_fg = true,
+                                 .fg = color,
+                             }});
+
+  return end;
 }
 
-void timers_refresh(struct buffer *buffer, void *userdata) {
+static void timers_refresh(struct buffer *buffer, void *userdata) {
   (void)userdata;
 
   buffer_set_readonly(buffer, false);
   buffer_clear(buffer);
-  timers_for_each(timer_to_list_line, buffer);
-  uint32_t nlines = buffer_num_lines(buffer);
-  if (nlines > 0) {
-    buffer_sort_lines(buffer, 0, nlines);
+  timer_vec timers = timers_sorted();
+  struct location at = {};
+  VEC_FOR_EACH(&timers, const struct timer **ptimer) {
+    const struct timer *timer = *ptimer;
+    const char *name = timer_name(timer);
+    const char *n = name;
+    size_t level = 0;
+    while (*n) {
+      if (*n == '.' && level < 2) {
+        ++level;
+      }
+      ++n;
+    }
+
+    size_t namelen = strlen(name);
+    struct s8 namefmt = s8from_fmt("%*s", level + namelen, name);
+    struct location begin = at;
+    begin.col += level;
+    at = buffer_add(buffer, at, namefmt.s, namefmt.l);
+    s8delete(namefmt);
+    buffer_add_text_property(
+        buffer, begin, at,
+        (struct text_property){.type = TextProperty_Colors,
+                               .data.colors = (struct text_property_colors){
+                                   .set_bg = false,
+                                   .set_fg = true,
+                                   .fg = Color_Cyan,
+                               }});
+
+    at = buffer_add(buffer, at, (uint8_t *)" - ", 3);
+    at = draw_timer_value(buffer, timer_average(timer) / 1e6, at);
+    at = buffer_add(buffer, at, (uint8_t *)" ms (min: ", 10);
+    at = draw_timer_value(buffer, timer_min(timer) / 1e6, at);
+    at = buffer_add(buffer, at, (uint8_t *)", max: ", 7);
+    at = draw_timer_value(buffer, timer_max(timer) / 1e6, at);
+    at = buffer_add(buffer, at, (uint8_t *)")", 1);
+    at = buffer_newline(buffer, at);
   }
+
+  VEC_DESTROY(&timers);
   buffer_set_readonly(buffer, true);
 }
 
@@ -240,7 +292,9 @@ int32_t timers(struct command_ctx ctx, int argc, const char *argv[]) {
 
   struct buffer *b = buffers_find(ctx.buffers, "*timers*");
   if (b == NULL) {
-    b = buffers_add(ctx.buffers, buffer_create("*timers*"));
+    struct buffer new_buf = buffer_create("*timers*");
+    new_buf.lazy_row_add = false;
+    b = buffers_add(ctx.buffers, new_buf);
     buffer_add_update_hook(b, timers_refresh, NULL);
   }
 

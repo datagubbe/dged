@@ -33,7 +33,7 @@ stdenv.mkDerivation {
 
   buildPhase = ''
     bmake build
-    CFLAGS=-O2 bmake dged
+    CFLAGS="-O2" bmake dged
     bmake docs
   '';
 

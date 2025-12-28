@@ -12,7 +12,6 @@
 #include "settings.h"
 #include "utf8.h"
 
-#include <assert.h>
 #include <fcntl.h>
 #include <libgen.h>
 #include <stdbool.h>
@@ -1332,8 +1331,11 @@ void render_line(struct text_chunk *line, void *userdata) {
   }
 
   // flush remaining
-  command_list_draw_text(cmdbuf->cmds, drawn_coli, visual_line,
-                         line->text + drawn_bytei, bytei - drawn_bytei);
+  size_t nbytes = bytei - drawn_bytei;
+  if (nbytes > 0) {
+    command_list_draw_text(cmdbuf->cmds, drawn_coli, visual_line,
+                           line->text + drawn_bytei, bytei - drawn_bytei);
+  }
 
   drawn_coli = coli;
   drawn_bytei = bytei;
@@ -1496,6 +1498,8 @@ void buffer_sort_lines(struct buffer *buffer, uint32_t start_line,
     struct s8 line = lines[linei];
     at = buffer_add(buffer, at, (uint8_t *)line.s, line.l);
   }
+
+  free(lines);
 
   // if the last line we are sorting is the last line in the buffer,
   // we have added one extra unwanted newline

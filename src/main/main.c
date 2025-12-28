@@ -96,14 +96,6 @@ void segfault(int sig) {
 
 #define INVALID_WATCH (uint32_t) - 1
 
-static void clear_buffer_props(struct buffer *buffer, void *userdata) {
-  (void)userdata;
-
-  if (!buffer->retain_properties) {
-    buffer_clear_text_properties(buffer);
-  }
-}
-
 struct watched_file {
   uint32_t watch_id;
   struct buffer *buffer;
@@ -395,10 +387,6 @@ int main(int argc, char *argv[]) {
       running = false;
       continue;
     }
-
-    // TODO: maybe this should be hidden behind something
-    // The placement is correct though.
-    buffers_for_each(&buflist, clear_buffer_props, NULL);
 
     /* Update all windows together with the buffers in them. */
     struct timer *update_windows = timer_start("update-windows");

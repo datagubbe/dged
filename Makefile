@@ -1,4 +1,4 @@
-# Makefile for bmake/openbsd make
+# Makefile for bmake/bsd make
 
 default: dged
 
@@ -11,6 +11,17 @@ build:
 .if ! exists(${.CURDIR}/config.mk)
 .  error "Please run ./configure first"
 .endif
+
+prefix ?= /usr/local
+DESTDIR ?= $(prefix)
+datadir = share/dged
+
+CFLAGS ?= -g -O2
+CFLAGS += -Werror -Wall -Wextra -std=c99\
+	-I "$(.CURDIR)/src"\
+	-I "$(.CURDIR)/src/main"\
+	-DDATADIR="$(prefix)/$(datadir)"\
+	-DTEST_ROOT="$(.CURDIR)/test"
 
 .include "config.mk"
 SYNTAX_ENABLE ?= true
@@ -38,13 +49,13 @@ MAIN_SOURCES = src/main/main.c src/main/cmds.c src/main/bindings.c src/main/sear
 
 # HACK: added to MAIN_SOURCES to not be picked up in tests
 # since they have their own implementation
-.if "$(HAS_EPOLL)" == true
+.if $(HAS_EPOLL) == true
   MAIN_SOURCES += src/dged/reactor-epoll.c
-.elif "$(HAS_KQUEUE)" == true
+.elif $(HAS_KQUEUE) == true
   MAIN_SOURCES += src/dged/reactor-kqueue.c
 .endif
 
-.if "$(PROCESS_MODEL)" == posix
+.if $(PROCESS_MODEL) == posix
   SOURCES += src/dged/process-posix.c
 .endif
 
@@ -53,19 +64,8 @@ TEST_SOURCES = test/assert.c test/buffer.c test/text.c test/utf8.c test/main.c \
 	test/minibuffer.c test/undo.c test/settings.c test/container.c \
 	test/buflist.c test/bufread.c
 
-prefix ?= /usr/local
-DESTDIR ?= $(prefix)
-datadir = share/dged
-
 .SUFFIXES:
 .SUFFIXES: .c .o .d
-
-CFLAGS ?= -g -O2
-CFLAGS += -Werror -Wall -Wextra -std=c99\
-	-I $(.CURDIR)/src\
-	-I $(.CURDIR)/src/main\
-	-DDATADIR="$(prefix)/$(datadir)"\
-	-DTEST_ROOT="$(.CURDIR)/test"
 
 ASAN ?= false
 

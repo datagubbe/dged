@@ -69,12 +69,15 @@ void test_minibuffer_echo(void) {
       .window_x = 0,
       .window_y = 25,
   };
+
+  view.buffer->updated = false;
   buffer_view_update(&view, &p);
   ASSERT(!minibuffer_displaying(),
          "Minibuffer should have nothing to display after clearing");
 
   minibuffer_echo_timeout(0, "You will not see me");
 
+  view.buffer->updated = false;
   buffer_view_update(&view, &p);
   ASSERT(!minibuffer_displaying(),
          "A zero timeout echo should be cleared after first update");

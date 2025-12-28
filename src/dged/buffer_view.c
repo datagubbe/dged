@@ -439,7 +439,10 @@ bool buffer_view_update(struct buffer_view *view,
   bool needs_render = view->needs_render;
   struct timer *buffer_update_timer =
       timer_start("update-windows.buffer-update");
-  buffer_update(view->buffer);
+  if (!view->buffer->updated) {
+    buffer_update(view->buffer);
+    view->buffer->updated = true;
+  }
   timer_stop(buffer_update_timer);
 
   needs_render |= view->buffer->needs_render;
