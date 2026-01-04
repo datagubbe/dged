@@ -373,7 +373,8 @@ int main(int argc, char *argv[]) {
   float frame_time = 0.f;
   bool needs_render = true;
   uint64_t last_render_ns = 0;
-  const uint64_t target_render_ns = 7 * 1e6 /* 7 ms */;
+  const uint64_t target_render_ns = 5 * 1e6 /* 5 ms */;
+  uint64_t rendered_frames = 0;
 
   while (running) {
     timers_start_frame();
@@ -390,7 +391,7 @@ int main(int argc, char *argv[]) {
 
     /* Update all windows together with the buffers in them. */
     struct timer *update_windows = timer_start("update-windows");
-    needs_render |= windows_update(frame_alloc, frame_time);
+    needs_render |= windows_update(frame_alloc, frame_time, rendered_frames);
     timer_stop(update_windows);
 
     struct window *active_window = windows_get_active();
@@ -411,6 +412,7 @@ int main(int argc, char *argv[]) {
                           winpos.x + cursor.col);
       display_end_render(display);
       needs_render = false;
+      ++rendered_frames;
       last_render_ns = instant_ns();
     }
     timer_stop(update_display);

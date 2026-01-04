@@ -365,7 +365,8 @@ static uint32_t render_line_numbers(struct buffer_view *view,
 
 static void render_modeline(struct buffer_view *view,
                             struct command_list *commands, uint32_t window_id,
-                            uint32_t width, uint32_t height, float frame_time) {
+                            uint32_t width, uint32_t height, float frame_time,
+                            uint64_t frame_number) {
   time_t now = time(NULL);
   struct tm *lt = localtime(&now);
 
@@ -388,8 +389,9 @@ static void render_modeline(struct buffer_view *view,
     }
   }
 
-  size_t right_len = snprintf(right, 1024, " (%.2f ms) %02d:%02d",
-                              frame_time / 1e6, lt->tm_hour, lt->tm_min);
+  size_t right_len =
+      snprintf(right, 1024, " (%.2f ms, fn: %ld) %02d:%02d", frame_time / 1e6,
+               frame_number, lt->tm_hour, lt->tm_min);
 
   /* clamp all the widths with priority:
    * 1. left
@@ -462,7 +464,7 @@ bool buffer_view_update(struct buffer_view *view,
   if (view->modeline) {
     modeline_height = 1;
     render_modeline(view, params->commands, params->window_id, params->width,
-                    params->height, params->frame_time);
+                    params->height, params->frame_time, params->frame_number);
   }
 
   height -= modeline_height;

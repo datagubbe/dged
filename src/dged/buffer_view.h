@@ -108,6 +108,7 @@ struct buffer_view_update_params {
   uint32_t height;
   uint32_t window_x;
   uint32_t window_y;
+  uint64_t frame_number;
 };
 
 bool buffer_view_update(struct buffer_view *view,

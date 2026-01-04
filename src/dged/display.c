@@ -24,6 +24,10 @@ struct display {
   uint32_t width;
   uint32_t height;
   bool render_in_progress;
+
+  uint8_t *outbuf;
+  size_t outbuf_size;
+  size_t outbuf_current;
 };
 
 enum render_cmd_type {
@@ -98,22 +102,54 @@ struct command_list {
   struct command_list *next_list;
 };
 
-static void put_ansiparm(uint64_t n);
+static void put_ansiparm(struct display *display, uint64_t n);
 
-static void use_alternate_buffer() {
-  putc(ESC, stdout);
-  putc('[', stdout);
-  putc('?', stdout);
-  put_ansiparm(1049);
-  putc('h', stdout);
+static void flush_outbuf(struct display *display) {
+  fwrite(display->outbuf, 1, display->outbuf_current, stdout);
+  fflush(stdout);
+  display->outbuf_current = 0;
 }
 
-static void use_normal_buffer() {
-  putc(ESC, stdout);
-  putc('[', stdout);
-  putc('?', stdout);
-  put_ansiparm(1049);
-  putc('l', stdout);
+static void putch(struct display *display, uint8_t c) {
+  if (display->outbuf_current == display->outbuf_size) {
+    flush_outbuf(display);
+  }
+
+  display->outbuf[display->outbuf_current] = c;
+  ++display->outbuf_current;
+}
+
+static void putchars(struct display *display, uint8_t *chars, size_t nchars) {
+  if (display->outbuf_current + nchars >= display->outbuf_size) {
+    flush_outbuf(display);
+  }
+
+  // if bigger than the number of chars,
+  // output to stdout directly
+  if (nchars > display->outbuf_size) {
+    fwrite(chars, 1, nchars, stdout);
+    fflush(stdout);
+    return;
+  }
+
+  memcpy(&display->outbuf[display->outbuf_current], chars, nchars);
+  display->outbuf_current += nchars;
+}
+
+static void use_alternate_buffer(struct display *display) {
+  putch(display, ESC);
+  putch(display, '[');
+  putch(display, '?');
+  put_ansiparm(display, 1049);
+  putch(display, 'h');
+}
+
+static void use_normal_buffer(struct display *display) {
+  putch(display, ESC);
+  putch(display, '[');
+  putch(display, '?');
+  put_ansiparm(display, 1049);
+  putch(display, 'l');
 }
 
 struct winsize getsize(void) {
@@ -148,14 +184,21 @@ struct display *display_create(void) {
     return NULL;
   }
 
-  use_alternate_buffer();
-
   struct display *d = calloc(1, sizeof(struct display));
   d->orig_term = orig_term;
   d->term = term;
   d->height = ws.ws_row;
   d->width = ws.ws_col;
   d->render_in_progress = false;
+
+  // 32 KiB output buffer
+  d->outbuf = calloc(32 * 1024 * 1024, 1);
+  d->outbuf_size = 32 * 1024 * 1024;
+  d->outbuf_current = 0;
+
+  use_alternate_buffer(d);
+  flush_outbuf(d);
+
   return d;
 }
 
@@ -167,10 +210,16 @@ void display_resize(struct display *display) {
 
 void display_destroy(struct display *display) {
 
-  use_normal_buffer();
+  use_normal_buffer(display);
+  flush_outbuf(display);
 
   // reset old terminal mode
   tcsetattr(0, TCSADRAIN, &display->orig_term);
+
+  free(display->outbuf);
+  display->outbuf = NULL;
+  display->outbuf_current = 0;
+  display->outbuf_size = 0;
 
   free(display);
 }
@@ -178,44 +227,50 @@ void display_destroy(struct display *display) {
 uint32_t display_width(struct display *display) { return display->width; }
 uint32_t display_height(struct display *display) { return display->height; }
 
-void putch(uint8_t c) { putc(c, stdout); }
-
-static void apply_fmt(uint8_t *fmt_stack, uint32_t fmt_stack_len) {
+static void apply_fmt(struct display *display, uint8_t *fmt_stack,
+                      uint32_t fmt_stack_len) {
   if (fmt_stack == NULL || fmt_stack_len == 0) {
     return;
   }
 
   for (uint32_t i = 0; i < fmt_stack_len; ++i) {
-    putc(fmt_stack[i], stdout);
+    putch(display, fmt_stack[i]);
   }
-  putc('m', stdout);
+  putch(display, 'm');
 }
 
-void putch_ws(uint8_t c, bool show_whitespace, uint8_t *fmt_stack,
-              uint32_t fmt_stack_len, uint32_t tab_width) {
+static void putch_ws(struct display *display, uint8_t c, bool show_whitespace,
+                     uint8_t *fmt_stack, uint32_t fmt_stack_len,
+                     uint32_t tab_width) {
   if (show_whitespace && c == '\t') {
-    fprintf(stdout, "\x1b[90m→%*s\x1b[39m", tab_width > 0 ? tab_width - 1 : 0,
-            "");
-    apply_fmt(fmt_stack, fmt_stack_len);
+    putchars(display, (uint8_t *)"\x1b[90m→", 9);
+    uint32_t spaces = tab_width > 0 ? tab_width - 1 : 0;
+    for (uint32_t i = 0; i < spaces; ++i) {
+      putch(display, ' ');
+    }
+    putchars(display, (uint8_t *)"\x1b[39m", 6);
+    apply_fmt(display, fmt_stack, fmt_stack_len);
   } else if (show_whitespace && c == ' ') {
-    fputs("\x1b[90m·\x1b[39m", stdout);
-    apply_fmt(fmt_stack, fmt_stack_len);
+    putchars(display, (uint8_t *)"\x1b[90m·\x1b[39m", 13);
+    apply_fmt(display, fmt_stack, fmt_stack_len);
   } else {
-    putch(c);
+    putch(display, c);
   }
 }
 
-void putbytes(uint8_t *line_bytes, uint32_t line_length, bool show_whitespace,
-              uint8_t *fmt_stack, uint32_t fmt_stack_len, uint32_t tab_width) {
+static void putbytes(struct display *display, uint8_t *line_bytes,
+                     uint32_t line_length, bool show_whitespace,
+                     uint8_t *fmt_stack, uint32_t fmt_stack_len,
+                     uint32_t tab_width) {
   for (uint32_t bytei = 0; bytei < line_length; ++bytei) {
-    putch_ws(line_bytes[bytei], show_whitespace, fmt_stack, fmt_stack_len,
-             tab_width);
+    putch_ws(display, line_bytes[bytei], show_whitespace, fmt_stack,
+             fmt_stack_len, tab_width);
   }
 }
 
-static void put_ansiparm(uint64_t n) {
+static void put_ansiparm(struct display *display, uint64_t n) {
   if (n == 0) {
-    putc('0', stdout);
+    putch(display, '0');
     return;
   }
 
@@ -228,35 +283,34 @@ static void put_ansiparm(uint64_t n) {
   }
 
   for (ssize_t i = nchars - 1; i >= 0; --i) {
-    putc(chars[i], stdout);
+    putch(display, chars[i]);
   }
 }
 
 void display_move_cursor(struct display *display, uint32_t row, uint32_t col) {
-  (void)display;
 
-  putc(ESC, stdout);
-  putc('[', stdout);
-  put_ansiparm(row + 1);
-  putc(';', stdout);
-  put_ansiparm(col + 1);
-  putc('H', stdout);
+  putch(display, ESC);
+  putch(display, '[');
+  put_ansiparm(display, row + 1);
+  putch(display, ';');
+  put_ansiparm(display, col + 1);
+  putch(display, 'H');
 }
 
 void display_clear(struct display *display) {
   display_move_cursor(display, 0, 0);
-  putc(ESC, stdout);
-  putc('[', stdout);
-  putc('J', stdout);
+  putch(display, ESC);
+  putch(display, '[');
+  putch(display, 'J');
 }
 
 static void display_clear_line(struct display *display, uint32_t row,
                                uint32_t col) {
   display_move_cursor(display, row, col);
-  putc(ESC, stdout);
-  putc('[', stdout);
-  putc('0', stdout);
-  putc('K', stdout);
+  putch(display, ESC);
+  putch(display, '[');
+  putch(display, '0');
+  putch(display, 'K');
 }
 
 struct command_list *command_list_create(uint32_t initial_capacity,
@@ -458,9 +512,9 @@ void display_render(struct display *display,
         struct draw_text_cmd *txt_cmd = cmd->data.draw_txt;
         display_move_cursor(display, txt_cmd->row + cl->yoffset,
                             txt_cmd->col + cl->xoffset);
-        apply_fmt(fmt_stack, fmt_stack_len);
-        putbytes(txt_cmd->data, txt_cmd->len, show_whitespace_state, fmt_stack,
-                 fmt_stack_len, cl->tab_width);
+        apply_fmt(display, fmt_stack, fmt_stack_len);
+        putbytes(display, txt_cmd->data, txt_cmd->len, show_whitespace_state,
+                 fmt_stack, fmt_stack_len, cl->tab_width);
         break;
       }
 
@@ -468,13 +522,13 @@ void display_render(struct display *display,
         struct repeat_cmd *repeat_cmd = cmd->data.repeat;
         display_move_cursor(display, repeat_cmd->row + cl->yoffset,
                             repeat_cmd->col + cl->xoffset);
-        apply_fmt(fmt_stack, fmt_stack_len);
+        apply_fmt(display, fmt_stack, fmt_stack_len);
         struct utf8_codepoint_iterator iter =
             create_utf8_codepoint_iterator((uint8_t *)&repeat_cmd->c, 4, 0);
         struct codepoint *codepoint = utf8_next_codepoint(&iter);
         if (codepoint != NULL) {
           for (uint32_t i = 0; i < repeat_cmd->nrepeat; ++i) {
-            putbytes((uint8_t *)&repeat_cmd->c, codepoint->nbytes,
+            putbytes(display, (uint8_t *)&repeat_cmd->c, codepoint->nbytes,
                      show_whitespace_state, fmt_stack, fmt_stack_len,
                      cl->tab_width);
           }
@@ -498,7 +552,7 @@ void display_render(struct display *display,
         break;
 
       case RenderCommand_ClearLine: {
-        apply_fmt(fmt_stack, fmt_stack_len);
+        apply_fmt(display, fmt_stack, fmt_stack_len);
         struct clear_line_cmd *clear_cmd = cmd->data.clear_line;
         display_clear_line(display, cl->yoffset + clear_cmd->row,
                            cl->xoffset + clear_cmd->col);
@@ -519,51 +573,58 @@ void display_render(struct display *display,
   timer_stop(render_timer);
 }
 
-void hide_cursor(void) {
-  putc(ESC, stdout);
-  putc('[', stdout);
-  putc('?', stdout);
-  putc('2', stdout);
-  putc('5', stdout);
-  putc('l', stdout);
+void hide_cursor(struct display *display) {
+  putch(display, ESC);
+  putch(display, '[');
+  putch(display, '?');
+  putch(display, '2');
+  putch(display, '5');
+  putch(display, 'l');
 }
 
-void show_cursor(void) {
-  putc(ESC, stdout);
-  putc('[', stdout);
-  putc('?', stdout);
-  putc('2', stdout);
-  putc('5', stdout);
-  putc('h', stdout);
+void show_cursor(struct display *display) {
+  putch(display, ESC);
+  putch(display, '[');
+  putch(display, '?');
+  putch(display, '2');
+  putch(display, '5');
+  putch(display, 'h');
 }
 
-static void begin_update(void) {
-  putc(ESC, stdout);
-  putc('[', stdout);
-  putc('?', stdout);
-  put_ansiparm(2026);
-  putc('h', stdout);
+static void begin_update(struct display *display) {
+  putch(display, ESC);
+  putch(display, '[');
+  putch(display, '?');
+  putch(display, '2');
+  putch(display, '0');
+  putch(display, '2');
+  putch(display, '6');
+  putch(display, 'h');
 }
 
-static void end_update(void) {
-  putc(ESC, stdout);
-  putc('[', stdout);
-  putc('?', stdout);
-  put_ansiparm(2026);
-  putc('l', stdout);
+static void end_update(struct display *display) {
+  putch(display, ESC);
+  putch(display, '[');
+  putch(display, '?');
+  putch(display, '2');
+  putch(display, '0');
+  putch(display, '2');
+  putch(display, '6');
+  putch(display, 'l');
 }
 
 void display_begin_render(struct display *display) {
   assert(!display->render_in_progress);
 
   display->render_in_progress = true;
-  begin_update();
-  hide_cursor();
-  fflush(stdout);
+  begin_update(display);
+  hide_cursor(display);
 }
+
 void display_end_render(struct display *display) {
-  show_cursor();
-  end_update();
-  fflush(stdout);
   display->render_in_progress = false;
+
+  show_cursor(display);
+  end_update(display);
+  flush_outbuf(display);
 }

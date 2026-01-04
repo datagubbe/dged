@@ -224,7 +224,8 @@ static void begin_frame() {
   }
 }
 
-bool windows_update(void *(*frame_alloc)(size_t), float frame_time) {
+bool windows_update(void *(*frame_alloc)(size_t), float frame_time,
+                    uint64_t frame_number) {
   begin_frame();
 
   bool needs_render = false;
@@ -248,6 +249,7 @@ bool windows_update(void *(*frame_alloc)(size_t), float frame_time) {
           .window_x = w->x,
           .window_y = w->y,
           .frame_alloc = frame_alloc,
+          .frame_number = frame_number,
       };
 
       needs_render |= buffer_view_update(&w->buffer_view, &p);
@@ -279,6 +281,7 @@ bool windows_update(void *(*frame_alloc)(size_t), float frame_time) {
       .window_x = w->x,
       .window_y = w->y,
       .frame_alloc = frame_alloc,
+      .frame_number = frame_number,
   };
 
   needs_render |= buffer_view_update(&w->buffer_view, &p);
@@ -376,6 +379,7 @@ bool windows_update(void *(*frame_alloc)(size_t), float frame_time) {
         .window_x = w_x + x,
         .window_y = w_y + y,
         .frame_alloc = frame_alloc,
+        .frame_number = frame_number,
     };
 
     needs_render |= buffer_view_update(&w->buffer_view, &p);
