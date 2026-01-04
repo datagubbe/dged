@@ -177,8 +177,9 @@ static void path_complete(struct completion_context ctx, bool deletion,
   }
 
   uint32_t n = 0;
-  char *p1 = to_abspath(path);
-  char *p2 = strdup(p1);
+  char *p1 = expanduser(path);
+  char *p2 = p1;
+  p1 = to_abspath(p1);
 
   size_t inlen = strlen(path);
 
