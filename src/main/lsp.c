@@ -787,22 +787,14 @@ void apply_edits_buffer(struct lsp_server *server, struct buffer *buffer,
         }
       }
       at = buffer_delete(buffer, reg);
+    }
 
-      /* We may have "deleted" a newline but since lines are represented in
-       * an array with implicit newlines, we need to not add the newline again
-       * since the implicit newline at the end of the line already accounts
-       * for that case. Other newlines that might have been deleted as
-       * part of the region are fine and this only affects the start
-       * of the region. Ideally, the storage format of the text should
-       * not leak to here but it is tricky to handle in buffer/text
-       * since this is the place where the text edit operation is atomic.
-       */
-      if (reg.begin.col == buffer_line_length(buffer, reg.begin.line)) {
-        if (text_to_add.l > 0 && text_to_add.s[0] == '\n') {
-          ++text_to_add.s;
-          --text_to_add.l;
-        }
-      }
+    /* do not add a final newline, they are always added when saving buffers */
+    if (at.line + 1 == buffer_num_lines(buffer) &&
+        at.col == buffer_line_length(buffer, at.line) && text_to_add.l > 0 &&
+        text_to_add.s[0] == '\n') {
+      ++text_to_add.s;
+      --text_to_add.l;
     }
 
     if (text_to_add.l == 0) {

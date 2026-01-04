@@ -333,7 +333,7 @@ void text_delete(struct text *text, uint32_t start_line, uint32_t start_offset,
   // clamp column
   uint32_t firstline_len = text_line_size(text, start_line);
   if (start_offset > firstline_len) {
-    start_offset = firstline_len > 0 ? firstline_len - 1 : 0;
+    start_offset = firstline_len;
   }
 
   // handle deletion of newlines
@@ -369,8 +369,10 @@ void text_delete(struct text *text, uint32_t start_line, uint32_t start_offset,
     delete_line(text, linei);
   }
 
-  // if this is the last line in the buffer, and it turns out empty, remove it
-  if (firstline->nbytes == 0 && start_line == text->nlines - 1) {
+  /* Special case for the last line of the buffer:
+   * - if it is the last line in the buffer, and it turns out empty, remove it.
+   */
+  if (start_line + 1 == text->nlines && firstline->nbytes == 0) {
     delete_line(text, start_line);
   }
 }
