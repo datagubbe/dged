@@ -123,9 +123,18 @@ void test_delete_text(void) {
   ASSERT(text_line_size(t4, 0) == 19,
          "Expected nothing to have happened to the line");
 
+  struct text *t5 = text_create(10);
+  const char *multiline_delete = "#include \"dired.h\"\n";
+  text_append(t5, (uint8_t *)multiline_delete, strlen(multiline_delete),
+              &lines_added);
+  ASSERT(text_num_lines(t5) == 2, "Expected text to initially have 3 lines");
+  text_delete(t5, 0, 18, 2, 0);
+  ASSERT(text_num_lines(t5) == 1, "Expected only one line to be left");
+
   text_destroy(t);
   text_destroy(t3);
   text_destroy(t4);
+  text_destroy(t5);
 }
 
 void run_text_tests(void) {

@@ -143,7 +143,6 @@ void update_file_watches(struct reactor *reactor) {
   // then, find invalid file watches and try to update them
   VEC_FOR_EACH(&g_watched_files, struct watched_file * w) {
     if (w->watch_id == INVALID_WATCH) {
-      message("re-watching: %s", w->buffer->filename);
       w->watch_id =
           reactor_watch_file(reactor, w->buffer->filename, FileWritten);
 

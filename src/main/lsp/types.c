@@ -211,17 +211,15 @@ static struct s8 uri_from_buffer(struct buffer *buffer) {
 
 struct text_document_item
 text_document_item_from_buffer(struct buffer *buffer) {
-  struct text_chunk buffer_text =
-      buffer_region(buffer, region_new((struct location){.line = 0, .col = 0},
-                                       buffer_end(buffer)));
+  struct text_chunk txt = buffer_text(buffer);
   struct text_document_item item = {
       .uri = uri_from_buffer(buffer),
       .language_id = s8new(buffer->lang.id, strlen(buffer->lang.id)),
       .version = buffer->version,
       .text =
           (struct s8){
-              .s = buffer_text.text,
-              .l = buffer_text.nbytes,
+              .s = txt.text,
+              .l = txt.nbytes,
           },
   };
 

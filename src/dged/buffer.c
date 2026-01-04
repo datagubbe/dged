@@ -384,7 +384,10 @@ struct buffer buffer_create(const char *name) {
 struct buffer buffer_from_file(const char *path) {
   char *full_path = to_abspath(path);
   struct buffer b = create_internal(basename((char *)path), full_path);
-  buffer_read_from_file(&b);
+
+  if (access(full_path, F_OK) == 0) {
+    buffer_read_from_file(&b);
+  }
   undo_push_boundary(&b.undo, (struct undo_boundary){.save_point = true});
 
   dispatch_hook(&g_create_hooks, struct create_hook, &b);
@@ -431,22 +434,17 @@ void buffer_to_file(struct buffer *buffer) {
   dispatch_hook(&buffer->hooks->pre_save_hooks, struct pre_save_hook, buffer);
 
   uint32_t nlines = text_num_lines(buffer->text);
-  uint32_t nlines_to_write = nlines;
   if (nlines > 0) {
-    struct text_chunk lastline = text_get_line(buffer->text, nlines - 1);
-    nlines_to_write = lastline.nbytes == 0 ? nlines - 1 : nlines;
     switch (text_get_line_ending(buffer->text)) {
     case LineEnding_CRLF:
-      text_for_each_line(buffer->text, 0, nlines_to_write, write_line_crlf,
-                         file);
+      text_for_each_line(buffer->text, 0, nlines, write_line_crlf, file);
       break;
     default:
-      text_for_each_line(buffer->text, 0, nlines_to_write, write_line_lf, file);
+      text_for_each_line(buffer->text, 0, nlines, write_line_lf, file);
     }
   }
 
-  minibuffer_echo_timeout(4, "wrote %d lines to %s", nlines_to_write,
-                          buffer->filename);
+  minibuffer_echo_timeout(4, "wrote %d lines to %s", nlines, buffer->filename);
   fclose(file);
   struct stat sb;
   int statret = stat(buffer->filename, &sb);

@@ -288,11 +288,6 @@ static void buffer_updated(struct buffer *buffer, void *userdata) {
   }
 }
 
-static void buffer_pre_save(struct buffer *buffer, void *userdata) {
-  (void)buffer;
-  (void)userdata;
-}
-
 static void format_on_save(struct buffer *buffer, struct lsp_server *server) {
   struct setting *glob_fmt_on_save = settings_get("editor.format-on-save");
   struct setting *fmt_on_save =
@@ -328,6 +323,11 @@ static void buffer_post_save(struct buffer *buffer, void *userdata) {
   }
 
   format_on_save(buffer, server);
+}
+
+static void buffer_pre_save(struct buffer *buffer, void *userdata) {
+  (void)buffer;
+  (void)userdata;
 }
 
 static uint32_t count_codepoints(struct text_chunk *chunk,
@@ -773,6 +773,7 @@ void apply_edits_buffer(struct lsp_server *server, struct buffer *buffer,
   VEC_FOR_EACH_REVERSE(&edits, struct text_edit * edit) {
     struct region reg = lsp_range_to_coordinates(server, buffer, edit->range);
     struct location at = reg.end;
+    struct s8 text_to_add = edit->new_text;
     if (region_has_size(reg)) {
       if (point != NULL) {
 
@@ -786,10 +787,30 @@ void apply_edits_buffer(struct lsp_server *server, struct buffer *buffer,
         }
       }
       at = buffer_delete(buffer, reg);
+
+      /* We may have "deleted" a newline but since lines are represented in
+       * an array with implicit newlines, we need to not add the newline again
+       * since the implicit newline at the end of the line already accounts
+       * for that case. Other newlines that might have been deleted as
+       * part of the region are fine and this only affects the start
+       * of the region. Ideally, the storage format of the text should
+       * not leak to here but it is tricky to handle in buffer/text
+       * since this is the place where the text edit operation is atomic.
+       */
+      if (reg.begin.col == buffer_line_length(buffer, reg.begin.line)) {
+        if (text_to_add.l > 0 && text_to_add.s[0] == '\n') {
+          ++text_to_add.s;
+          --text_to_add.l;
+        }
+      }
+    }
+
+    if (text_to_add.l == 0) {
+      return;
     }
 
     struct location after =
-        buffer_add(buffer, at, edit->new_text.s, edit->new_text.l);
+        buffer_add(buffer, at, text_to_add.s, text_to_add.l);
     if (point != NULL) {
       if (after.line == point->line) {
         point->col += after.col;
