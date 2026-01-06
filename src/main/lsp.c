@@ -773,7 +773,6 @@ void apply_edits_buffer(struct lsp_server *server, struct buffer *buffer,
   VEC_FOR_EACH_REVERSE(&edits, struct text_edit * edit) {
     struct region reg = lsp_range_to_coordinates(server, buffer, edit->range);
     struct location at = reg.end;
-    struct s8 text_to_add = edit->new_text;
     if (region_has_size(reg)) {
       if (point != NULL) {
 
@@ -791,18 +790,13 @@ void apply_edits_buffer(struct lsp_server *server, struct buffer *buffer,
 
     /* do not add a final newline, they are always added when saving buffers */
     if (at.line + 1 == buffer_num_lines(buffer) &&
-        at.col == buffer_line_length(buffer, at.line) && text_to_add.l > 0 &&
-        text_to_add.s[0] == '\n') {
-      ++text_to_add.s;
-      --text_to_add.l;
-    }
-
-    if (text_to_add.l == 0) {
+        at.col == buffer_line_length(buffer, at.line) &&
+        s8eq(edit->new_text, s8("\n"))) {
       return;
     }
 
     struct location after =
-        buffer_add(buffer, at, text_to_add.s, text_to_add.l);
+        buffer_add(buffer, at, edit->new_text.s, edit->new_text.l);
     if (point != NULL) {
       if (after.line == point->line) {
         point->col += after.col;
