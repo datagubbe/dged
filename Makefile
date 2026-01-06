@@ -35,7 +35,7 @@ HEADERS = src/dged/settings.h src/dged/minibuffer.h src/dged/keyboard.h src/dged
 	src/main/search-replace.h src/dged/location.h src/dged/buffer_view.h src/main/completion.h \
 	src/dged/timers.h src/dged/s8.h src/main/version.h src/config.h src/dged/process.h src/dged/bufread.h \
 	src/dged/hook.h src/main/frame-hooks.h src/main/completion/buffer.h src/main/completion/command.h \
-	src/main/completion/path.h
+	src/main/completion/path.h src/main/dired.h
 
 SOURCES = src/dged/binding.c src/dged/buffer.c src/dged/command.c src/dged/display.c \
 	src/dged/keyboard.c src/dged/minibuffer.c src/dged/text.c \
@@ -45,7 +45,7 @@ SOURCES = src/dged/binding.c src/dged/buffer.c src/dged/command.c src/dged/displ
 
 MAIN_SOURCES = src/main/main.c src/main/cmds.c src/main/bindings.c src/main/search-replace.c src/main/completion.c \
 			src/main/frame-hooks.c src/main/completion/buffer.c src/main/completion/command.c \
-			src/main/completion/path.c
+			src/main/completion/path.c src/main/dired.c
 
 # HACK: added to MAIN_SOURCES to not be picked up in tests
 # since they have their own implementation

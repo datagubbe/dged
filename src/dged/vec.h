@@ -21,8 +21,12 @@
 #define VEC_DISOWN_ENTRIES(vec) (vec)->entries = NULL;
 
 #define VEC_DESTROY(vec)                                                       \
-  free((vec)->temp);                                                           \
-  free((vec)->entries);                                                        \
+  if ((vec)->temp != NULL) {                                                   \
+    free((vec)->temp);                                                         \
+  }                                                                            \
+  if ((vec)->entries != NULL) {                                                \
+    free((vec)->entries);                                                      \
+  }                                                                            \
   (vec)->entries = NULL;                                                       \
   (vec)->temp = NULL;                                                          \
   (vec)->capacity = 0;                                                         \

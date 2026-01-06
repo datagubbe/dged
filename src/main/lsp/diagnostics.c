@@ -1,5 +1,7 @@
 #include "diagnostics.h"
 
+#include <stdio.h>
+
 #include "dged/binding.h"
 #include "dged/buffer.h"
 #include "dged/buffer_view.h"

@@ -16,6 +16,7 @@
 #include "dged/buffer.h"
 #include "dged/buffer_view.h"
 #include "dged/buffers.h"
+#include "dged/command.h"
 #include "dged/display.h"
 #include "dged/lang.h"
 #include "dged/minibuffer.h"
@@ -24,6 +25,7 @@
 #include "dged/s8.h"
 #include "dged/settings.h"
 #include "dged/timers.h"
+#include "dged/window.h"
 
 #ifdef SYNTAX_ENABLE
 #include "dged/syntax.h"
@@ -253,6 +255,8 @@ int main(int argc, char *argv[]) {
   buffer_static_init();
 
   frame_allocator = frame_allocator_create(16 * 1024 * 1024);
+  struct frame_allocator program_allocator =
+      frame_allocator_create(16 * 1024 * 1024);
 
   struct reactor *reactor = reactor_create();
   if (reactor == NULL) {
@@ -337,23 +341,24 @@ int main(int argc, char *argv[]) {
   lang_servers_init(reactor, &buflist, &commands);
 #endif
 
-  struct buffer initial_buffer = buffer_create("welcome");
-  if (filename != NULL) {
-    buffer_destroy(&initial_buffer);
-    struct s8 absfile = canonicalize(s8(filename));
-    initial_buffer = buffer_from_file(s8ascstr(absfile));
-    free((void *)filename);
-    s8delete(absfile);
-  } else {
-    initial_buffer.force_show_ws_off = true;
-    buffer_set_readonly(&initial_buffer, true);
-    buffer_set_text(&initial_buffer, (uint8_t *)welcome_text, welcome_text_len);
-  }
+  struct buffer *welcome_buffer =
+      buffers_add(&buflist, buffer_create("*welcome*"));
+  welcome_buffer->force_show_ws_off = true;
+  welcome_buffer->lazy_row_add = false;
+  buffer_set_readonly(welcome_buffer, true);
+  buffer_set_text(welcome_buffer, (uint8_t *)welcome_text, welcome_text_len);
 
-  struct buffer *ib = buffers_add(&buflist, initial_buffer);
+  register_global_commands(&commands, terminate, &program_allocator);
+  register_buffer_commands(&commands);
+  register_window_commands(&commands);
+  register_settings_commands(&commands);
 
-  windows_init(display_height(display), display_width(display), ib, &minibuffer,
-               &buflist);
+  struct keymap *current_keymap = NULL;
+  timers_init();
+  init_frame_hooks();
+
+  windows_init(display_height(display), display_width(display), welcome_buffer,
+               &minibuffer, &buflist);
   struct window *active = windows_get_active();
   if (goto_end) {
     buffer_view_goto_end(window_buffer_view(active));
@@ -365,20 +370,21 @@ int main(int argc, char *argv[]) {
     buffer_view_goto(window_buffer_view(active), to);
   }
 
-  register_global_commands(&commands, terminate);
-  register_buffer_commands(&commands);
-  register_window_commands(&commands);
-  register_settings_commands(&commands);
-
-  struct keymap *current_keymap = NULL;
-  timers_init();
-  init_frame_hooks();
-
   float frame_time = 0.f;
   bool needs_render = true;
   uint64_t last_render_ns = 0;
   const uint64_t target_render_ns = 5 * 1e6 /* 5 ms */;
   uint64_t rendered_frames = 0;
+
+  // load initial buffer from command line
+  if (filename != NULL) {
+    struct command *cmd = lookup_command(&commands, "find-file");
+    if (cmd != NULL) {
+      const char *av[] = {filename};
+      execute_command(cmd, &commands, windows_get_active(), &buflist, 1, av);
+    }
+    free((void *)filename);
+  }
 
   while (running) {
     timers_start_frame();
@@ -536,6 +542,7 @@ int main(int argc, char *argv[]) {
   command_registry_destroy(&commands);
   reactor_destroy(reactor);
   frame_allocator_destroy(&frame_allocator);
+  frame_allocator_destroy(&program_allocator);
   buffer_static_teardown();
   settings_destroy();
 

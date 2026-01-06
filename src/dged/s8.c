@@ -1,5 +1,7 @@
 #include "s8.h"
 
+#include "utf8.h"
+
 #include <ctype.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -115,6 +117,45 @@ int s8cmp(struct s8 s1, struct s8 s2) {
   }
 
   return memcmp(s1.s, s2.s, s1.l);
+}
+
+static int memicmp(uint8_t *s1, uint8_t *s2, size_t n) {
+  int res = 0;
+  for (size_t i = 0; i < n; ++i) {
+    uint8_t b1 = s1[i];
+    uint8_t b2 = s2[i];
+
+    res = b1 - b2;
+    if (utf8_byte_is_ascii(b1) && utf8_byte_is_ascii(b2)) {
+      if (b1 >= 'A' && b1 <= 'Z') {
+        b1 += 0x20;
+      }
+
+      if (b2 >= 'A' && b2 <= 'Z') {
+        b2 += 0x20;
+      }
+
+      res = b1 - b2;
+    }
+
+    if (res != 0) {
+      return res;
+    }
+  }
+
+  return res;
+}
+
+int s8icmp(struct s8 s1, struct s8 s2) {
+  if (s1.l < s2.l) {
+    int res = memicmp(s1.s, s2.s, s1.l);
+    return res == 0 ? -s2.s[s1.l] : res;
+  } else if (s2.l < s1.l) {
+    int res = memicmp(s1.s, s2.s, s2.l);
+    return res == 0 ? s1.s[s2.l] : res;
+  }
+
+  return memicmp(s1.s, s2.s, s1.l);
 }
 
 char *s8tocstr(struct s8 s) {

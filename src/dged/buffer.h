@@ -3,7 +3,6 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <time.h>
 
 #include "command.h"
@@ -38,6 +37,9 @@ struct buffer {
   /** Associated filename, this is where the buffer will be saved to */
   char *filename;
 
+  /** Even if the buffer is not file backed, it might have an associated path */
+  char *associated_path;
+
   /** Time when buffer was last written to disk */
   struct timespec last_write;
 
@@ -71,6 +73,10 @@ struct buffer {
   bool needs_render;
 
   bool updated;
+
+  bool file_backed;
+
+  bool bulk_adding;
 
   /**
    * Version that increases with each edit (including undo).
@@ -130,6 +136,28 @@ void buffer_reload(struct buffer *buffer);
  * @param [in] buffer The buffer to destroy.
  */
 void buffer_destroy(struct buffer *buffer);
+
+/**
+ * Begin a bulk add operation.
+ *
+ * This will inhibit callbacks while the bulk add is running.
+ * Can be useful for example to replace an entire buffer without
+ * triggering change notifications after each insert.
+ *
+ * @param [in] buffer The buffer to start bulk add for.
+ */
+void buffer_begin_bulk_add(struct buffer *buffer);
+
+/**
+ * End a bulk add operation.
+ *
+ * This will trigger a change notification for the provided region.
+ *
+ * @param [in] buffer The buffer to end bulk add for.
+ * @param [in] updated The region that was added to the buffer. Will
+                       be used to call insert hooks with.
+ */
+void buffer_end_bulk_add(struct buffer *buffer, struct region updated);
 
 /**
  * Add text to the buffer at the specified location.

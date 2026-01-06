@@ -38,7 +38,7 @@ stdenv.mkDerivation {
   '';
 
   # needed for tests to work in sandboxed builds
-  LOCALE_ARCHIVE = "${glibcLocalesUtf8}/lib/locale/locale-archive";
+  LOCALE_ARCHIVE = if stdenv.isLinux then "${glibcLocalesUtf8}/lib/locale/locale-archive" else null;
 
   TREESITTER_GRAMMARS = "./build/grammars";
   BUNDLE_TREESITTER_GRAMMARS = with tree-sitter-grammars;

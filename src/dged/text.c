@@ -583,6 +583,10 @@ void text_get_properties(struct text *text, uint32_t line, uint32_t offset,
       break;
     }
 
+    if (line < prop->start.line || line > prop->end.line) {
+      continue;
+    }
+
     if (location_is_between(location, prop->start, prop->end)) {
       properties[nres] = prop;
       ++nres;
@@ -594,6 +598,10 @@ void text_get_properties(struct text *text, uint32_t line, uint32_t offset,
     VEC_FOR_EACH(pv, struct text_property * prop) {
       if (nres == max_nproperties) {
         break;
+      }
+
+      if (line < prop->start.line || line > prop->end.line) {
+        continue;
       }
 
       if (location_is_between(location, prop->start, prop->end)) {
@@ -623,6 +631,10 @@ void text_get_properties_filtered(struct text *text, uint32_t line,
   VEC_FOR_EACH(pv, struct text_property * prop) {
     if (nres == max_nproperties) {
       break;
+    }
+
+    if (line < prop->start.line || line > prop->end.line) {
+      continue;
     }
 
     if (location_is_between(location, prop->start, prop->end)) {

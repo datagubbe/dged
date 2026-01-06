@@ -1,6 +1,6 @@
 #include "path.h"
 
-#include "fcntl.h"
+#include "dirent.h"
 #include "s8.h"
 #include "sys/stat.h"
 
@@ -292,4 +292,78 @@ struct s8 filestem(struct s8 path) {
   struct s8 stem = s8substr(name, 0, ind);
   s8delete(name);
   return stem;
+}
+
+bool is_link(struct s8 path) {
+  struct stat sb;
+  int ret = lstat(s8ascstr(path), &sb);
+
+  if (ret == -1) {
+    return false;
+  }
+
+  return S_ISLNK(sb.st_mode);
+}
+
+bool is_dir(struct s8 path) {
+  struct stat sb;
+  int ret = lstat(s8ascstr(path), &sb);
+
+  if (ret == -1) {
+    return false;
+  }
+
+  return S_ISDIR(sb.st_mode);
+}
+
+bool is_file(struct s8 path) {
+  struct stat sb;
+  int ret = lstat(s8ascstr(path), &sb);
+
+  if (ret == -1) {
+    return false;
+  }
+
+  return S_ISREG(sb.st_mode);
+}
+
+bool remove_recursive(struct s8 path) {
+  if (!path_exists(path)) {
+    return false;
+  }
+
+  // if it's a symlink or not a directory, unlink it
+  if (!is_dir(path) || is_link(path)) {
+    if (unlink(s8ascstr(path)) != 0) {
+      return false;
+    }
+
+    return true;
+  }
+
+  DIR *dir = opendir(s8ascstr(path));
+  if (dir == NULL) {
+    return false;
+  }
+
+  bool ret = true;
+  struct dirent *entry;
+  while ((entry = readdir(dir)) != NULL) {
+    if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+      continue;
+
+    struct s8 childpath = join_path(path, s8(entry->d_name));
+    if (remove_recursive(childpath) != 0) {
+      ret = false;
+    }
+    s8delete(childpath);
+  }
+
+  closedir(dir);
+
+  if (rmdir(s8ascstr(path)) == -1) {
+    return false;
+  }
+
+  return ret;
 }

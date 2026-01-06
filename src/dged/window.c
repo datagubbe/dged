@@ -1,3 +1,9 @@
+#include "window.h"
+
+#include <assert.h>
+#include <math.h>
+#include <stdio.h>
+
 #include "binding.h"
 #include "btree.h"
 #include "buffer.h"
@@ -6,9 +12,6 @@
 #include "command.h"
 #include "display.h"
 #include "minibuffer.h"
-
-#include <assert.h>
-#include <math.h>
 
 enum window_type {
   Window_Buffer,

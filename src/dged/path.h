@@ -38,7 +38,11 @@ struct s8 join_path_segments(struct s8 *segments, size_t nsegments);
 /* impure path functions (uses real fs) */
 struct s8 canonicalize(struct s8 path);
 bool path_exists(struct s8 path);
+bool is_link(struct s8 path);
+bool is_dir(struct s8 path);
+bool is_file(struct s8 path);
 bool create_directories(struct s8 path);
+bool remove_recursive(struct s8 path);
 struct s8 working_dir();
 
 #endif

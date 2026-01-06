@@ -1,12 +1,14 @@
 #include <errno.h>
 #include <libgen.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 
 #include "dged/binding.h"
 
+#include "dged/allocator.h"
 #include "dged/buffer.h"
 #include "dged/buffer_view.h"
 #include "dged/buffers.h"
@@ -17,6 +19,7 @@
 #include "dged/s8.h"
 #include "dged/settings.h"
 #include "dged/vec.h"
+#include "dired.h"
 #if defined(SYNTAX_ENABLE)
 #include "dged/syntax.h"
 #endif
@@ -243,8 +246,9 @@ static void timers_refresh(struct buffer *buffer, void *userdata) {
 
   buffer_set_readonly(buffer, false);
   buffer_clear(buffer);
+  buffer_begin_bulk_add(buffer);
   timer_vec timers = timers_sorted();
-  struct location at = {};
+  struct location at = {}, begin = {};
   VEC_FOR_EACH(&timers, const struct timer **ptimer) {
     const struct timer *timer = *ptimer;
     const char *name = timer_name(timer);
@@ -283,6 +287,7 @@ static void timers_refresh(struct buffer *buffer, void *userdata) {
   }
 
   VEC_DESTROY(&timers);
+  buffer_end_bulk_add(buffer, region_new(begin, at));
   buffer_set_readonly(buffer, true);
 }
 
@@ -391,7 +396,10 @@ void buflist_refresh(struct buffer *buffer, void *userdata) {
   struct buffers *buffers = (struct buffers *)userdata;
   buffer_set_readonly(buffer, false);
   buffer_clear(buffer);
+  buffer_begin_bulk_add(buffer);
   buffers_for_each(buffers, buffer_to_list_line, buffer);
+  buffer_end_bulk_add(buffer, region_new((struct location){.line = 0, .col = 0},
+                                         buffer_end(buffer)));
   buffer_set_readonly(buffer, true);
 }
 
@@ -542,8 +550,10 @@ int32_t buffer_list(struct command_ctx ctx, int argc, const char *argv[]) {
 
 static void find_file_comp_inserted(void) { minibuffer_execute(); }
 
-static int32_t open_file(struct buffers *buffers, struct window *active_window,
-                         const char *pth) {
+static int32_t open_file(struct command_ctx ctx, const char *pth) {
+
+  struct window *active_window = ctx.active_window;
+  struct buffers *buffers = ctx.buffers;
 
   if (active_window == minibuffer_window()) {
     minibuffer_echo_timeout(4, "cannot open files in the minibuffer");
@@ -557,8 +567,15 @@ static int32_t open_file(struct buffers *buffers, struct window *active_window,
   }
 
   if (S_ISDIR(sb.st_mode) && errno != ENOENT) {
-    minibuffer_echo("TODO: implement dired!");
-    return 1;
+    struct command *cmd = lookup_command(ctx.commands, "dired");
+    if (cmd != NULL) {
+      const char *argv[] = {pth};
+      return execute_command(cmd, ctx.commands, ctx.active_window, ctx.buffers,
+                             1, argv);
+    }
+
+    minibuffer_echo_timeout(4, "dired is not supported");
+    return 0;
   }
 
   struct s8 filename = canonicalize(s8(pth));
@@ -595,7 +612,7 @@ int32_t find_file(struct command_ctx ctx, int argc, const char *argv[]) {
 
   disable_completion(minibuffer_buffer());
 
-  open_file(ctx.buffers, ctx.active_window, argv[0]);
+  open_file(ctx, argv[0]);
   return 0;
 }
 
@@ -603,13 +620,25 @@ COMMAND_FN("find-file-internal", find_file, find_file, NULL)
 int32_t find_file_relative(struct command_ctx ctx, int argc,
                            const char *argv[]) {
   struct buffer *b = window_buffer(ctx.active_window);
-  if (b->filename == NULL) {
-    minibuffer_echo_timeout(4, "buffer %s is not backed by a file", b->name);
+  if (b->associated_path == NULL && !buffer_is_backed(b)) {
+    minibuffer_echo_timeout(
+        4, "buffer %s is not backed by a file and has no associated path",
+        b->name);
     return 1;
   }
 
-  char *filename = strdup(b->filename);
-  char *dir = dirname(filename);
+  const char *path =
+      b->associated_path != NULL ? b->associated_path : b->filename;
+
+  char *filename = strdup(path);
+  char *dir = filename;
+
+  // if we used the filename, get the directory of the file,
+  // not the file itself
+  if (b->associated_path == NULL) {
+    dir = dirname(filename);
+  }
+
   size_t dirlen = strlen(dir);
   if (argc == 0) {
     minibuffer_clear();
@@ -639,7 +668,7 @@ int32_t find_file_relative(struct command_ctx ctx, int argc,
   pth[dirlen] = '/';
   memcpy(pth + dirlen + 1, argv[0], plen);
   pth[dirlen + plen + 1] = '\0';
-  open_file(ctx.buffers, ctx.active_window, pth);
+  open_file(ctx, pth);
 
   free(filename);
   return 0;
@@ -670,7 +699,8 @@ static int32_t syntax_at_point_cmd(struct command_ctx ctx, int argc,
 #endif
 
 void register_global_commands(struct commands *commands,
-                              void (*terminate_cb)(void)) {
+                              void (*terminate_cb)(void),
+                              struct frame_allocator *alloc) {
   g_terminate_cb = terminate_cb;
   struct command global_commands[] = {
       {.name = "find-file", .fn = find_file},
@@ -691,6 +721,7 @@ void register_global_commands(struct commands *commands,
                     sizeof(global_commands) / sizeof(global_commands[0]));
 
   register_search_replace_commands(commands);
+  register_dired_commands(commands, alloc);
 }
 
 void teardown_global_commands(void) { cleanup_search_replace(); }

@@ -26,6 +26,7 @@ uint8_t s8at(struct s8 s, size_t index);
 ssize_t s8find(struct s8 s, uint8_t c);
 bool s8eq(struct s8 s1, struct s8 s2);
 int s8cmp(struct s8 s1, struct s8 s2);
+int s8icmp(struct s8 s1, struct s8 s2);
 bool s8startswith(struct s8 s, struct s8 prefix);
 bool s8endswith(struct s8 s, struct s8 suffix);
 struct s8 s8dup(struct s8 s);

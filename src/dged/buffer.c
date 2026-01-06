@@ -171,6 +171,8 @@ static struct buffer create_internal(const char *name, char *filename) {
       .last_write = {0},
       .version = 0,
       .needs_render = false,
+      .associated_path = NULL,
+      .bulk_adding = false,
   };
 
   b.hooks = calloc(1, sizeof(struct hooks));
@@ -546,6 +548,9 @@ void buffer_destroy(struct buffer *buffer) {
   free(buffer->filename);
   buffer->filename = NULL;
 
+  free(buffer->associated_path);
+  buffer->associated_path = NULL;
+
   VEC_DESTROY(&buffer->hooks->update_hooks);
   VEC_DESTROY(&buffer->hooks->render_hooks);
   VEC_DESTROY(&buffer->hooks->reload_hooks);
@@ -576,7 +581,6 @@ struct location buffer_add(struct buffer *buffer, struct location at,
   struct location final = at;
 
   struct location at_bytes = buffer_location_to_byte_coords(buffer, at);
-
   uint32_t ignore_;
   text_insert_at(buffer->text, at_bytes.line, at_bytes.col, text, nbytes,
                  &ignore_);
@@ -597,28 +601,63 @@ struct location buffer_add(struct buffer *buffer, struct location at,
   }
   final = buffer_clamp(buffer, (int64_t)at.line + lines_added,
                        (int64_t)(lines_added > 0 ? 0 : at.col) + cols_added);
-  struct location final_bytes = buffer_location_to_byte_coords(buffer, final);
 
-  undo_push_add(
-      &buffer->undo,
-      (struct undo_add){.begin = {.row = initial.line, .col = initial.col},
-                        .end = {.row = final.line, .col = final.col}});
+  if (!buffer->bulk_adding) {
+
+    undo_push_add(
+        &buffer->undo,
+        (struct undo_add){.begin = {.row = initial.line, .col = initial.col},
+                          .end = {.row = final.line, .col = final.col}});
+
+    ++buffer->version;
+    buffer->modified = true;
+
+    struct location final_bytes = buffer_location_to_byte_coords(buffer, final);
+    uint32_t begin_idx = to_global_offset(buffer, at_bytes);
+    uint32_t end_idx = to_global_offset(buffer, final_bytes);
+
+    dispatch_hook(&buffer->hooks->insert_hooks, struct insert_hook, buffer,
+                  (struct edit_location){
+                      .coordinates = region_new(initial, final),
+                      .bytes = region_new(at_bytes, final_bytes),
+                      .global_byte_begin = begin_idx,
+                      .global_byte_end = end_idx,
+                  });
+  }
+
+  return final;
+}
+
+void buffer_begin_bulk_add(struct buffer *buffer) {
+  buffer->bulk_adding = true;
+}
+
+void buffer_end_bulk_add(struct buffer *buffer, struct region updated) {
+  buffer->bulk_adding = false;
 
   ++buffer->version;
   buffer->modified = true;
 
-  uint32_t begin_idx = to_global_offset(buffer, at_bytes);
-  uint32_t end_idx = to_global_offset(buffer, final_bytes);
+  undo_push_add(
+      &buffer->undo,
+      (struct undo_add){
+          .begin = {.row = updated.begin.line, .col = updated.begin.col},
+          .end = {.row = updated.end.line, .col = updated.end.col}});
+
+  struct location begin_bytes =
+      buffer_location_to_byte_coords(buffer, updated.begin);
+  struct location end_bytes =
+      buffer_location_to_byte_coords(buffer, updated.end);
+  uint32_t begin_idx = to_global_offset(buffer, begin_bytes);
+  uint32_t end_idx = to_global_offset(buffer, end_bytes);
 
   dispatch_hook(&buffer->hooks->insert_hooks, struct insert_hook, buffer,
                 (struct edit_location){
-                    .coordinates = region_new(initial, final),
-                    .bytes = region_new(at_bytes, final_bytes),
+                    .coordinates = updated,
+                    .bytes = region_new(begin_bytes, end_bytes),
                     .global_byte_begin = begin_idx,
                     .global_byte_end = end_idx,
                 });
-
-  return final;
 }
 
 struct location buffer_set_text(struct buffer *buffer, uint8_t *text,
