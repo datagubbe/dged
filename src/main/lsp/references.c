@@ -62,10 +62,12 @@ static int32_t references_visit(struct command_ctx ctx, int argc,
 
   VEC_FOR_EACH(&g_links, struct link * link) {
     if (region_is_inside(link->region, view->dot)) {
-      lsp_jump_to((struct text_document_location){
-          .range = link->target_region,
-          .uri = link->uri,
-      });
+      lsp_jump_to(
+          (struct text_document_location){
+              .range = link->target_region,
+              .uri = link->uri,
+          },
+          NULL);
 
       return 0;
     }

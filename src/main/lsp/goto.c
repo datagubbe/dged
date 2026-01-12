@@ -20,8 +20,6 @@ static struct jump_stack {
   struct buffers *buffers;
 } g_jump_stack;
 
-static struct location_result g_location_result = {};
-
 struct buffer_location {
   struct buffer *buffer;
   struct location location;
@@ -42,7 +40,8 @@ void destroy_goto(void) {
   g_jump_stack.size = 0;
 }
 
-void lsp_jump_to(struct text_document_location loc) {
+void lsp_jump_to(struct text_document_location loc,
+                 struct buffer_location *origin) {
   if (s8startswith(loc.uri, s8("file://"))) {
     const char *p = s8tocstr(loc.uri);
     struct buffer *b = buffers_find_by_filename(g_jump_stack.buffers, &p[7]);
@@ -56,14 +55,21 @@ void lsp_jump_to(struct text_document_location loc) {
 
     struct window *w = windows_get_active();
 
-    struct buffer_view *old_bv = window_buffer_view(w);
-    g_jump_stack.stack[g_jump_stack.top] = (struct buffer_location){
-        .buffer = old_bv->buffer,
-        .location = old_bv->dot,
-    };
+    struct buffer *prev_buffer = NULL;
+    if (origin == NULL) {
+      struct buffer_view *old_bv = window_buffer_view(w);
+      g_jump_stack.stack[g_jump_stack.top] = (struct buffer_location){
+          .buffer = old_bv->buffer,
+          .location = old_bv->dot,
+      };
+      prev_buffer = old_bv->buffer;
+    } else {
+      g_jump_stack.stack[g_jump_stack.top] = *origin;
+      prev_buffer = origin->buffer;
+    }
     g_jump_stack.top = (g_jump_stack.top + 1) % g_jump_stack.size;
 
-    if (old_bv->buffer != b) {
+    if (prev_buffer != b) {
       struct window *tw = window_find_by_buffer(b);
       if (tw == NULL) {
         window_set_buffer(w, b);
@@ -80,21 +86,28 @@ void lsp_jump_to(struct text_document_location loc) {
   }
 }
 
+struct location_choice_data {
+  struct location_result res;
+  struct buffer_location jump_return;
+};
+
 static void location_selected(void *location, void *userdata) {
-  (void)userdata;
+  struct location_choice_data *data = (struct location_choice_data *)userdata;
   struct text_document_location *loc =
       (struct text_document_location *)location;
-  lsp_jump_to(*loc);
+  lsp_jump_to(*loc, &data->jump_return);
 }
 
 static void location_buffer_close(void *userdata) {
-  (void)userdata;
-  location_result_free(&g_location_result);
+  struct location_choice_data *data = (struct location_choice_data *)userdata;
+  location_result_free(&data->res);
+  free(data);
 }
 
 static void handle_location_result(struct lsp_server *server,
                                    struct lsp_response *response,
                                    void *userdata) {
+  (void)server;
   struct s8 title = s8((const char *)userdata);
   struct location_result res =
       location_result_from_json(&response->value.result);
@@ -107,24 +120,31 @@ static void handle_location_result(struct lsp_server *server,
   }
 
   if (res.type == Location_Single) {
-    lsp_jump_to(res.location.single);
+    lsp_jump_to(res.location.single, NULL);
     location_result_free(&res);
   } else if (res.type == Location_Array && VEC_SIZE(&res.location.array) == 1) {
-    lsp_jump_to(*VEC_FRONT(&res.location.array));
+    lsp_jump_to(*VEC_FRONT(&res.location.array), NULL);
     location_result_free(&res);
   } else if (res.type == Location_Array) {
+    struct buffer_view *bv = window_buffer_view(windows_get_active());
 
-    g_location_result = res;
+    struct location_choice_data *data =
+        calloc(1, sizeof(struct location_choice_data));
+    data->res = res;
+    data->jump_return = (struct buffer_location){
+        .buffer = bv->buffer,
+        .location = bv->dot,
+    };
+
     struct choice_buffer *buf =
         choice_buffer_create(title, g_jump_stack.buffers, location_selected,
-                             location_buffer_close, NULL, server);
+                             location_buffer_close, NULL, data);
 
     VEC_FOR_EACH(&res.location.array, struct text_document_location * loc) {
-      choice_buffer_add_choice(buf,
-                               s8from_fmt("%.*s: %d, %d", loc->uri.l,
-                                          loc->uri.s, loc->range.begin.line,
-                                          loc->range.begin.col),
-                               loc);
+      struct s8 line = s8from_fmt("%.*s: %d, %d", loc->uri.l, loc->uri.s,
+                                  loc->range.begin.line, loc->range.begin.col);
+      choice_buffer_add_choice(buf, line, loc);
+      s8delete(line);
     }
   }
 }

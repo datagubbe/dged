@@ -6,12 +6,14 @@
 #include "types.h"
 
 struct lsp_server;
+struct buffer_location;
 struct buffers;
 
 void init_goto(size_t jump_stack_depth, struct buffers *);
 void destroy_goto(void);
 
-void lsp_jump_to(struct text_document_location loc);
+void lsp_jump_to(struct text_document_location loc,
+                 struct buffer_location *origin);
 
 /* COMMANDS */
 int32_t lsp_goto_def_cmd(struct command_ctx, int, const char **);
