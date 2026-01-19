@@ -4,7 +4,7 @@
 #include <stdio.h>
 
 #define run_test(fn)                                                           \
-  printf("    🧜 running \x1b[1;36m" #fn "\033[0m... ");                     \
+  printf("    🧜 running \x1b[1;36m" #fn "\033[0m... ");                       \
   fflush(stdout);                                                              \
   fn();                                                                        \
   printf("\033[32mok!\033[0m\n");
@@ -22,5 +22,6 @@ void run_settings_tests(void);
 void run_container_tests(void);
 void run_json_tests(void);
 void run_bufread_tests(void);
+void run_path_tests(void);
 
 #endif

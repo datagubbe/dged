@@ -198,10 +198,10 @@ static void strip_final_newline(struct buffer *b) {
 
 static void buffer_read_from_file(struct buffer *b) {
   struct stat sb;
-  char *fullname = to_abspath(b->filename);
-  if (stat(fullname, &sb) == 0) {
-    FILE *file = fopen(fullname, "r");
-    free(fullname);
+  struct s8 fullname = canonicalize(s8(b->filename));
+  if (stat(s8ascstr(fullname), &sb) == 0) {
+    FILE *file = fopen(s8ascstr(fullname), "r");
+    s8delete(fullname);
 
     if (file == NULL) {
       minibuffer_echo("Error opening %s: %s", b->filename, strerror(errno));
@@ -230,7 +230,7 @@ static void buffer_read_from_file(struct buffer *b) {
     strip_final_newline(b);
   } else {
     minibuffer_echo("Error opening %s: %s", b->filename, strerror(errno));
-    free(fullname);
+    s8delete(fullname);
     return;
   }
 }
@@ -382,10 +382,11 @@ struct buffer buffer_create(const char *name) {
 }
 
 struct buffer buffer_from_file(const char *path) {
-  char *full_path = to_abspath(path);
-  struct buffer b = create_internal(basename((char *)path), full_path);
+  struct s8 full_path = canonicalize(s8(path));
+  struct buffer b =
+      create_internal(basename((char *)path), (char *)s8ascstr(full_path));
 
-  if (access(full_path, F_OK) == 0) {
+  if (access(s8ascstr(full_path), F_OK) == 0) {
     buffer_read_from_file(&b);
   }
   undo_push_boundary(&b.undo, (struct undo_boundary){.save_point = true});
@@ -416,18 +417,28 @@ void buffer_to_file(struct buffer *buffer) {
 
   unneeded_save_count = 0;
 
-  char *fullname = expanduser(buffer->filename);
-  size_t namelen = strlen(fullname);
-  char *backupname = malloc(namelen + 6);
-  memcpy(backupname, fullname, namelen);
-  memcpy(backupname + namelen, ".save", 5);
-  backupname[namelen + 5] = '\0';
-  FILE *file = fopen(backupname, "w+");
+  struct s8 fullname = canonicalize(s8(buffer->filename));
+  struct s8 dirname = parent(fullname);
+
+  if (!create_directories(dirname)) {
+    minibuffer_echo_timeout(4, "failed to create directory %s",
+                            s8ascstr(dirname));
+
+    s8delete(fullname);
+    s8delete(dirname);
+    return;
+  }
+
+  s8delete(dirname);
+
+  struct s8 backupname = s8from_fmt("%s.save", s8ascstr(fullname));
+  FILE *file = fopen(s8ascstr(backupname), "w+");
   if (file == NULL) {
     minibuffer_echo("failed to open file \"%s\" (\"%s\") for writing: %s",
                     buffer->filename, backupname, strerror(errno));
-    free(fullname);
-    free(backupname);
+
+    s8delete(fullname);
+    s8delete(backupname);
     return;
   }
 
@@ -448,11 +459,11 @@ void buffer_to_file(struct buffer *buffer) {
   fclose(file);
   struct stat sb;
   int statret = stat(buffer->filename, &sb);
-  if (rename(backupname, fullname) == -1) {
+  if (rename(s8ascstr(backupname), s8ascstr(fullname)) == -1) {
     minibuffer_echo("failed to rename backup \"%s\" to \"%s\": %s", backupname,
                     fullname, strerror(errno));
-    free(fullname);
-    free(backupname);
+    s8delete(fullname);
+    s8delete(backupname);
     return;
   }
 
@@ -460,8 +471,8 @@ void buffer_to_file(struct buffer *buffer) {
     chmod(buffer->filename, sb.st_mode);
   }
 
-  free(fullname);
-  free(backupname);
+  s8delete(fullname);
+  s8delete(backupname);
 
   buffer->modified = false;
   undo_push_boundary(&buffer->undo, (struct undo_boundary){.save_point = true});
@@ -476,7 +487,7 @@ void buffer_to_file(struct buffer *buffer) {
 }
 
 void buffer_set_filename(struct buffer *buffer, const char *filename) {
-  buffer->filename = to_abspath(filename);
+  buffer->filename = (char *)s8ascstr(canonicalize(s8(filename)));
   ++buffer->version;
   buffer->modified = true;
 }

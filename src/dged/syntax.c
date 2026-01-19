@@ -23,7 +23,7 @@
 
 static char *treesitter_path[256] = {0};
 static uint32_t treesitter_path_len = 0;
-static const char *parser_filename = "parser";
+static struct s8 parser_filename = s8("parser");
 static const char *highlight_path = "queries/highlights.scm";
 
 struct predicate {
@@ -263,11 +263,11 @@ static void create_predicates(struct highlight *h, uint32_t pattern_index) {
 }
 
 static TSQuery *setup_queries(const char *lang_root, TSTree *tree) {
-  const char *filename = join_path(lang_root, highlight_path);
+  struct s8 filename = join_path(s8(lang_root), s8(highlight_path));
 
   // read queries from file
-  int fd = open(filename, O_RDONLY);
-  free((void *)filename);
+  int fd = open(s8ascstr(filename), O_RDONLY);
+  s8delete(filename);
   if (fd < 0) {
     return NULL;
   }
@@ -570,10 +570,10 @@ static void create_parser(struct buffer *buffer, void *userdata) {
   for (uint32_t i = 0; i < treesitter_path_len && langsym == NULL; ++i) {
     const char *path = treesitter_path[i];
     lang_root = lang_folder(buffer, path);
-    const char *filename = join_path(lang_root, parser_filename);
+    struct s8 filename = join_path(s8(lang_root), parser_filename);
 
-    h = dlopen(filename, RTLD_LAZY);
-    free((void *)filename);
+    h = dlopen(s8ascstr(filename), RTLD_LAZY);
+    s8delete(filename);
     if (h == NULL) {
       free((void *)lang_root);
       continue;

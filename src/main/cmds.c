@@ -307,12 +307,19 @@ int32_t timers(struct command_ctx ctx, int argc, const char *argv[]) {
 void buffer_to_list_line(struct buffer *buffer, void *userdata) {
   struct buffer *listbuf = (struct buffer *)userdata;
 
-  const char *path = buffer->filename != NULL ? buffer->filename : "<no-file>";
+  struct s8 path = s8new("<no-file>", 9);
+  if (buffer->filename != NULL) {
+    struct s8 cwd = working_dir();
+    s8delete(path);
+    path = relative_to(s8(buffer->filename), cwd);
+    s8delete(cwd);
+  }
+
   const char *modified =
       buffer->filename != NULL && buffer->modified ? "*" : "";
   char buf[1024];
   size_t written =
-      snprintf(buf, 1024, "%-24s %s%s", buffer->name, path, modified);
+      snprintf(buf, 1024, "%-24s %s%s", buffer->name, s8ascstr(path), modified);
 
   if (written > 0) {
     struct location begin = buffer_end(listbuf);
@@ -329,8 +336,7 @@ void buffer_to_list_line(struct buffer *buffer, void *userdata) {
                                    .fg = Color_Green,
                                }});
 
-    size_t pathlen = strlen(path);
-    uint32_t nchars_path = utf8_nchars((uint8_t *)path, pathlen);
+    uint32_t nchars_path = utf8_nchars((uint8_t *)path.s, path.l);
     buffer_add_text_property(
         listbuf, (struct location){.line = begin.line, .col = begin.col + 25},
         (struct location){.line = begin.line,
@@ -349,6 +355,8 @@ void buffer_to_list_line(struct buffer *buffer, void *userdata) {
         (struct text_property){.type = TextProperty_Data,
                                .data.userdata = buffer});
   }
+
+  s8delete(path);
 }
 
 int32_t buflist_visit_cmd(struct command_ctx ctx, int argc, const char **argv) {
@@ -553,9 +561,9 @@ static int32_t open_file(struct buffers *buffers, struct window *active_window,
     return 1;
   }
 
-  const char *filename = to_abspath(pth);
-  struct buffer *b = buffers_find_by_filename(buffers, filename);
-  free((char *)filename);
+  struct s8 filename = canonicalize(s8(pth));
+  struct buffer *b = buffers_find_by_filename(buffers, s8ascstr(filename));
+  s8delete(filename);
 
   if (b == NULL) {
     b = buffers_add(buffers, buffer_from_file((char *)pth));

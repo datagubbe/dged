@@ -12,7 +12,7 @@
 #include "dged/vec.h"
 
 struct s8 initialize_params_to_json(struct initialize_params *params) {
-  char *cwd = getcwd(NULL, 0);
+  struct s8 cwd = working_dir();
   const char *fmt =
       "{ \"processId\": %d, \"clientInfo\": { \"name\": "
       "\"%.*s\", \"version\": \"%.*s\" },"
@@ -39,9 +39,9 @@ struct s8 initialize_params_to_json(struct initialize_params *params) {
   struct s8 s =
       s8from_fmt(fmt, params->process_id, params->client_info.name.l,
                  params->client_info.name.s, params->client_info.version.l,
-                 params->client_info.version.s, cwd);
+                 params->client_info.version.s, s8ascstr(cwd));
 
-  free(cwd);
+  s8delete(cwd);
   return s;
 }
 
@@ -200,9 +200,9 @@ void initialize_result_free(struct initialize_result *res) {
 
 static struct s8 uri_from_buffer(struct buffer *buffer) {
   if (buffer->filename != NULL) {
-    char *abspath = to_abspath(buffer->filename);
+    struct s8 abspath = canonicalize(s8(buffer->filename));
     struct s8 ret = s8from_fmt("file://%s", abspath);
-    free(abspath);
+    s8delete(abspath);
     return ret;
   }
 

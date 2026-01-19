@@ -26,6 +26,9 @@ int main(void) {
   printf("\n📜 \x1b[1;36mRunning text tests...\x1b[0m\n");
   run_text_tests();
 
+  printf("\n🦜 \x1b[1;36mRunning path tests...\x1b[0m\n");
+  run_path_tests();
+
   printf("\n⏪ \x1b[1;36mRunning undo tests...\x1b[0m\n");
   run_undo_tests();
 

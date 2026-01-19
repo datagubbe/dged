@@ -8,6 +8,7 @@
 #include "dged/display.h"
 #include "dged/location.h"
 #include "dged/minibuffer.h"
+#include "dged/path.h"
 #include "dged/s8.h"
 #include "dged/text.h"
 #include "dged/vec.h"
@@ -17,7 +18,6 @@
 #include "lsp.h"
 #include "lsp/goto.h"
 #include "lsp/types.h"
-#include "unistd.h"
 
 struct link {
   struct s8 uri;
@@ -157,18 +157,13 @@ static void handle_references_response(struct lsp_server *server,
       path.l -= found_at;
     }
 
-    struct s8 relpath = path;
-    char *cwd = getcwd(NULL, 0);
-    if (s8startswith(relpath, s8(cwd))) {
-      size_t l = strlen(cwd);
-      // cwd does not end in /
-      relpath.s += l + 1;
-      relpath.l -= l + 1;
-    }
-    free(cwd);
+    struct s8 cwd = working_dir();
+    struct s8 relpath = relative_to(path, cwd);
+    s8delete(cwd);
 
     struct location start = buffer_end(b);
     struct location fileend = buffer_add(b, start, relpath.s, relpath.l);
+    s8delete(relpath);
     buffer_add_text_property(b, start,
                              (struct location){
                                  .line = fileend.line,

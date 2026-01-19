@@ -177,20 +177,20 @@ static void path_complete(struct completion_context ctx, bool deletion,
   }
 
   uint32_t n = 0;
-  char *p1 = expanduser(path);
-  char *p2 = p1;
-  p1 = to_abspath(p1);
+  struct s8 p1 = expanduser(s8(path));
+  struct s8 p2 = p1;
+  p1 = canonicalize(p1);
 
   size_t inlen = strlen(path);
 
-  const char *dir = p1;
+  const char *dir = s8ascstr(p1);
   const char *file = "";
 
   // check the input path here since
   // to_abspath removes trailing slashes
   if (inlen > 0 && path[inlen - 1] != '/') {
-    dir = dirname(p1);
-    file = basename(p2);
+    dir = dirname((char *)s8ascstr(p1));
+    file = basename((char *)s8ascstr(p2));
   }
 
   struct completion *completions = calloc(50, sizeof(struct completion));
@@ -250,8 +250,8 @@ static void path_complete(struct completion_context ctx, bool deletion,
 
 done:
   free(path);
-  free(p1);
-  free(p2);
+  s8delete(p1);
+  s8delete(p2);
 
   qsort(completions, n, sizeof(struct completion), cmp_path_completions);
   ctx.add_completions(completions, n);

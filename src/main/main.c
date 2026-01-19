@@ -21,6 +21,7 @@
 #include "dged/minibuffer.h"
 #include "dged/path.h"
 #include "dged/reactor.h"
+#include "dged/s8.h"
 #include "dged/settings.h"
 #include "dged/timers.h"
 
@@ -218,31 +219,35 @@ int main(int argc, char *argv[]) {
   if (config_path == NULL) {
     config_path = "~/.config";
   }
-  char settings_file[1024];
-  snprintf(settings_file, 1024, "%s/dged/dged.toml", config_path);
-  char *settings_file_abs = expanduser(settings_file);
+  struct s8 settings_file = s8from_fmt("%s/dged/dged.toml", config_path);
+  struct s8 settings_file_abs = expanduser(settings_file);
   char **errmsgs = NULL;
-  if (access(settings_file_abs, F_OK) == 0) {
-    int32_t ret = settings_from_file(settings_file_abs, &errmsgs);
+  if (access(s8ascstr(settings_file_abs), F_OK) == 0) {
+    int32_t ret = settings_from_file(s8ascstr(settings_file_abs), &errmsgs);
     if (ret > 0) {
-      fprintf(stderr, "Error reading settings from %s:\n", settings_file_abs);
+      fprintf(stderr, "Error reading settings from %s:\n",
+              s8ascstr(settings_file_abs));
       uint32_t nerrors = (uint32_t)ret;
       for (uint32_t erri = 0; erri < nerrors; ++erri) {
         fprintf(stderr, "  - %s", errmsgs[erri]);
         free(errmsgs[erri]);
       }
       free(errmsgs);
-      free(settings_file_abs);
+
+      s8delete(settings_file);
+      s8delete(settings_file_abs);
       return 3;
     } else if (ret < 0) {
       fprintf(stderr, "Error occured reading settings from %s:\n",
-              settings_file_abs);
-      free(settings_file_abs);
+              s8ascstr(settings_file_abs));
+      s8delete(settings_file);
+      s8delete(settings_file_abs);
       return 2;
     }
   }
 
-  free(settings_file_abs);
+  s8delete(settings_file);
+  s8delete(settings_file_abs);
 
   languages_init(true);
   buffer_static_init();
@@ -287,7 +292,7 @@ int main(int argc, char *argv[]) {
   if (path_setting != NULL && path_setting->value.type == Setting_String) {
     settings_path = path_setting->value.data.string_value;
   }
-  const char *builtin_path = join_path(xstr(DATADIR), "grammars");
+  struct s8 builtin_path = join_path(s8(xstr(DATADIR)), s8("grammars"));
 
   const char *treesitter_path[256] = {0};
   uint32_t treesitter_path_len = 0;
@@ -313,7 +318,7 @@ int main(int argc, char *argv[]) {
   }
 
   if (treesitter_path_len < 256) {
-    treesitter_path[treesitter_path_len] = builtin_path;
+    treesitter_path[treesitter_path_len] = s8ascstr(builtin_path);
     ++treesitter_path_len;
   }
 
@@ -325,7 +330,7 @@ int main(int argc, char *argv[]) {
   if (settings_path != NULL) {
     free((void *)settings_path);
   }
-  free((void *)builtin_path);
+  s8delete(builtin_path);
 #endif
 
 #ifdef LSP_ENABLE
@@ -335,10 +340,10 @@ int main(int argc, char *argv[]) {
   struct buffer initial_buffer = buffer_create("welcome");
   if (filename != NULL) {
     buffer_destroy(&initial_buffer);
-    const char *absfile = to_abspath(filename);
-    initial_buffer = buffer_from_file(absfile);
+    struct s8 absfile = canonicalize(s8(filename));
+    initial_buffer = buffer_from_file(s8ascstr(absfile));
     free((void *)filename);
-    free((void *)absfile);
+    s8delete(absfile);
   } else {
     initial_buffer.force_show_ws_off = true;
     buffer_set_readonly(&initial_buffer, true);
