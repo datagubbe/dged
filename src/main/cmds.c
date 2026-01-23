@@ -561,6 +561,7 @@ static int32_t open_file(struct command_ctx ctx, const char *pth) {
   }
 
   struct stat sb = {0};
+  errno = 0;
   if (stat(pth, &sb) < 0 && errno != ENOENT) {
     minibuffer_echo("stat on %s failed: %s", pth, strerror(errno));
     return 1;
