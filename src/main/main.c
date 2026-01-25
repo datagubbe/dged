@@ -76,8 +76,37 @@ void resized(int sig) {
   signal(SIGWINCH, resized);
 }
 
-void segfault(int sig) {
+void terminal_stop(int sig) {
   (void)sig;
+  if (display != NULL) {
+    display_clear(display);
+    display_restore(display);
+  }
+
+#ifdef SIGSTOP
+  kill(0, SIGSTOP);
+#endif
+}
+
+void suspend() { terminal_stop(0); }
+
+void resume(int sig) {
+  (void)sig;
+  display_initialize(display);
+}
+
+void handle_crash(int sig) {
+  (void)sig;
+
+  fprintf(stderr,
+          "Crash encountered - waiting for debugger (PID: %d, cancel with "
+          "C-c)...\n",
+          getpid());
+
+  static bool waiting = true;
+  while (waiting) {
+    sleep(1);
+  }
 
   // make an effort to restore the
   // terminal to its former glory
@@ -85,17 +114,7 @@ void segfault(int sig) {
     display_clear(display);
     display_destroy(display);
   }
-
-  fprintf(stderr, "Segfault encountered...\n");
-  abort();
 }
-
-/* void __asan_on_error() {
-  if (display != NULL) {
-    display_clear(display);
-    display_destroy(display);
-  }
-} */
 
 #define INVALID_WATCH (uint32_t) - 1
 
@@ -212,7 +231,26 @@ int main(int argc, char *argv[]) {
   setlocale(LC_ALL, "");
 
   signal(SIGTERM, terminate2);
-  signal(SIGSEGV, segfault);
+
+  struct sigaction crash = {};
+  crash.sa_flags |= SA_RESETHAND;
+  crash.sa_handler = handle_crash;
+  sigaction(SIGSEGV, &crash, NULL);
+  sigaction(SIGABRT, &crash, NULL);
+
+#ifdef SIGTSTP
+  struct sigaction tstop = {};
+  sigfillset(&tstop.sa_mask);
+  tstop.sa_handler = terminal_stop;
+  sigaction(SIGTSTP, &tstop, NULL);
+#endif
+
+#ifdef SIGCONT
+  struct sigaction cont = {};
+  sigfillset(&cont.sa_mask);
+  cont.sa_handler = resume;
+  sigaction(SIGCONT, &cont, NULL);
+#endif
 
   struct commands commands = command_registry_create(32);
 
@@ -348,7 +386,7 @@ int main(int argc, char *argv[]) {
   buffer_set_readonly(welcome_buffer, true);
   buffer_set_text(welcome_buffer, (uint8_t *)welcome_text, welcome_text_len);
 
-  register_global_commands(&commands, terminate, &program_allocator);
+  register_global_commands(&commands, terminate, suspend, &program_allocator);
   register_buffer_commands(&commands);
   register_window_commands(&commands);
   register_settings_commands(&commands);

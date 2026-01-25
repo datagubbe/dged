@@ -16,12 +16,21 @@ struct command_list;
 struct display *display_create(void);
 
 /**
+ * Initialize the display.
+ *
+ * This sets up things like the terminal mode.
+ */
+bool display_initialize(struct display *display);
+
+/**
  * Resize the display
  *
  * Resize the display to match the underlying size of the device.
  * @param display The display to resize.
  */
 void display_resize(struct display *display);
+
+void display_restore(struct display *display);
 
 /**
  * Destroy the display.

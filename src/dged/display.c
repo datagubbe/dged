@@ -168,27 +168,9 @@ struct winsize getsize(void) {
 
 struct display *display_create(void) {
 
-  struct winsize ws = getsize();
-
-  // save old settings
-  struct termios orig_term;
-  if (tcgetattr(0, &orig_term) < 0) {
-    return NULL;
-  }
-
-  // set terminal to raw mode
-  struct termios term = orig_term;
-  cfmakeraw(&term);
-
-  if (tcsetattr(0, TCSADRAIN, &term) < 0) {
-    return NULL;
-  }
-
   struct display *d = calloc(1, sizeof(struct display));
-  d->orig_term = orig_term;
-  d->term = term;
-  d->height = ws.ws_row;
-  d->width = ws.ws_col;
+  d->height = -1;
+  d->width = -1;
   d->render_in_progress = false;
 
   // 32 KiB output buffer
@@ -196,10 +178,41 @@ struct display *display_create(void) {
   d->outbuf_size = 32 * 1024 * 1024;
   d->outbuf_current = 0;
 
-  use_alternate_buffer(d);
-  flush_outbuf(d);
+  if (!display_initialize(d)) {
+    display_destroy(d);
+    return NULL;
+  }
 
   return d;
+}
+
+bool display_initialize(struct display *display) {
+  struct winsize ws = getsize();
+  display->height = ws.ws_row;
+  display->width = ws.ws_col;
+
+  // save old settings
+  struct termios orig_term = {0};
+  if (tcgetattr(0, &orig_term) < 0) {
+    return false;
+  }
+
+  display->orig_term = orig_term;
+
+  // set terminal to raw mode
+  struct termios term = {0};
+  cfmakeraw(&term);
+
+  if (tcsetattr(0, TCSADRAIN, &term) < 0) {
+    return false;
+  }
+
+  display->term = term;
+
+  use_alternate_buffer(display);
+  flush_outbuf(display);
+
+  return true;
 }
 
 void display_resize(struct display *display) {
@@ -208,13 +221,17 @@ void display_resize(struct display *display) {
   display->height = sz.ws_row;
 }
 
-void display_destroy(struct display *display) {
-
+void display_restore(struct display *display) {
   use_normal_buffer(display);
   flush_outbuf(display);
 
   // reset old terminal mode
   tcsetattr(0, TCSADRAIN, &display->orig_term);
+}
+
+void display_destroy(struct display *display) {
+
+  display_restore(display);
 
   free(display->outbuf);
   display->outbuf = NULL;

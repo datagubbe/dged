@@ -699,8 +699,19 @@ static int32_t syntax_at_point_cmd(struct command_ctx ctx, int argc,
 }
 #endif
 
+static int32_t suspend_cmd(struct command_ctx ctx, int argc,
+                           const char *argv[]) {
+  (void)argc;
+  (void)argv;
+
+  void (*callback)(void) = ctx.userdata;
+  callback();
+  return 0;
+}
+
 void register_global_commands(struct commands *commands,
                               void (*terminate_cb)(void),
+                              void (*suspend_cb)(void),
                               struct frame_allocator *alloc) {
   g_terminate_cb = terminate_cb;
   struct command global_commands[] = {
@@ -716,6 +727,7 @@ void register_global_commands(struct commands *commands,
 #if defined(SYNTAX_ENABLE)
       {.name = "syntax-info-at-point", .fn = syntax_at_point_cmd},
 #endif
+      {.name = "suspend", .fn = suspend_cmd, .userdata = suspend_cb},
       {.name = "exit", .fn = exit_editor}};
 
   register_commands(commands, global_commands,

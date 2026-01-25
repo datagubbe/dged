@@ -102,6 +102,7 @@ void init_bindings(void) {
   struct binding global_binds[] = {
       PREFIX(Ctrl, 'X', &g_ctrlx_map),
       BINDING(Ctrl, 'G', "abort"),
+      BINDING(Ctrl, 'Z', "suspend"),
       BINDING(Meta, 'x', "run-command-interactive"),
   };
 
