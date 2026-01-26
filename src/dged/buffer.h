@@ -376,6 +376,14 @@ struct location buffer_indent(struct buffer *buffer, struct location at);
 struct location buffer_indent_alt(struct buffer *buffer, struct location at);
 
 /**
+ * Decrease the indentation level for a line.
+ *
+ * @param [in] buffer The buffer to decrease indentation in.
+ * @param [in] line The line to decrease indent for.
+ */
+void buffer_unindent_line(struct buffer *buffer, uint32_t line);
+
+/**
  * Undo the last operation in the buffer.
  *
  * @param [in] buffer The buffer to undo in.

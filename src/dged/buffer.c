@@ -907,6 +907,46 @@ struct location buffer_indent_alt(struct buffer *buffer, struct location at) {
   return do_indent(buffer, at, get_tab_width(buffer), !use_tabs(buffer));
 }
 
+void buffer_unindent_line(struct buffer *buffer, uint32_t line) {
+  if (line >= buffer_num_lines(buffer)) {
+    return;
+  }
+
+  uint32_t tab_width = get_tab_width(buffer);
+  struct text_chunk txt = buffer_line(buffer, line);
+
+  // try to remove spaces first
+  uint32_t spaces = 0;
+  while (spaces < txt.nbytes && txt.text[spaces] == ' ') {
+    ++spaces;
+  }
+
+  if (spaces > 0) {
+    uint32_t target_col = spaces >= tab_width ? tab_width : spaces;
+    buffer_delete(
+        buffer, region_new((struct location){.line = line, .col = 0},
+                           (struct location){.line = line, .col = target_col}));
+    goto done;
+  }
+
+  // then tabs
+  uint32_t tabs = 0;
+  while (tabs < txt.nbytes && txt.text[tabs] == '\t') {
+    ++tabs;
+  }
+
+  if (tabs > 0) {
+    buffer_delete(
+        buffer, region_new((struct location){.line = line, .col = 0},
+                           (struct location){.line = line, .col = tab_width}));
+  }
+
+done:
+  if (txt.allocated) {
+    free(txt.text);
+  }
+}
+
 void buffer_push_undo_boundary(struct buffer *buffer) {
   undo_push_boundary(&buffer->undo,
                      (struct undo_boundary){.save_point = false});

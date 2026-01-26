@@ -774,6 +774,7 @@ BUFFER_VIEW_WRAPCMD(goto_beginning_of_line)
 BUFFER_VIEW_WRAPCMD(newline)
 BUFFER_VIEW_WRAPCMD(indent)
 BUFFER_VIEW_WRAPCMD(indent_alt)
+BUFFER_VIEW_WRAPCMD(unindent_line)
 BUFFER_VIEW_WRAPCMD(set_mark)
 BUFFER_VIEW_WRAPCMD(clear_mark)
 BUFFER_VIEW_WRAPCMD(copy)
@@ -872,6 +873,7 @@ void register_buffer_commands(struct commands *commands) {
       {.name = "newline", .fn = newline_cmd},
       {.name = "indent", .fn = indent_cmd},
       {.name = "indent-alt", .fn = indent_alt_cmd},
+      {.name = "unindent-line", .fn = unindent_line_cmd},
       {.name = "buffer-write-to-file", .fn = to_file_cmd},
       {.name = "set-mark", .fn = set_mark_cmd},
       {.name = "clear-mark", .fn = clear_mark_cmd},

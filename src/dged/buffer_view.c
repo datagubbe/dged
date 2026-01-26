@@ -5,6 +5,7 @@
 #include "buffer.h"
 #include "buffer_view.h"
 #include "display.h"
+#include "location.h"
 #include "settings.h"
 #include "timers.h"
 
@@ -132,11 +133,13 @@ void buffer_view_goto_beginning_of_line(struct buffer_view *view) {
 }
 
 void buffer_view_newline(struct buffer_view *view) {
+  buffer_push_undo_boundary(view->buffer);
   view->dot = buffer_newline(view->buffer, view->dot);
   buffer_push_undo_boundary(view->buffer);
 }
 
 void buffer_view_indent(struct buffer_view *view) {
+  buffer_push_undo_boundary(view->buffer);
   struct region reg = region_new(view->dot, view->mark);
   if (view->mark_set && region_has_size(reg)) {
     for (uint32_t line = reg.begin.line; line <= reg.end.line; ++line) {
@@ -151,9 +154,11 @@ void buffer_view_indent(struct buffer_view *view) {
   } else {
     view->dot = buffer_indent(view->buffer, view->dot);
   }
+  buffer_push_undo_boundary(view->buffer);
 }
 
 void buffer_view_indent_alt(struct buffer_view *view) {
+  buffer_push_undo_boundary(view->buffer);
   struct region reg = region_new(view->dot, view->mark);
   if (view->mark_set && region_has_size(reg)) {
     for (uint32_t line = reg.begin.line; line <= reg.end.line; ++line) {
@@ -168,6 +173,24 @@ void buffer_view_indent_alt(struct buffer_view *view) {
   } else {
     view->dot = buffer_indent_alt(view->buffer, view->dot);
   }
+  buffer_push_undo_boundary(view->buffer);
+}
+
+void buffer_view_unindent_line(struct buffer_view *view) {
+  buffer_push_undo_boundary(view->buffer);
+  struct region reg = region_new(view->dot, view->mark);
+  if (view->mark_set && region_has_size(reg)) {
+    for (uint32_t line = reg.begin.line; line <= reg.end.line; ++line) {
+      if (buffer_line_length(view->buffer, line) == 0) {
+        continue;
+      }
+
+      buffer_unindent_line(view->buffer, line);
+    }
+  } else {
+    buffer_unindent_line(view->buffer, view->dot.line);
+  }
+  buffer_push_undo_boundary(view->buffer);
 }
 
 void buffer_view_copy(struct buffer_view *view) {

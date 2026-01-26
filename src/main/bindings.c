@@ -57,7 +57,7 @@ void set_default_buffer_bindings(struct keymap *keymap) {
       BINDING(ENTER, "newline"),
       BINDING(NUMPAD_ENTER, "newline"),
       BINDING(TAB, "indent"),
-      BINDING(Spec, 'Z', "indent-alt"),
+      BINDING(Spec, 'Z', "unindent-line"),
 
       BINDING(Ctrl, 'K', "kill-line"),
       BINDING(DELETE, "delete-char"),
@@ -115,6 +115,9 @@ void init_bindings(void) {
       BINDING(None, 'b', "switch-buffer"),
       BINDING(None, 'k', "kill-buffer"),
       BINDING(Ctrl, 'B', "buffer-list"),
+
+      BINDING(None, '>', "indent-alt"),
+      BINDING(None, '<', "unindent-line"),
 
       BINDING(None, '0', "window-close"),
       BINDING(None, '1', "window-close-others"),

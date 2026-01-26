@@ -93,6 +93,8 @@ in the active buffer.
 Insert the opposite (w.r.t. indent) type of indentation in
 the active buffer. I.e. if the buffer type usually uses tabs,
 this inserts spaces.
+.It unindent-line
+Decrease the indent level of the current or selected lines.
 .It kill-line
 Remove all text following dot in the current line, placing it
 in the kill ring.
@@ -223,6 +225,14 @@ paste-older
 copy
 .It C-/
 undo
+.It TAB
+indent
+.It Shift-TAB
+unindent-line
+.It C-x >
+indent-alt
+.It C-x <
+unindent-line
 .Sh CONFIGURATION FILE
 The main configuration file,
 .Pa dged.toml
