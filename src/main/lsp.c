@@ -260,10 +260,9 @@ static void buffer_updated(struct buffer *buffer, void *userdata) {
     prop.type = TextProperty_Colors;
     uint32_t color = diag_severity_color(diag->severity);
     prop.data.colors = (struct text_property_colors){
-        .set_bg = true,
+        .set_bg = false,
         .set_fg = true,
-        .fg = Color_BrightWhite,
-        .bg = color,
+        .fg = color,
         .underline = true,
     };
 
