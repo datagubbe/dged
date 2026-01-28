@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "completion.h"
 #include "dged/binding.h"
 #include "dged/buffer.h"
 #include "dged/buffer_view.h"
@@ -55,8 +56,6 @@ static void highlight_match(struct buffer *buffer, struct region match,
                                .data.colors = (struct text_property_colors){
                                    .set_bg = true,
                                    .bg = 3,
-                                   .set_fg = true,
-                                   .fg = 0,
                                }});
 
   } else {
@@ -66,8 +65,6 @@ static void highlight_match(struct buffer *buffer, struct region match,
                                .data.colors = (struct text_property_colors){
                                    .set_bg = true,
                                    .bg = 6,
-                                   .set_fg = true,
-                                   .fg = 0,
                                }});
   }
 }
@@ -133,6 +130,7 @@ static void clear_replace(void) {
 }
 
 void abort_replace(void) {
+  resume_completion();
   clear_replace();
   minibuffer_abort_prompt();
 }
@@ -346,6 +344,8 @@ static int32_t replace(struct command_ctx ctx, int argc, const char *argv[]) {
       .current_match = 0,
       .window = ctx.active_window,
   };
+
+  pause_completion();
 
   // goto first match
   struct region *m = &g_current_replace.matches[0].region;
