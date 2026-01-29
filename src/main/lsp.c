@@ -244,6 +244,17 @@ static void buffer_reloaded(struct buffer *buffer, void *userdata) {
   }
 }
 
+struct diag_color {
+  struct region reg;
+  uint32_t color;
+};
+
+static bool diag_color_eq(struct diag_color *dc1, struct diag_color *dc2) {
+  return location_compare(dc1->reg.begin, dc2->reg.begin) == 0 &&
+         location_compare(dc1->reg.end, dc2->reg.end) == 0 &&
+         dc1->color == dc2->color;
+}
+
 static void buffer_updated(struct buffer *buffer, void *userdata) {
   struct lsp_server *server = (struct lsp_server *)userdata;
 
@@ -254,6 +265,13 @@ static void buffer_updated(struct buffer *buffer, void *userdata) {
   }
 
   buffer_clear_text_property_layer(buffer, diagnostics->layer);
+
+  if (VEC_EMPTY(&diagnostics->diagnostics)) {
+    return;
+  }
+
+  VEC(struct diag_color) seen_colorings;
+  VEC_INIT(&seen_colorings, VEC_SIZE(&diagnostics->diagnostics));
 
   VEC_FOR_EACH(&diagnostics->diagnostics, struct diagnostic * diag) {
     struct text_property prop;
@@ -269,8 +287,23 @@ static void buffer_updated(struct buffer *buffer, void *userdata) {
     struct region reg = region_new(
         diag->region.begin, buffer_previous_char(buffer, diag->region.end));
 
-    buffer_add_text_property_to_layer(buffer, reg.begin, reg.end, prop,
-                                      diagnostics->layer);
+    // check if we already colored this diagnostic
+    // this happens for example with infos, e.g. when
+    // multiple misspelled uses of a variable.
+    struct diag_color new = {.color = color, .reg = reg};
+    bool found = false;
+    VEC_FOR_EACH(&seen_colorings, struct diag_color * dc) {
+      if (diag_color_eq(dc, &new)) {
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) {
+      VEC_PUSH(&seen_colorings, new);
+      buffer_add_text_property_to_layer(buffer, reg.begin, reg.end, prop,
+                                        diagnostics->layer);
+    }
 
     if (window_buffer(windows_get_active()) == buffer) {
       struct buffer_view *bv = window_buffer_view(windows_get_active());
@@ -287,6 +320,8 @@ static void buffer_updated(struct buffer *buffer, void *userdata) {
       }
     }
   }
+
+  VEC_DESTROY(&seen_colorings);
 }
 
 static void format_on_save(struct buffer *buffer, struct lsp_server *server) {
