@@ -261,8 +261,13 @@ static bool diag_color_eq(struct diag_color *dc1, struct diag_color *dc2) {
          dc1->color == dc2->color;
 }
 
-static void buffer_updated(struct buffer *buffer, void *userdata) {
+static void buffer_render_hook(struct buffer *buffer, struct location origin,
+                               uint32_t width, uint32_t height,
+                               void *userdata) {
+  (void)width;
+
   struct lsp_server *server = (struct lsp_server *)userdata;
+  uint32_t last_line = origin.line + height;
 
   struct lsp_buffer_diagnostics *diagnostics =
       diagnostics_for_buffer(server->diagnostics, buffer);
@@ -280,6 +285,11 @@ static void buffer_updated(struct buffer *buffer, void *userdata) {
   VEC_INIT(&seen_colorings, VEC_SIZE(&diagnostics->diagnostics));
 
   VEC_FOR_EACH(&diagnostics->diagnostics, struct diagnostic * diag) {
+    if (diag->region.begin.line > last_line ||
+        diag->region.end.line < origin.line) {
+      continue;
+    }
+
     struct text_property prop;
     prop.type = TextProperty_Colors;
     uint32_t color = diag_severity_color(diag->severity);
@@ -548,7 +558,7 @@ static void lsp_buffer_initialized(struct lsp_server *server,
      */
     buffer_add_pre_delete_hook(buffer, buffer_text_deleted, server);
     buffer_add_insert_hook(buffer, buffer_text_inserted, server);
-    buffer_add_update_hook(buffer, buffer_updated, server);
+    buffer_add_render_hook(buffer, buffer_render_hook, server);
     buffer_add_pre_save_hook(buffer, buffer_pre_save, server);
     buffer_add_post_save_hook(buffer, buffer_post_save, server);
     buffer_add_reload_hook(buffer, buffer_reloaded, server);
