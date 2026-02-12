@@ -98,6 +98,13 @@ void resume(int sig) {
 void handle_crash(int sig) {
   (void)sig;
 
+  // make an effort to restore the
+  // terminal to its former glory
+  if (display != NULL) {
+    display_clear(display);
+    display_destroy(display);
+  }
+
   fprintf(stderr,
           "Crash encountered - waiting for debugger (PID: %d, cancel with "
           "C-c)...\n",
@@ -106,13 +113,6 @@ void handle_crash(int sig) {
   static bool waiting = true;
   while (waiting) {
     sleep(1);
-  }
-
-  // make an effort to restore the
-  // terminal to its former glory
-  if (display != NULL) {
-    display_clear(display);
-    display_destroy(display);
   }
 }
 

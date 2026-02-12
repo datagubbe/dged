@@ -157,8 +157,8 @@ int32_t lsp_goto_def_cmd(struct command_ctx ctx, int argc, const char **argv) {
   struct buffer *b = bv->buffer;
   struct lsp_server *server = lsp_server_for_buffer(b);
 
-  if (server == NULL) {
-    minibuffer_echo_timeout(2, "buffer %s does not have lsp enabled", b->name);
+  if (!lsp_server_active(server)) {
+    minibuffer_echo_timeout(2, "buffer %s does not have working lsp", b->name);
     return 0;
   }
 
@@ -189,8 +189,8 @@ int32_t lsp_goto_decl_cmd(struct command_ctx ctx, int argc, const char **argv) {
   struct buffer *b = bv->buffer;
   struct lsp_server *server = lsp_server_for_buffer(b);
 
-  if (server == NULL) {
-    minibuffer_echo_timeout(2, "buffer %s does not have lsp enabled", b->name);
+  if (!lsp_server_active(server)) {
+    minibuffer_echo_timeout(2, "buffer %s does not have working lsp", b->name);
     return 0;
   }
 
@@ -222,8 +222,8 @@ int32_t lsp_goto_impl_cmd(struct command_ctx ctx, int argc, const char **argv) {
   struct buffer *b = bv->buffer;
   struct lsp_server *server = lsp_server_for_buffer(b);
 
-  if (server == NULL) {
-    minibuffer_echo_timeout(2, "buffer %s does not have lsp enabled", b->name);
+  if (!lsp_server_active(server)) {
+    minibuffer_echo_timeout(2, "buffer %s does not have working lsp", b->name);
     return 0;
   }
 

@@ -76,7 +76,13 @@ struct lsp *lsp_backend(struct lsp_server *server) { return server->lsp; }
 struct lsp_server *lsp_server_for_lang_id(const char *id) {
   HASHMAP_GET(&g_lsp_data.clients, struct lsp_entry, id,
               struct lsp_server * server);
+
   return server;
+}
+
+bool lsp_server_active(struct lsp_server *server) {
+  return server != NULL && lsp_server_running(server->lsp) &&
+         server->initialized;
 }
 
 static uint32_t bytepos_to_column(struct text_chunk *text, uint32_t bytecol) {
@@ -702,6 +708,10 @@ static struct s8 lsp_modeline(struct buffer_view *view, void *userdata) {
     return s8("");
   }
 
+  if (!lsp_server_active(server)) {
+    return s8from_fmt("lsp: %s:broken", lsp_server_name(server->lsp));
+  }
+
   return s8from_fmt(
       "lsp: %s:%d", lsp_server_name(server->lsp),
       lsp_server_running(server->lsp) ? lsp_server_pid(server->lsp) : 0);
@@ -738,6 +748,7 @@ static int32_t lsp_restart_cmd(struct command_ctx ctx, int argc,
     return 0;
   }
 
+  message("restarting lsp server \"%s\"", lsp_server_name(server->lsp));
   lsp_restart_server(server->lsp);
   return 0;
 }
@@ -945,7 +956,7 @@ static void handle_notification(struct lsp_server *server,
 static void restart_if_needed(struct lsp_server *server) {
   // if we successfully initialized the server, we can be sure
   // it is up and running
-  if (lsp_server_running(server->lsp) && server->initialized) {
+  if (lsp_server_active(server)) {
     server->restarts = 0;
     return;
   }

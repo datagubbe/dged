@@ -5,7 +5,6 @@
 
 #include "json.h"
 #include "jsonrpc.h"
-#include "location.h"
 #include "s8.h"
 
 struct buffer;

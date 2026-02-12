@@ -95,8 +95,8 @@ int32_t lsp_help_cmd(struct command_ctx ctx, int argc, const char **argv) {
 
   struct buffer_view *bv = window_buffer_view(ctx.active_window);
   struct lsp_server *server = lsp_server_for_lang_id(bv->buffer->lang.id);
-  if (server == NULL) {
-    minibuffer_echo_timeout(4, "no lsp server associated with %s",
+  if (!lsp_server_active(server)) {
+    minibuffer_echo_timeout(4, "no working lsp server associated with %s",
                             bv->buffer->name);
     return 0;
   }

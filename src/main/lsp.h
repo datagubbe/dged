@@ -26,6 +26,7 @@ struct workspace_edit;
 struct lsp_server *lsp_server_for_lang_id(const char *id);
 struct lsp_server *lsp_server_for_buffer(struct buffer *buffer);
 
+bool lsp_server_active(struct lsp_server *server);
 void lsp_server_reload(struct lsp_server *server);
 void lsp_server_shutdown(struct lsp_server *server);
 struct lsp *lsp_backend(struct lsp_server *server);

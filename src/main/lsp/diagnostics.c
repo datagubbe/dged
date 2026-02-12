@@ -304,7 +304,9 @@ int32_t next_diagnostic_cmd(struct command_ctx ctx, int argc,
   struct buffer_view *bv = window_buffer_view(windows_get_active());
 
   struct lsp_server *server = lsp_server_for_lang_id(bv->buffer->lang.id);
-  if (server == NULL) {
+  if (!lsp_server_active(server)) {
+    minibuffer_echo_timeout(2, "no working lsp for buffer %s",
+                            bv->buffer->name);
     return 0;
   }
 
@@ -339,7 +341,9 @@ int32_t prev_diagnostic_cmd(struct command_ctx ctx, int argc,
   struct buffer_view *bv = window_buffer_view(windows_get_active());
 
   struct lsp_server *server = lsp_server_for_lang_id(bv->buffer->lang.id);
-  if (server == NULL) {
+  if (!lsp_server_active(server)) {
+    minibuffer_echo_timeout(2, "no working lsp for buffer %s",
+                            bv->buffer->name);
     return 0;
   }
 
@@ -373,7 +377,7 @@ int32_t diagnostics_cmd(struct command_ctx ctx, int argc, const char **argv) {
   struct buffer *b = window_buffer(ctx.active_window);
   struct lsp_server *server = lsp_server_for_buffer(b);
 
-  if (server == NULL) {
+  if (!lsp_server_active(server)) {
     minibuffer_echo_timeout(2, "buffer %s does not have lsp enabled", b->name);
     return 0;
   }
