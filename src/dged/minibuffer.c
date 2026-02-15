@@ -89,17 +89,34 @@ int32_t minibuffer_execute(void) {
       argv[i] = (char *)c->saved_argv[i];
     }
     argv[c->saved_argc] = l;
-    uint32_t argc = c->saved_argc + (line.nbytes > 0 ? 1 : 0);
+    uint32_t argc = c->saved_argc;
 
-    // split on ' '
-    for (uint32_t bytei = 0; bytei < line.nbytes; ++bytei) {
-      uint8_t byte = line.text[bytei];
-      if (byte == ' ' && argc < 64) {
-        l[bytei] = '\0';
-        argv[argc] = l + bytei + 1;
-        ++argc;
+    if (!c->skip_splitting) {
+
+      // split on ' ' and handle quoting
+      bool in_quote = false;
+      for (uint32_t bytei = 0; bytei < line.nbytes; ++bytei) {
+        uint8_t byte = line.text[bytei];
+        if (byte == '"' || byte == '\'') {
+          in_quote = !in_quote;
+
+          l[bytei] = '\0';
+          if (in_quote) {
+            argv[argc] = l + bytei + 1;
+          }
+
+          continue;
+        }
+
+        if (!in_quote && byte == ' ' && argc < 64) {
+          l[bytei] = '\0';
+          ++argc;
+          argv[argc] = l + bytei + 1;
+        }
       }
     }
+
+    argc += line.nbytes > 0 ? 1 : 0;
 
     minibuffer_abort_prompt_internal(false);
     int32_t res = execute_command(c->self, c->commands, c->active_window,

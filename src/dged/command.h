@@ -5,6 +5,8 @@
  * Commands and command registries
  */
 #include "hashmap.h"
+
+#include <stdbool.h>
 #include <stdint.h>
 
 struct buffer;
@@ -48,6 +50,8 @@ struct command_ctx {
   const char *saved_argv[64];
 
   int saved_argc;
+
+  bool skip_splitting;
 };
 
 /** A command function callback which holds the implementation of a command */

@@ -7,6 +7,7 @@
 #include "dged/buffer.h"
 #include "dged/buffer_view.h"
 #include "dged/command.h"
+#include "dged/location.h"
 #include "dged/minibuffer.h"
 #include "dged/s8.h"
 #include "dged/window.h"
@@ -308,33 +309,66 @@ static int cmp_matches(const void *m1, const void *m2) {
 
 static int32_t replace(struct command_ctx ctx, int argc, const char *argv[]) {
   if (argc == 0) {
+    ctx.skip_splitting = true;
     return minibuffer_prompt(ctx, "find: ");
   }
 
   if (argc == 1) {
     command_ctx_push_arg(&ctx, argv[0]);
+    ctx.skip_splitting = true;
     return minibuffer_prompt(ctx, "replace with: ");
   }
 
   struct buffer_view *buffer_view = window_buffer_view(windows_get_active());
+  struct region reg = region_new(buffer_view->dot, buffer_view->mark);
   struct region *matches = NULL;
   uint32_t nmatches = 0;
   buffer_find(buffer_view->buffer, argv[0], &matches, &nmatches);
 
   if (nmatches == 0) {
-    minibuffer_echo_timeout(4, "%s not found", argv[0]);
+    if (buffer_view->mark_set && region_has_size(reg)) {
+      buffer_view_clear_mark(buffer_view);
+      minibuffer_echo_timeout(4, "%s not found in region", argv[0]);
+    } else {
+      minibuffer_echo_timeout(4, "%s not found", argv[0]);
+    }
     free(matches);
     return 0;
   }
 
-  // sort matches
   qsort(matches, nmatches, sizeof(struct region), cmp_matches);
-
   struct match *match_states = calloc(nmatches, sizeof(struct match));
-  for (uint32_t matchi = 0; matchi < nmatches; ++matchi) {
-    match_states[matchi].region = matches[matchi];
-    match_states[matchi].state = Todo;
+
+  if (buffer_view->mark_set && region_has_size(reg)) {
+    buffer_view_clear_mark(buffer_view);
+    size_t nmatches_in_reg = 0;
+    for (uint32_t matchi = 0; matchi < nmatches; ++matchi) {
+      struct region matchreg = matches[matchi];
+      if (matchreg.begin.line > reg.end.line ||
+          matchreg.begin.line < reg.begin.line) {
+        continue;
+      }
+
+      match_states[nmatches_in_reg].region = matches[matchi];
+      match_states[nmatches_in_reg].state = Todo;
+      ++nmatches_in_reg;
+    }
+
+    nmatches = nmatches_in_reg;
+
+    if (nmatches == 0) {
+      minibuffer_echo_timeout(4, "%s not found in region", argv[0]);
+      free(matches);
+      free(match_states);
+      return 0;
+    }
+  } else {
+    for (uint32_t matchi = 0; matchi < nmatches; ++matchi) {
+      match_states[matchi].region = matches[matchi];
+      match_states[matchi].state = Todo;
+    }
   }
+
   free(matches);
 
   g_current_replace = (struct replace){
