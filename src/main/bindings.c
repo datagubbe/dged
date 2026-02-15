@@ -189,6 +189,7 @@ void buffer_remove_keymap(buffer_keymap_id id) {
       VEC_SWAP(&g_buffer_keymaps, i, VEC_SIZE(&g_buffer_keymaps) - 1);
       VEC_POP(&g_buffer_keymaps, struct buffer_keymap removed);
       keymap_destroy(&removed.keymap);
+      return;
     }
   }
 }
