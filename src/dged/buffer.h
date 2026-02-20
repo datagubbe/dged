@@ -70,12 +70,16 @@ struct buffer {
   /** If true, text properties are not immediate */
   bool retain_properties;
 
+  /** When true, this buffer needs to be re-rendered. */
   bool needs_render;
 
+  /** Has this buffer been updated? */
   bool updated;
 
+  /** Is the buffer backed by a file? */
   bool file_backed;
 
+  /** Bulk additions prevents callbacks from being called. */
   bool bulk_adding;
 
   /**

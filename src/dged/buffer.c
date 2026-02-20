@@ -23,18 +23,24 @@
 #include <unistd.h>
 #include <wchar.h>
 
+struct buffer_location {
+  struct buffer *buffer;
+  struct location at;
+  bool valid;
+};
+
 #define KILL_RING_SZ 64
 static struct kill_ring {
   struct text_chunk buffer[KILL_RING_SZ];
-  struct location last_paste;
-  bool paste_up_to_date;
+
+  struct buffer_location last_paste;
+
   uint32_t curr_idx;
   uint32_t paste_idx;
 } g_kill_ring = {.curr_idx = 0,
                  .buffer = {{0}},
-                 .last_paste = {0},
-                 .paste_idx = 0,
-                 .paste_up_to_date = false};
+                 .last_paste = {.valid = false},
+                 .paste_idx = 0};
 
 HOOK_IMPL(create, create_hook_cb);
 HOOK_IMPL(destroy, destroy_hook_cb);
@@ -575,7 +581,9 @@ struct location buffer_add(struct buffer *buffer, struct location at,
   buffer->needs_render = true;
 
   // invalidate last paste
-  g_kill_ring.paste_up_to_date = false;
+  if (g_kill_ring.last_paste.buffer == buffer) {
+    g_kill_ring.last_paste.valid = false;
+  }
 
   struct location initial = at;
   struct location final = at;
@@ -1165,9 +1173,10 @@ static struct location paste(struct buffer *buffer, struct location at,
   struct location new_loc = at;
   struct text_chunk *curr = &g_kill_ring.buffer[idx];
   if (curr->text != NULL) {
-    g_kill_ring.last_paste = at;
+    g_kill_ring.last_paste.at = at;
+    g_kill_ring.last_paste.buffer = buffer;
     new_loc = buffer_add(buffer, at, curr->text, curr->nbytes);
-    g_kill_ring.paste_up_to_date = true;
+    g_kill_ring.last_paste.valid = true;
   }
 
   return new_loc;
@@ -1179,19 +1188,17 @@ struct location buffer_paste(struct buffer *buffer, struct location at) {
 }
 
 struct location buffer_paste_older(struct buffer *buffer, struct location at) {
-  if (g_kill_ring.paste_up_to_date) {
+  if (buffer == g_kill_ring.last_paste.buffer && g_kill_ring.last_paste.valid) {
 
     // remove previous paste
-    buffer_delete(buffer, region_new(g_kill_ring.last_paste, at));
+    buffer_delete(buffer, region_new(g_kill_ring.last_paste.at, at));
+
+    g_kill_ring.paste_idx = g_kill_ring.paste_idx > 0
+                                ? g_kill_ring.paste_idx - 1
+                                : g_kill_ring.curr_idx;
 
     // paste older
-    if (g_kill_ring.paste_idx > 0) {
-      --g_kill_ring.paste_idx;
-    } else {
-      g_kill_ring.paste_idx = g_kill_ring.curr_idx;
-    }
-
-    return paste(buffer, g_kill_ring.last_paste, g_kill_ring.paste_idx);
+    return paste(buffer, g_kill_ring.last_paste.at, g_kill_ring.paste_idx);
 
   } else {
     return buffer_paste(buffer, at);
