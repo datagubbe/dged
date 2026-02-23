@@ -645,3 +645,21 @@ void display_end_render(struct display *display) {
   end_update(display);
   flush_outbuf(display);
 }
+
+void display_to_clipboard(struct display *display, struct s8 content) {
+  putch(display, ESC);
+  putch(display, ']');
+  putch(display, '5');
+  putch(display, '2');
+  putch(display, ';');
+  putch(display, 'c');
+  putch(display, ';');
+
+  struct s8 b64 = s8base64enc(content);
+  putchars(display, b64.s, b64.l);
+  s8delete(b64);
+
+  putch(display, ESC);
+  putch(display, '\\');
+  flush_outbuf(display);
+}

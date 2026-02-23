@@ -33,4 +33,6 @@ struct s8 s8dup(struct s8 s);
 bool s8empty(struct s8 s);
 bool s8onlyws(struct s8 s);
 
+struct s8 s8base64enc(struct s8 s);
+
 #endif

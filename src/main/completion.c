@@ -125,7 +125,7 @@ static int32_t scroll_up_completions(struct command_ctx ctx, int argc,
   struct command *command = lookup_command(ctx.commands, "scroll-up");
   if (command != NULL) {
     return execute_command(command, ctx.commands, popup_window(), ctx.buffers,
-                           argc, argv);
+                           ctx.display, argc, argv);
   }
 
   return 0;
@@ -140,7 +140,7 @@ static int32_t scroll_down_completions(struct command_ctx ctx, int argc,
   struct command *command = lookup_command(ctx.commands, "scroll-down");
   if (command != NULL) {
     return execute_command(command, ctx.commands, popup_window(), ctx.buffers,
-                           argc, argv);
+                           ctx.display, argc, argv);
   }
 
   return 0;
@@ -155,7 +155,7 @@ static int32_t goto_first_completion(struct command_ctx ctx, int argc,
   struct command *command = lookup_command(ctx.commands, "goto-beginning");
   if (command != NULL) {
     return execute_command(command, ctx.commands, popup_window(), ctx.buffers,
-                           argc, argv);
+                           ctx.display, argc, argv);
   }
 
   return 0;
@@ -170,7 +170,7 @@ static int32_t goto_last_completion(struct command_ctx ctx, int argc,
   struct command *command = lookup_command(ctx.commands, "goto-end");
   if (command != NULL) {
     return execute_command(command, ctx.commands, popup_window(), ctx.buffers,
-                           argc, argv);
+                           ctx.display, argc, argv);
   }
 
   return 0;

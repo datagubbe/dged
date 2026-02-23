@@ -222,3 +222,35 @@ ssize_t s8find(struct s8 s, uint8_t c) {
 
   return -1;
 }
+
+static const char base64_enc_tbl[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+struct s8 s8base64enc(struct s8 s) {
+  struct s8 output = {.l = 0, .s = 0};
+  size_t output_length = 4 * ((s.l + 2) / 3);
+  output.s = calloc(1, output_length + 1);
+  if (output.s == NULL) {
+    return output;
+  }
+
+  output.l = output_length;
+
+  for (size_t i = 0, j = 0; i < s.l;) {
+    uint32_t octet_a = i < s.l ? s.s[i] : 0;
+    ++i;
+    uint32_t octet_b = i < s.l ? s.s[i] : 0;
+    ++i;
+    uint32_t octet_c = i < s.l ? s.s[i] : 0;
+    ++i;
+
+    uint32_t triple = (octet_a << 16) + (octet_b << 8) + octet_c;
+
+    output.s[j++] = base64_enc_tbl[(triple >> 18) & 0x3F];
+    output.s[j++] = base64_enc_tbl[(triple >> 12) & 0x3F];
+    output.s[j++] = (i > s.l + 1) ? '=' : base64_enc_tbl[(triple >> 6) & 0x3F];
+    output.s[j++] = (i > s.l) ? '=' : base64_enc_tbl[triple & 0x3F];
+  }
+
+  return output;
+}

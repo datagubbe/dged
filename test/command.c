@@ -93,7 +93,7 @@ void test_execute_command(void) {
   struct commands cmds = single_fake_command("fake");
   struct command *cmd = lookup_command(&cmds, "fake");
 
-  int32_t res = execute_command(cmd, &cmds, NULL, NULL, 0, NULL);
+  int32_t res = execute_command(cmd, &cmds, NULL, NULL, NULL, 0, NULL);
   ASSERT(res == 0, "Expected to be able to execute command successfully");
 
   register_command(&cmds, (struct command){
@@ -102,7 +102,7 @@ void test_execute_command(void) {
                               .userdata = NULL,
                           });
   struct command *fail_cmd = lookup_command(&cmds, "fejl");
-  int32_t res2 = execute_command(fail_cmd, &cmds, NULL, NULL, 0, NULL);
+  int32_t res2 = execute_command(fail_cmd, &cmds, NULL, NULL, NULL, 0, NULL);
   ASSERT(res2 != 0, "Expected failing command to fail");
 
   command_registry_destroy(&cmds);

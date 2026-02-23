@@ -14,10 +14,12 @@
 #include "dged/buffers.h"
 #include "dged/command.h"
 #include "dged/display.h"
+#include "dged/location.h"
 #include "dged/minibuffer.h"
 #include "dged/path.h"
 #include "dged/s8.h"
 #include "dged/settings.h"
+#include "dged/text.h"
 #include "dged/vec.h"
 #include "dired.h"
 #if defined(SYNTAX_ENABLE)
@@ -109,7 +111,7 @@ int32_t run_interactive(struct command_ctx ctx, int argc, const char *argv[]) {
   struct command *cmd = lookup_command(ctx.commands, argv[0]);
   if (cmd != NULL) {
     return execute_command(cmd, ctx.commands, ctx.active_window, ctx.buffers,
-                           argc - 1, argv + 1);
+                           ctx.display, argc - 1, argv + 1);
   } else {
     minibuffer_echo_timeout(4, "command %s not found", argv[0]);
     return 11;
@@ -168,7 +170,8 @@ int32_t switch_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
   disable_completion(minibuffer_buffer());
 
   return execute_command(&do_switch_buffer_command, ctx.commands,
-                         ctx.active_window, ctx.buffers, argc, argv);
+                         ctx.active_window, ctx.buffers, ctx.display, argc,
+                         argv);
 }
 
 int32_t do_kill_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
@@ -212,7 +215,8 @@ int32_t kill_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
   disable_completion(minibuffer_buffer());
 
   return execute_command(&do_switch_buffer_command, ctx.commands,
-                         ctx.active_window, ctx.buffers, argc, argv);
+                         ctx.active_window, ctx.buffers, ctx.display, argc,
+                         argv);
 }
 
 static struct location draw_timer_value(struct buffer *buffer, double value,
@@ -389,7 +393,8 @@ int32_t buflist_visit_cmd(struct command_ctx ctx, int argc, const char **argv) {
 int32_t buflist_close_cmd(struct command_ctx ctx, int argc,
                           const char *argv[]) {
   return execute_command(&do_switch_buffer_command, ctx.commands,
-                         ctx.active_window, ctx.buffers, argc, argv);
+                         ctx.active_window, ctx.buffers, ctx.display, argc,
+                         argv);
 }
 
 void buflist_refresh(struct buffer *buffer, void *userdata) {
@@ -439,7 +444,7 @@ int32_t buflist_kill_cmd(struct command_ctx ctx, int argc, const char *argv[]) {
     buffers_remove(ctx.buffers, bufname);
     free(bufname);
     execute_command(&buflist_refresh_command, ctx.commands, ctx.active_window,
-                    ctx.buffers, 0, NULL);
+                    ctx.buffers, ctx.display, 0, NULL);
   }
 
   return 0;
@@ -468,7 +473,7 @@ int32_t buflist_save_cmd(struct command_ctx ctx, int argc, const char *argv[]) {
     }
     free(bufname);
     execute_command(&buflist_refresh_command, ctx.commands, ctx.active_window,
-                    ctx.buffers, 0, NULL);
+                    ctx.buffers, ctx.display, 0, NULL);
   }
 
   return 0;
@@ -572,7 +577,7 @@ static int32_t open_file(struct command_ctx ctx, const char *pth) {
     if (cmd != NULL) {
       const char *argv[] = {pth};
       return execute_command(cmd, ctx.commands, ctx.active_window, ctx.buffers,
-                             1, argv);
+                             ctx.display, 1, argv);
     }
 
     minibuffer_echo_timeout(4, "dired is not supported");
@@ -777,13 +782,35 @@ BUFFER_VIEW_WRAPCMD(indent_alt)
 BUFFER_VIEW_WRAPCMD(unindent_line)
 BUFFER_VIEW_WRAPCMD(set_mark)
 BUFFER_VIEW_WRAPCMD(clear_mark)
-BUFFER_VIEW_WRAPCMD(copy)
 BUFFER_VIEW_WRAPCMD(cut)
 BUFFER_VIEW_WRAPCMD(paste)
 BUFFER_VIEW_WRAPCMD(paste_older)
 BUFFER_VIEW_WRAPCMD(goto_beginning)
 BUFFER_VIEW_WRAPCMD(goto_end)
 BUFFER_VIEW_WRAPCMD(sort_lines)
+
+static int32_t copy_cmd(struct command_ctx ctx, int argc, const char *argv[]) {
+  (void)argc;
+  (void)argv;
+  struct buffer_view *bv = window_buffer_view(ctx.active_window);
+  struct region reg = region_new(bv->dot, bv->mark);
+  if (bv->mark_set && region_has_size(reg)) {
+    /* send the copied text to the display. Display
+     * in this case can mean X11/Wayland or terminal.
+     * In the case of the terminal it uses OSC52.
+     */
+    struct text_chunk txt = buffer_region(bv->buffer, reg);
+
+    display_to_clipboard(ctx.display,
+                         (struct s8){.s = txt.text, .l = txt.nbytes});
+    if (txt.allocated) {
+      free(txt.text);
+    }
+  }
+
+  buffer_view_copy(bv);
+  return 0;
+}
 
 static int32_t undo_cmd(struct command_ctx ctx, int argc, const char *argv[]) {
   (void)argc;

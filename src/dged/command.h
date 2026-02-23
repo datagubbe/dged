@@ -12,6 +12,7 @@
 struct buffer;
 struct buffers;
 struct window;
+struct display;
 
 /**
  * Execution context for a command
@@ -29,6 +30,11 @@ struct command_ctx {
    * The currently active window.
    */
   struct window *active_window;
+
+  /**
+   * The display in use.
+   */
+  struct display *display;
 
   /**
    * A registry of available commands.
@@ -145,6 +151,7 @@ void register_commands(struct commands *command_list, struct command *commands,
  * well.
  * @param[in] buffers The current list of buffers for context. Can be used for
  * example to create a buffer list.
+ * @param [in] display The current display.
  * @param[in] argc Number of arguments to the command.
  * @param[in] argv The arguments to the command.
  *
@@ -153,7 +160,7 @@ void register_commands(struct commands *command_list, struct command *commands,
  */
 int32_t execute_command(struct command *command, struct commands *commands,
                         struct window *active_window, struct buffers *buffers,
-                        int argc, const char *argv[]);
+                        struct display *display, int argc, const char *argv[]);
 
 /**
  * Hash the name of a command.

@@ -419,7 +419,8 @@ int main(int argc, char *argv[]) {
     struct command *cmd = lookup_command(&commands, "find-file");
     if (cmd != NULL) {
       const char *av[] = {filename};
-      execute_command(cmd, &commands, windows_get_active(), &buflist, 1, av);
+      execute_command(cmd, &commands, windows_get_active(), &buflist, display,
+                      1, av);
     }
     free((void *)filename);
   }
@@ -508,8 +509,9 @@ int main(int argc, char *argv[]) {
             minibuffer_echo_timeout(
                 4, "binding found for key %s but not command", k);
           } else {
-            int32_t ec = execute_command(res.data.command, &commands,
-                                         active_window, &buflist, 0, NULL);
+            int32_t ec =
+                execute_command(res.data.command, &commands, active_window,
+                                &buflist, display, 0, NULL);
             if (ec != 0 && !minibuffer_displaying()) {
               minibuffer_echo_timeout(4, "command %s failed with exit code %d",
                                       res.data.command->name, ec);

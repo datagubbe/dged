@@ -119,8 +119,9 @@ int32_t minibuffer_execute(void) {
     argc += line.nbytes > 0 ? 1 : 0;
 
     minibuffer_abort_prompt_internal(false);
-    int32_t res = execute_command(c->self, c->commands, c->active_window,
-                                  c->buffers, argc, (const char **)argv);
+    int32_t res =
+        execute_command(c->self, c->commands, c->active_window, c->buffers,
+                        c->display, argc, (const char **)argv);
 
     free(l);
 

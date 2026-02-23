@@ -261,7 +261,7 @@ static int32_t handle_lsp_goto_key(struct command_ctx ctx, int argc,
   }
 
   return execute_command(cmd, ctx.commands, windows_get_active(), ctx.buffers,
-                         0, NULL);
+                         ctx.display, 0, NULL);
 }
 
 COMMAND_FN("lsp-goto-definition", goto_d_pressed, handle_lsp_goto_key,

@@ -2,6 +2,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "s8.h"
+
 struct display;
 
 struct render_command;
@@ -102,6 +104,11 @@ void display_render(struct display *display, struct command_list *command_list);
  * @param display The display to end rendering on.
  */
 void display_end_render(struct display *display);
+
+/**
+ * Put a string on the clipboard.
+ */
+void display_to_clipboard(struct display *display, struct s8 content);
 
 /**
  * Create a new command list.
