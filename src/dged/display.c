@@ -200,7 +200,7 @@ bool display_initialize(struct display *display) {
   display->orig_term = orig_term;
 
   // set terminal to raw mode
-  struct termios term = {0};
+  struct termios term = orig_term;
   cfmakeraw(&term);
 
   if (tcsetattr(0, TCSADRAIN, &term) < 0) {
