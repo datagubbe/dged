@@ -389,6 +389,11 @@ int32_t diagnostics_cmd(struct command_ctx ctx, int argc, const char **argv) {
 
   struct lsp_buffer_diagnostics *d =
       diagnostics_for_buffer(lsp_diagnostics_from_server(server), b);
+  if (d == NULL) {
+    minibuffer_echo_timeout(2, "no diagnostics for buffer %s", b->name);
+    return 0;
+  }
+
   struct buffer *db =
       update_diagnostics_buffer(server, ctx.buffers, d->diagnostics, b);
   window_set_buffer(ctx.active_window, db);
