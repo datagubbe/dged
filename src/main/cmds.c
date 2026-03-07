@@ -184,12 +184,12 @@ int32_t do_kill_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
     bufname = argv[0];
   }
 
-  if (buffers_remove(ctx.buffers, bufname)) {
-    return 0;
-  } else {
+  if (!buffers_remove(ctx.buffers, bufname)) {
     minibuffer_echo_timeout(4, "buffer %s not found", bufname);
     return 1;
   }
+
+  return 0;
 }
 
 COMMAND_FN("do-kill-buffer", do_kill_buffer, do_kill_buffer, NULL)

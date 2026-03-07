@@ -58,15 +58,15 @@ void *frame_alloc(size_t sz) {
 
 static bool running = true;
 
-void terminate(void) { running = false; }
-void terminate2(int sig) {
+static void terminate(void) { running = false; }
+static void terminate2(int sig) {
   (void)sig;
   running = false;
 }
 
 static struct display *display = NULL;
 static bool display_resized = false;
-void resized(int sig) {
+static void resized(int sig) {
   (void)sig;
   if (display != NULL) {
     display_resize(display);
@@ -76,7 +76,7 @@ void resized(int sig) {
   signal(SIGWINCH, resized);
 }
 
-void terminal_stop(int sig) {
+static void terminal_stop(int sig) {
   (void)sig;
   if (display != NULL) {
     display_clear(display);
@@ -88,14 +88,14 @@ void terminal_stop(int sig) {
 #endif
 }
 
-void suspend() { terminal_stop(0); }
+static void suspend() { terminal_stop(0); }
 
-void resume(int sig) {
+static void resume(int sig) {
   (void)sig;
   display_initialize(display);
 }
 
-void handle_crash(int sig) {
+static void handle_crash(int sig) {
   (void)sig;
 
   // make an effort to restore the
@@ -114,6 +114,11 @@ void handle_crash(int sig) {
   while (waiting) {
     sleep(1);
   }
+}
+
+static void cleanup_buffer_bindings(struct buffer *buffer, void *userdata) {
+  (void)userdata;
+  buffer_remove_keymaps(buffer);
 }
 
 #define INVALID_WATCH (uint32_t) - 1
@@ -322,6 +327,7 @@ int main(int argc, char *argv[]) {
   minibuffer_init(&minibuffer, &buflist);
 
   buffers_add_add_hook(&buflist, watch_file, (void *)reactor);
+  buffers_add_remove_hook(&buflist, cleanup_buffer_bindings, NULL);
 
   init_bindings();
 

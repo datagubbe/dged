@@ -30,6 +30,8 @@ struct choice_buffer {
 
   struct command enter_pressed;
   struct command q_pressed;
+
+  buffer_keymap_id keymap_id;
 };
 
 static void delete_choice_buffer(struct choice_buffer *buffer,
@@ -126,7 +128,7 @@ choice_buffer_create(struct s8 title, struct buffers *buffers,
 
   struct keymap km = keymap_create("choice_buffer", 8);
   keymap_bind_keys(&km, bindings, sizeof(bindings) / sizeof(bindings[0]));
-  buffer_add_keymap(b->buffer, km);
+  b->keymap_id = buffer_add_keymap(b->buffer, km);
 
   struct location begin = buffer_end(b->buffer);
   buffer_add(b->buffer, buffer_end(b->buffer), title.s, title.l);
@@ -195,6 +197,7 @@ static void delete_choice_buffer(struct choice_buffer *buffer,
   if (delete_underlying) {
     buffer_remove_destroy_hook(buffer->buffer, buffer->buffer_removed_hook,
                                NULL);
+    buffer_remove_keymap(buffer->keymap_id);
     buffers_remove(buffer->buffers, buffer->buffer->name);
   }
 

@@ -388,6 +388,14 @@ static void on_buffer_delete(struct buffer *buffer, struct edit_location edit,
   on_buffer_changed(buffer, edit, true, userdata);
 }
 
+static void on_buffer_destroy(struct buffer *buffer,
+                              struct completion_state *state) {
+  (void)state;
+
+  // remove the buffer from our state
+  disable_completion(buffer);
+}
+
 static void completions_buffer_deleted(struct buffer *buffer, void *userdata) {
   (void)buffer;
   struct completion_state *state = (struct completion_state *)userdata;
@@ -440,6 +448,9 @@ void add_completion_providers(struct buffer *source,
         buffer_add_insert_hook(source, on_buffer_insert, &g_state);
     uint32_t remove_hook_id =
         buffer_add_delete_hook(source, on_buffer_delete, &g_state);
+
+    buffer_add_destroy_hook(source, (destroy_hook_cb)on_buffer_destroy,
+                            &g_state);
 
     new_comp->buffer = source;
     new_comp->insert_hook_id = insert_hook_id;

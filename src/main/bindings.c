@@ -19,7 +19,9 @@ struct buffer_keymap {
   struct keymap keymap;
 };
 
-static VEC(struct buffer_keymap) g_buffer_keymaps;
+typedef VEC(struct buffer_keymap) buffer_keymap_vec;
+
+static buffer_keymap_vec g_buffer_keymaps;
 static buffer_keymap_id g_current_keymap_id;
 
 struct keymap *buffer_default_keymap(void) { return &g_buffer_default_keymap; }
@@ -192,6 +194,19 @@ void buffer_remove_keymap(buffer_keymap_id id) {
       return;
     }
   }
+}
+
+void buffer_remove_keymaps(struct buffer *buffer) {
+  buffer_keymap_vec new;
+  VEC_INIT(&new, VEC_SIZE(&g_buffer_keymaps));
+  VEC_FOR_EACH_INDEXED(&g_buffer_keymaps, struct buffer_keymap * km, i) {
+    if (km->buffer != buffer) {
+      VEC_PUSH(&new, *km);
+    }
+  }
+
+  VEC_DESTROY(&g_buffer_keymaps);
+  g_buffer_keymaps = new;
 }
 
 uint32_t buffer_keymaps(struct buffer *buffer, struct keymap *keymaps[],
