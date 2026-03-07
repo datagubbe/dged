@@ -99,7 +99,7 @@ struct s8 unescape_json_string(struct s8 input) {
   }
 
   escape = false;
-  uint8_t *buf = calloc(new_size, 1);
+  uint8_t *buf = calloc(new_size + 1, 1);
   size_t bufi = 0;
   for (size_t bi = 0; bi < input.l; ++bi) {
     uint8_t b = input.s[bi];
@@ -152,6 +152,8 @@ struct s8 unescape_json_string(struct s8 input) {
     bufi += skip;
   }
 
+  buf[new_size] = '\0';
+
   return (struct s8){
       .s = buf,
       .l = new_size,
@@ -177,7 +179,7 @@ struct s8 escape_json_string(struct s8 input) {
     }
   }
 
-  uint8_t *buf = calloc(new_size, 1);
+  uint8_t *buf = calloc(new_size + 1, 1);
   size_t bufi = 0;
   for (size_t bi = 0; bi < input.l; ++bi) {
     uint8_t b = input.s[bi];
@@ -222,6 +224,8 @@ struct s8 escape_json_string(struct s8 input) {
       ++bufi;
     }
   }
+
+  buf[new_size] = '\0';
 
   return (struct s8){
       .s = buf,

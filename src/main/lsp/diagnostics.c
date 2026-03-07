@@ -9,6 +9,7 @@
 #include "dged/location.h"
 #include "dged/lsp.h"
 #include "dged/minibuffer.h"
+#include "dged/s8.h"
 #include "dged/vec.h"
 #include "main/bindings.h"
 #include "main/lsp.h"
@@ -149,7 +150,6 @@ static struct buffer *update_diagnostics_buffer(struct lsp_server *server,
                                                 struct buffers *buffers,
                                                 diagnostic_vec diagnostics,
                                                 struct buffer *buffer) {
-  char buf[2048];
   struct buffer *db = buffers_find(buffers, DIAGNOSTIC_BUFNAME);
   if (db == NULL) {
     struct buffer buf = buffer_create(DIAGNOSTIC_BUFNAME);
@@ -181,36 +181,38 @@ static struct buffer *update_diagnostics_buffer(struct lsp_server *server,
   buffer_clear_text_properties(db);
 
   g_active_diagnostic.buffer = buffer;
-  ssize_t len = snprintf(buf, 2048, "Diagnostics for %s:\n\n", buffer->name);
-  if (len != -1) {
-    buffer_add(db, buffer_end(db), (uint8_t *)buf, len);
+  struct s8 header = s8from_fmt("Diagnostics for %s:\n\n", buffer->name);
+  if (header.l > 0) {
+    buffer_add(db, buffer_end(db), header.s, header.l);
     buffer_add_text_property(
         db, (struct location){.line = 0, .col = 0},
         (struct location){.line = 1, .col = 0},
         (struct text_property){.type = TextProperty_Colors,
                                .data.colors.underline = true});
   }
+  s8delete(header);
 
   VEC_DESTROY(&g_active_diagnostic.diag_regions);
   VEC_INIT(&g_active_diagnostic.diag_regions, VEC_SIZE(&diagnostics));
   VEC_FOR_EACH(&diagnostics, struct diagnostic * diag) {
     struct location start = buffer_end(db);
-    char src[128];
-    size_t srclen = snprintf(src, 128, "%.*s%s", diag->source.l, diag->source.s,
-                             diag->source.l > 0 ? ": " : "");
+
+    struct s8 src = s8from_fmt("%s%s", s8ascstr(diag->source),
+                               diag->source.l > 0 ? ": " : "");
+
     const char *severity_str = diag_severity_to_str(diag->severity);
     size_t severity_str_len = strlen(severity_str);
     struct region reg = lsp_range_to_coordinates(server, buffer, diag->region);
-    len = snprintf(buf, 2048,
-                   "%s%s [%d, %d]: %.*s\n-------------------------------", src,
-                   severity_str, reg.begin.line + 1, reg.begin.col,
-                   diag->message.l, diag->message.s);
+    struct s8 text =
+        s8from_fmt("%s%s [%d, %d]: %s\n-------------------------------",
+                   s8ascstr(src), severity_str, reg.begin.line + 1,
+                   reg.begin.col, s8ascstr(diag->message));
 
-    if (len != -1) {
-      buffer_add(db, buffer_end(db), (uint8_t *)buf, len);
+    if (text.l > 0) {
+      buffer_add(db, buffer_end(db), text.s, text.l);
 
       struct location srcend = start;
-      srcend.col += srclen - 3;
+      srcend.col += src.l - 3;
       buffer_add_text_property(
           db, start, srcend,
           (struct text_property){.type = TextProperty_Colors,
@@ -218,7 +220,7 @@ static struct buffer *update_diagnostics_buffer(struct lsp_server *server,
 
       uint32_t color = diag_severity_color(diag->severity);
       struct location sevstart = start;
-      sevstart.col += srclen;
+      sevstart.col += src.l;
       struct location sevend = sevstart;
       sevend.col += severity_str_len;
       buffer_add_text_property(
@@ -235,6 +237,9 @@ static struct buffer *update_diagnostics_buffer(struct lsp_server *server,
 
       buffer_newline(db, buffer_end(db));
     }
+
+    s8delete(text);
+    s8delete(src);
   }
 
   buffer_set_readonly(db, true);
