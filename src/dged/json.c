@@ -73,9 +73,41 @@ static uint32_t codepoint_from_hex(uint8_t bytes[4]) {
   return nmbr;
 }
 
+struct surrogate_state {
+  bool low;
+  uint16_t high_surrogate;
+
+  uint32_t codepoint;
+};
+
+static bool parse_surrogate(struct surrogate_state *state, uint32_t codepoint) {
+  if (codepoint >= 0xd800 && codepoint <= 0xdfff) {
+    // we have a surrogate pair
+    if (!state->low) {
+      // high surrogate
+      state->high_surrogate = (codepoint - 0xd800) * 0x400;
+      state->low = true;
+      return false;
+    } else {
+      // low surrogate
+      state->codepoint = codepoint - 0xdc00 + state->high_surrogate + 0x10000;
+      state->low = false;
+      return true;
+    }
+  }
+
+  // a non-surrogate codepoint
+  state->codepoint = codepoint;
+  return true;
+}
+
 struct s8 unescape_json_string(struct s8 input) {
   size_t new_size = 0;
   bool escape = false;
+
+  struct surrogate_state state = {};
+  memset(&state, 0, sizeof(struct surrogate_state));
+
   for (size_t bi = 0; bi < input.l; ++bi) {
     uint8_t b = input.s[bi];
 
@@ -88,9 +120,14 @@ struct s8 unescape_json_string(struct s8 input) {
     if (b == 'u' && escape) {
       // unicode codepoint, calculate byte-width
       // format is \uXXXX where X is a hex digit.
-      uint8_t chars[4];
       uint32_t codepoint = codepoint_from_hex(&input.s[bi + 1]);
-      sz = utf8_encode(codepoint, chars);
+      if (parse_surrogate(&state, codepoint)) {
+        uint8_t chars[4];
+        sz = utf8_encode(state.codepoint, chars);
+      } else {
+        sz = 0;
+      }
+
       bi += 4;
     }
 
@@ -98,6 +135,7 @@ struct s8 unescape_json_string(struct s8 input) {
     escape = false;
   }
 
+  memset(&state, 0, sizeof(struct surrogate_state));
   escape = false;
   uint8_t *buf = calloc(new_size + 1, 1);
   size_t bufi = 0;
@@ -131,11 +169,17 @@ struct s8 unescape_json_string(struct s8 input) {
         buf[bufi] = '\t';
         break;
       case 'u': {
-        uint8_t chars[4] = {0};
         uint32_t codepoint = codepoint_from_hex(&input.s[bi + 1]);
-        size_t size = utf8_encode(codepoint, chars);
-        memcpy(&buf[bufi], chars, size);
-        skip = size;
+
+        if (parse_surrogate(&state, codepoint)) {
+          uint8_t chars[4] = {0};
+          size_t size = utf8_encode(state.codepoint, chars);
+          memcpy(&buf[bufi], chars, size);
+          skip = size;
+        } else {
+          skip = 0;
+        }
+
         bi += 4;
       } break;
       case '"':
