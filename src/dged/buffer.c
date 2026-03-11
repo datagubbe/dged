@@ -412,7 +412,13 @@ void buffer_to_file(struct buffer *buffer) {
   }
 
   static size_t unneeded_save_count = 0;
+  static struct buffer *last_saved_buffer = NULL;
   if (!buffer->modified) {
+    if (buffer != last_saved_buffer) {
+      last_saved_buffer = buffer;
+      unneeded_save_count = 0;
+    }
+
     ++unneeded_save_count;
     if (unneeded_save_count > 1) {
       minibuffer_echo_timeout(4, "buffer already saved (%d times)",
