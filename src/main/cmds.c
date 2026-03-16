@@ -636,16 +636,13 @@ int32_t find_file_relative(struct command_ctx ctx, int argc,
   const char *path =
       b->associated_path != NULL ? b->associated_path : b->filename;
 
-  char *filename = strdup(path);
-  char *dir = filename;
-
-  // if we used the filename, get the directory of the file,
-  // not the file itself
-  if (b->associated_path == NULL) {
-    dir = dirname(filename);
+  struct s8 dir = s8new(path, strlen(path));
+  if (!is_dir(dir)) {
+    struct s8 file = dir;
+    dir = parent(file);
+    s8delete(file);
   }
 
-  size_t dirlen = strlen(dir);
   if (argc == 0) {
     minibuffer_clear();
     struct completion_provider providers[] = {
@@ -654,29 +651,30 @@ int32_t find_file_relative(struct command_ctx ctx, int argc,
 
     ctx.self = &find_file_command;
 
-    char *dir_with_slash = (char *)malloc(dirlen + 2);
-    memcpy(dir_with_slash, dir, dirlen);
-    dir_with_slash[dirlen] = '/';
-    dir_with_slash[dirlen + 1] = '\0';
-    minibuffer_prompt_initial(ctx, dir_with_slash, "find file: ");
-    free(filename);
-    free(dir_with_slash);
+    struct s8 cwd = working_dir();
+    struct s8 reldir = relative_to(dir, cwd);
+    s8delete(dir);
+    s8delete(cwd);
+
+    struct s8 dir_with_slash = s8from_fmt("%s/", s8ascstr(reldir));
+    minibuffer_prompt_initial(ctx, s8ascstr(dir_with_slash), "find file: ");
+
+    s8delete(reldir);
+    s8delete(dir_with_slash);
 
     complete(minibuffer_buffer(), buffer_end(minibuffer_buffer()));
 
     return 0;
   }
 
+  // this is called when invoking `find-file-relative` with
+  // an argument.
   disable_completion(minibuffer_buffer());
-  size_t plen = strlen(argv[0]);
-  char *pth = (char *)malloc(dirlen + plen + 2);
-  memcpy(pth, dir, dirlen);
-  pth[dirlen] = '/';
-  memcpy(pth + dirlen + 1, argv[0], plen);
-  pth[dirlen + plen + 1] = '\0';
-  open_file(ctx, pth);
+  struct s8 arg = s8(argv[0]);
+  struct s8 pth = join_path(dir, arg);
+  open_file(ctx, s8ascstr(pth));
 
-  free(filename);
+  s8delete(pth);
   return 0;
 }
 
