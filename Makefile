@@ -45,7 +45,7 @@ SOURCES = src/dged/binding.c src/dged/buffer.c src/dged/command.c src/dged/displ
 
 MAIN_SOURCES = src/main/main.c src/main/cmds.c src/main/bindings.c src/main/search-replace.c src/main/completion.c \
 			src/main/frame-hooks.c src/main/completion/buffer.c src/main/completion/command.c \
-			src/main/completion/path.c src/main/dired.c
+			src/main/completion/path.c src/main/dired.c src/main/completion/matchers.c
 
 # HACK: added to MAIN_SOURCES to not be picked up in tests
 # since they have their own implementation

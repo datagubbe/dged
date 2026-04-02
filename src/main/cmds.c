@@ -56,6 +56,7 @@ int32_t unimplemented_command(struct command_ctx ctx, int argc,
                               const char *argv[]) {
   (void)argc;
   (void)argv;
+
   minibuffer_echo("TODO: %s is not implemented", (const char *)ctx.userdata);
   return 0;
 }

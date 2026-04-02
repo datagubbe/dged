@@ -200,11 +200,6 @@ static void clear_completions(struct completion_state *state) {
   }
 
   VEC_CLEAR(&state->completions);
-
-  if (completion_active()) {
-    buffer_view_goto(window_buffer_view(popup_window()),
-                     (struct location){0, 0});
-  }
 }
 
 static void update_window_position(struct completion_state *state) {
@@ -243,6 +238,12 @@ static void update_window_position(struct completion_state *state) {
 
   size_t available = window_width(root_wind) - xpos - 5;
   max_width = max_width >= available ? available : max_width;
+
+  // if we are opening anew, let's start on the first item
+  if (!popup_window_visible()) {
+    buffer_view_goto(window_buffer_view(popup_window()),
+                     (struct location){0, 0});
+  }
 
   windows_show_popup(ypos, xpos, max_width, height);
 }

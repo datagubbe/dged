@@ -2,9 +2,8 @@
 #define _WINDOW_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
-
-#include "btree.h"
 
 struct command_list;
 struct display;

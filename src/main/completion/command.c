@@ -3,12 +3,14 @@
 #include <stdbool.h>
 #include <string.h>
 
+#include "completion/matchers.h"
 #include "dged/buffer.h"
 #include "dged/buffer_view.h"
 #include "dged/command.h"
 #include "dged/minibuffer.h"
 #include "dged/utf8.h"
 
+#include "dged/vec.h"
 #include "main/completion.h"
 
 static bool is_space(const struct codepoint *c) {
@@ -21,6 +23,8 @@ typedef void (*on_command_selected_cb)(struct command *);
 struct command_completion {
   struct command *command;
   on_command_selected_cb on_command_selected;
+  size_t match_begin;
+  size_t match_end;
 };
 
 struct command_provider_data {
@@ -55,31 +59,35 @@ static void command_comp_cleanup(void *data) {
   free(cc);
 }
 
-struct needle_match_ctx {
-  const char *needle;
-  struct completion *completions;
-  uint32_t max_ncompletions;
-  uint32_t ncompletions;
+typedef VEC(struct completion) completion_vec;
+
+struct buffer_completions {
+  completion_vec *completions;
   on_command_selected_cb on_command_selected;
+  struct s8 needle;
 };
 
-static void command_matches(struct command *command, void *userdata) {
-  struct needle_match_ctx *ctx = (struct needle_match_ctx *)userdata;
+static void fill_commands(struct command *command, void *userdata) {
+  struct buffer_completions *ctx = (struct buffer_completions *)userdata;
 
-  if (strncmp(ctx->needle, command->name, strlen(ctx->needle)) == 0 &&
-      ctx->ncompletions < ctx->max_ncompletions) {
-
+  size_t match_begin, match_end;
+  uint32_t score;
+  if (filter_contains(ctx->needle, s8(command->name), &match_begin, &match_end,
+                      &score)) {
     struct command_completion *comp_data =
         calloc(1, sizeof(struct command_completion));
     comp_data->command = command;
     comp_data->on_command_selected = ctx->on_command_selected;
-    ctx->completions[ctx->ncompletions] = (struct completion){
+    comp_data->match_begin = match_begin;
+    comp_data->match_end = match_end;
+
+    struct completion comp = (struct completion){
         .render = command_comp_render,
         .selected = command_comp_selected,
         .cleanup = command_comp_cleanup,
         .data = comp_data,
     };
-    ++ctx->ncompletions;
+    VEC_PUSH(ctx->completions, comp);
   }
 }
 
@@ -113,19 +121,18 @@ static void command_complete(struct completion_context ctx, bool deletion,
     free(txt.text);
   }
 
-  struct completion *completions = calloc(50, sizeof(struct completion));
+  completion_vec completions;
+  VEC_INIT(&completions, 32);
 
-  struct needle_match_ctx match_ctx = (struct needle_match_ctx){
-      .needle = needle,
-      .max_ncompletions = 50,
-      .completions = completions,
-      .ncompletions = 0,
+  struct buffer_completions match_ctx = (struct buffer_completions){
+      .completions = &completions,
       .on_command_selected = pd->on_command_selected,
+      .needle = s8(needle),
   };
 
-  commands_for_each(commands, command_matches, &match_ctx);
-  ctx.add_completions(match_ctx.completions, match_ctx.ncompletions);
-  free(completions);
+  commands_for_each(commands, fill_commands, &match_ctx);
+  ctx.add_completions(VEC_ENTRIES(&completions), VEC_SIZE(&completions));
+  VEC_DESTROY(&completions);
   free(needle);
 }
 

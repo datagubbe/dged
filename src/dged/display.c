@@ -209,8 +209,10 @@ bool display_initialize(struct display *display) {
 
   display->term = term;
 
-  use_alternate_buffer(display);
-  flush_outbuf(display);
+  if (getenv("DGED_FORCE_NORMAL_BUFFER") == NULL) {
+    use_alternate_buffer(display);
+    flush_outbuf(display);
+  }
 
   return true;
 }
