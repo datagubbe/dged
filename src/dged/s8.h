@@ -24,6 +24,7 @@ const char *s8ascstr(struct s8 s);
 
 uint8_t s8at(struct s8 s, size_t index);
 ssize_t s8find(struct s8 s, uint8_t c);
+ssize_t s8findstr(struct s8 s, struct s8 find);
 bool s8eq(struct s8 s1, struct s8 s2);
 int s8cmp(struct s8 s1, struct s8 s2);
 int s8icmp(struct s8 s1, struct s8 s2);

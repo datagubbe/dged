@@ -266,6 +266,10 @@ static struct s8 get_filter_text(struct lsp_completion_item *item) {
   return item->filter_text.l > 0 ? item->filter_text : item->label;
 }
 
+static struct s8 get_sort_text(struct lsp_completion_item *item) {
+  return item->sort_text.l > 0 ? item->sort_text : item->label;
+}
+
 static void fill_completions(struct completion_ctx *lsp_ctx, struct s8 needle) {
   if (lsp_ctx->completion_data != NULL) {
     free(lsp_ctx->completion_data);
@@ -273,6 +277,9 @@ static void fill_completions(struct completion_ctx *lsp_ctx, struct s8 needle) {
   }
 
   size_t ncomps = VEC_SIZE(&lsp_ctx->completions.items);
+  if (ncomps == 0) {
+    return;
+  }
 
   // if there is more than a single item or the user has not typed that
   // single item exactly, then add to the list of completions.
@@ -281,28 +288,19 @@ static void fill_completions(struct completion_ctx *lsp_ctx, struct s8 needle) {
   ncomps = 0;
   VEC_FOR_EACH(&lsp_ctx->completions.items,
                struct lsp_completion_item * lsp_item) {
-    struct s8 filter_text = get_filter_text(lsp_item);
-    if (needle.l == 0 || s8startswith(filter_text, needle)) {
-      struct completion *c = &lsp_ctx->completion_data[ncomps];
+    struct completion *c = &lsp_ctx->completion_data[ncomps];
 
-      c->data = lsp_item;
-      c->render = lsp_item_render;
-      c->selected = lsp_item_selected;
-      c->cleanup = lsp_item_cleanup;
-      ++ncomps;
-    }
+    c->data = lsp_item;
+    c->render = lsp_item_render;
+    c->selected = lsp_item_selected;
+    c->cleanup = lsp_item_cleanup;
+    c->filter_text = (completion_filter_text_fn)get_filter_text;
+    c->sort_text = (completion_sort_text_fn)get_sort_text;
+    ++ncomps;
   }
 
-  // if there is only a single item that matches the needle exactly,
-  // don't add it to the list since the user has already won
-  if (ncomps == 1 && needle.l > 0 &&
-      s8eq(get_filter_text(lsp_ctx->completion_data[0].data), needle)) {
-    return;
-  }
-
-  if (ncomps > 0) {
-    lsp_ctx->comp_ctx.add_completions(lsp_ctx->completion_data, ncomps);
-  }
+  lsp_ctx->comp_ctx.add_completions(needle, filter_contains,
+                                    lsp_ctx->completion_data, ncomps);
 }
 
 static void handle_completion_response(struct lsp_server *server,

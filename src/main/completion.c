@@ -1,3 +1,6 @@
+#include "dged/s8.h"
+#include "dged/vec.h"
+#include <stdlib.h>
 #define _DEFAULT_SOURCE
 #include "completion.h"
 
@@ -32,6 +35,9 @@ struct buffer_completion {
 struct completion_item {
   struct region area;
   struct completion completion;
+  uint32_t score;
+  size_t match_begin;
+  size_t match_end;
 };
 
 static struct completion_state {
@@ -300,16 +306,55 @@ static void open_completion(struct completion_state *state) {
   run_next_frame(update_window_pos_frame_hook, state);
 }
 
-static void add_completions_impl(struct completion *completions,
+static int compare_completions(const void *c1, const void *c2) {
+  struct completion_item *comp1 = (struct completion_item *)c1;
+  struct completion_item *comp2 = (struct completion_item *)c2;
+
+  return comp1->score > comp2->score ? -1
+         : comp1->score < comp2->score
+             ? 1
+             : s8cmp(comp1->completion.sort_text(comp1->completion.data),
+                     comp2->completion.sort_text(comp2->completion.data));
+}
+
+static void sort_completions(struct completion_state *state) {
+
+  qsort(VEC_ENTRIES(&state->completions), VEC_SIZE(&state->completions),
+        sizeof(struct completion_item), compare_completions);
+}
+
+static void add_completions_impl(struct s8 needle, filter_fn filter,
+                                 struct completion *completions,
                                  size_t ncompletions) {
-  for (uint32_t i = 0; i < ncompletions; ++i) {
-    struct completion *c = &completions[i];
-    struct region area = c->render(c->data, g_state.completions_buffer);
-    VEC_APPEND(&g_state.completions, struct completion_item * new);
-    new->area = area;
-    new->completion = *c;
+  if (ncompletions == 0) {
+    return;
   }
 
+  for (uint32_t i = 0; i < ncompletions; ++i) {
+    struct completion *c = &completions[i];
+
+    size_t match_begin, match_end;
+    uint32_t score;
+    if (filter(needle, c->filter_text(c->data), &match_begin, &match_end,
+               &score)) {
+      VEC_APPEND(&g_state.completions, struct completion_item * new);
+      new->completion = *c;
+      new->score = score;
+      new->match_begin = match_begin;
+      new->match_end = match_end;
+    } else {
+      if (c->cleanup != NULL) {
+        c->cleanup(c->data);
+      }
+    }
+  }
+
+  sort_completions(&g_state);
+  VEC_FOR_EACH(&g_state.completions, struct completion_item * item) {
+    struct region area = item->completion.render(item->completion.data,
+                                                 g_state.completions_buffer);
+    item->area = area;
+  }
   open_completion(&g_state);
 }
 
@@ -348,6 +393,7 @@ static void update_comp_buffer(struct buffer *buffer, void *userdata) {
 
   if (buffer_is_empty(buffer)) {
     abort_completion();
+    return;
   }
 
   struct region reg = active_completion_region(state);

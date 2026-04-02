@@ -14,18 +14,35 @@ struct buffers;
 struct buffer_view;
 struct commands;
 
+typedef struct s8 str8;
+
 typedef struct region (*completion_render_fn)(void *, struct buffer *);
 typedef void (*completion_selected_fn)(void *, struct buffer_view *);
 typedef void (*completion_cleanup_fn)(void *);
+typedef str8 (*completion_filter_text_fn)(void *);
+typedef str8 (*completion_sort_text_fn)(void *);
 
 struct completion {
   void *data;
   completion_render_fn render;
   completion_selected_fn selected;
   completion_cleanup_fn cleanup;
+  completion_filter_text_fn filter_text;
+  completion_sort_text_fn sort_text;
 };
 
-typedef void (*add_completions)(struct completion *, size_t);
+typedef bool (*filter_fn)(struct s8 needle, struct s8 item, size_t *match_begin,
+                          size_t *match_end, uint32_t *score);
+
+typedef void (*add_completions)(struct s8, filter_fn filter,
+                                struct completion *, size_t);
+
+bool filter_startswith(struct s8 needle, struct s8 item, size_t *match_begin,
+                       size_t *match_end, uint32_t *score);
+bool filter_contains(struct s8 needle, struct s8 item, size_t *match_begin,
+                     size_t *match_end, uint32_t *score);
+bool filter_fuzzy(struct s8 needle, struct s8 item, size_t *match_begin,
+                  size_t *match_end, uint32_t *score);
 
 /**
  * Context for calculating completions.

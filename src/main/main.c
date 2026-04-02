@@ -584,6 +584,7 @@ int main(int argc, char *argv[]) {
 
   display_clear(display);
   display_destroy(display);
+  display = NULL;
   destroy_bindings();
   command_registry_destroy(&commands);
   reactor_destroy(reactor);

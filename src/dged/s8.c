@@ -167,6 +167,30 @@ char *s8tocstr(struct s8 s) {
 
 const char *s8ascstr(struct s8 s) { return (const char *)s.s; }
 
+ssize_t s8findstr(struct s8 s, struct s8 find) {
+  if (s8empty(s) || s8empty(find)) {
+    return -1;
+  }
+
+  if (s.l < find.l) {
+    return -1;
+  }
+
+  if (s.l == find.l) {
+    return s8eq(s, find) ? 0 : -1;
+  }
+
+  /* at this point, s is longer than find */
+  for (size_t i = 0; i < s.l; ++i) {
+    uint8_t *start = &s.s[i];
+    if (s8startswith((struct s8){.s = start, .l = s.l - i}, find)) {
+      return i;
+    }
+  }
+
+  return -1;
+}
+
 bool s8startswith(struct s8 s, struct s8 prefix) {
   if (prefix.l == 0 || prefix.l > s.l) {
     return false;

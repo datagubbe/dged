@@ -7,6 +7,7 @@
 #include "dged/buffers.h"
 #include "dged/minibuffer.h"
 
+#include "dged/vec.h"
 #include "main/completion.h"
 
 static bool is_space(const struct codepoint *c) {
@@ -47,37 +48,39 @@ static struct region buffer_comp_render(void *data,
   return region_new(begin, end);
 }
 
+static struct s8 buffer_comp_filter_text(void *data) {
+  struct buffer_completion *bc = (struct buffer_completion *)data;
+  return s8(bc->buffer->name);
+}
+
 static void buffer_comp_cleanup(void *data) {
   struct buffer_completion *bc = (struct buffer_completion *)data;
   free(bc);
 }
 
-struct needle_match_ctx {
-  const char *needle;
-  struct completion *completions;
-  uint32_t max_ncompletions;
-  uint32_t ncompletions;
+typedef VEC(struct completion) completion_vec;
+
+struct buffer_completions {
+  completion_vec *completions;
   on_buffer_selected_cb on_buffer_selected;
 };
 
-static void buffer_matches(struct buffer *buffer, void *userdata) {
-  struct needle_match_ctx *ctx = (struct needle_match_ctx *)userdata;
+static void fill_buffer_completions(struct buffer *buffer, void *userdata) {
+  struct buffer_completions *ctx = (struct buffer_completions *)userdata;
 
-  if (strncmp(ctx->needle, buffer->name, strlen(ctx->needle)) == 0 &&
-      ctx->ncompletions < ctx->max_ncompletions) {
+  struct buffer_completion *comp_data =
+      calloc(1, sizeof(struct buffer_completion));
+  comp_data->buffer = buffer;
+  comp_data->on_buffer_selected = ctx->on_buffer_selected;
 
-    struct buffer_completion *comp_data =
-        calloc(1, sizeof(struct buffer_completion));
-    comp_data->buffer = buffer;
-    comp_data->on_buffer_selected = ctx->on_buffer_selected;
-    ctx->completions[ctx->ncompletions] = (struct completion){
-        .render = buffer_comp_render,
-        .selected = buffer_comp_selected,
-        .cleanup = buffer_comp_cleanup,
-        .data = comp_data,
-    };
-    ++ctx->ncompletions;
-  }
+  struct completion comp = (struct completion){
+      .render = buffer_comp_render,
+      .selected = buffer_comp_selected,
+      .cleanup = buffer_comp_cleanup,
+      .data = comp_data,
+      .filter_text = buffer_comp_filter_text,
+  };
+  VEC_PUSH(ctx->completions, comp);
 }
 
 static void buffer_complete(struct completion_context ctx, bool deletion,
@@ -110,19 +113,17 @@ static void buffer_complete(struct completion_context ctx, bool deletion,
     free(txt.text);
   }
 
-  struct completion *completions = calloc(50, sizeof(struct completion));
-
-  struct needle_match_ctx match_ctx = (struct needle_match_ctx){
-      .needle = needle,
-      .max_ncompletions = 50,
-      .completions = completions,
-      .ncompletions = 0,
+  completion_vec completions;
+  VEC_INIT(&completions, 32);
+  struct buffer_completions match_ctx = (struct buffer_completions){
+      .completions = &completions,
       .on_buffer_selected = pd->on_buffer_selected,
   };
 
-  buffers_for_each(buffers, buffer_matches, &match_ctx);
-  ctx.add_completions(match_ctx.completions, match_ctx.ncompletions);
-  free(completions);
+  buffers_for_each(buffers, fill_buffer_completions, &match_ctx);
+  ctx.add_completions(s8(needle), filter_contains, VEC_ENTRIES(&completions),
+                      VEC_SIZE(&completions));
+  VEC_DESTROY(&completions);
   free(needle);
 }
 

@@ -17,6 +17,9 @@
 #include "dged/path.h"
 #include "dged/s8.h"
 #include "dged/utf8.h"
+#include "dged/vec.h"
+
+#include "main/completion.h"
 
 static bool is_space(const struct codepoint *c) {
   // TODO: utf8 whitespace and other whitespace
@@ -111,41 +114,18 @@ static struct region path_render(void *data, struct buffer *comp_buffer) {
   return region_new(start, end);
 }
 
+static struct s8 path_filter_text(struct path_completion *path) {
+  return path->name;
+}
+
 static void path_cleanup(void *data) {
   struct path_completion *comp_path = (struct path_completion *)data;
   s8delete(comp_path->name);
   free(comp_path);
 }
 
-static int cmp_path_completions(const void *comp_a, const void *comp_b) {
-  struct completion *ca = (struct completion *)comp_a;
-  struct completion *cb = (struct completion *)comp_b;
-  struct path_completion *a = (struct path_completion *)ca->data;
-  struct path_completion *b = (struct path_completion *)cb->data;
-  return s8cmp(a->name, b->name);
-}
-
 static bool is_hidden(const char *filename) {
   return filename[0] == '.' && filename[1] != '\0' && filename[1] != '.';
-}
-
-static bool fuzzy_match_filename(const char *haystack, const char *needle) {
-  for (; *haystack; ++haystack) {
-    const char *h = haystack;
-    const char *n = needle;
-
-    while (*h && *n && *h == *n) {
-      ++h;
-      ++n;
-    }
-
-    // if we reached the end of needle, we found a match
-    if (!*n) {
-      return true;
-    }
-  }
-
-  return false;
 }
 
 static void path_complete(struct completion_context ctx, bool deletion,
@@ -176,7 +156,6 @@ static void path_complete(struct completion_context ctx, bool deletion,
     free(txt.text);
   }
 
-  uint32_t n = 0;
   struct s8 p1 = expanduser(s8(path));
   struct s8 p2 = p1;
   p1 = canonicalize(p1);
@@ -193,7 +172,8 @@ static void path_complete(struct completion_context ctx, bool deletion,
     file = basename((char *)s8ascstr(p2));
   }
 
-  struct completion *completions = calloc(50, sizeof(struct completion));
+  VEC(struct completion) completions;
+  VEC_INIT(&completions, 32);
 
   DIR *d = opendir(dir);
   if (d == NULL) {
@@ -208,8 +188,7 @@ static void path_complete(struct completion_context ctx, bool deletion,
       .col = needle_end.col - file_nchars,
   };
 
-  bool file_is_curdir = filelen == 1 && file[0] == '.';
-  while (n < 50) {
+  while (true) {
     struct dirent *de = readdir(d);
     if (de == NULL && errno != 0) {
       // skip the erroring entry
@@ -223,8 +202,7 @@ static void path_complete(struct completion_context ctx, bool deletion,
     case DT_DIR:
     case DT_REG:
     case DT_LNK:
-      if (!is_hidden(de->d_name) && (filelen == 0 || file_is_curdir ||
-                                     fuzzy_match_filename(de->d_name, file))) {
+      if (!is_hidden(de->d_name)) {
 
         struct path_completion *comp_data =
             calloc(1, sizeof(struct path_completion));
@@ -233,14 +211,16 @@ static void path_complete(struct completion_context ctx, bool deletion,
         comp_data->type = de->d_type;
         comp_data->on_complete_path = on_complete_path;
 
-        completions[n] = (struct completion){
+        struct completion comp = {
             .data = comp_data,
             .render = path_render,
             .selected = path_selected,
             .cleanup = path_cleanup,
+            .filter_text = (completion_filter_text_fn)path_filter_text,
+            .sort_text = (completion_sort_text_fn)path_filter_text,
         };
 
-        ++n;
+        VEC_PUSH(&completions, comp);
       }
       break;
     }
@@ -249,14 +229,15 @@ static void path_complete(struct completion_context ctx, bool deletion,
   closedir(d);
 
 done:
+  // qsort(completions, n, sizeof(struct completion), cmp_path_completions);
+  ctx.add_completions(s8(file), filter_contains, VEC_ENTRIES(&completions),
+                      VEC_SIZE(&completions));
+
   free(path);
   s8delete(p1);
   s8delete(p2);
 
-  qsort(completions, n, sizeof(struct completion), cmp_path_completions);
-  ctx.add_completions(completions, n);
-
-  free(completions);
+  VEC_DESTROY(&completions);
 }
 
 struct completion_provider

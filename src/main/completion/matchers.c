@@ -1,0 +1,60 @@
+#include "dged/s8.h"
+#include "main/completion.h"
+
+bool filter_exact(struct s8 needle, struct s8 item, size_t *match_begin,
+                  size_t *match_end, uint32_t *score) {
+
+  if (needle.l == 0) {
+    *match_begin = 0;
+    *match_end = 0;
+    *score = 0;
+    return true;
+  }
+
+  if (s8startswith(item, needle)) {
+    *match_begin = 0;
+    *match_end = needle.l;
+    *score = 1;
+
+    return true;
+  }
+
+  return false;
+}
+
+bool filter_contains(struct s8 needle, struct s8 item, size_t *match_begin,
+                     size_t *match_end, uint32_t *score) {
+
+  if (needle.l == 0) {
+    *match_begin = 0;
+    *match_end = 0;
+    *score = 0;
+    return true;
+  }
+
+  ssize_t res = -1;
+  if ((res = s8findstr(item, needle)) != -1) {
+
+    *match_begin = res;
+    *match_end = res + needle.l;
+    *score = 1;
+
+    return true;
+  }
+
+  return false;
+}
+
+bool filter_fuzzy(struct s8 needle, struct s8 item, size_t *match_begin,
+                  size_t *match_end, uint32_t *score) {
+  if (needle.l == 0) {
+    *match_begin = 0;
+    *match_end = 0;
+    *score = 0;
+    return true;
+  }
+
+  (void)item;
+
+  return false;
+}
