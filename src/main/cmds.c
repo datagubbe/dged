@@ -656,12 +656,15 @@ int32_t find_file_relative(struct command_ctx ctx, int argc,
     s8delete(dir);
     s8delete(cwd);
 
-    struct s8 dir_with_slash = s8from_fmt("%s/", s8ascstr(reldir));
-    minibuffer_prompt_initial(ctx, s8ascstr(dir_with_slash), "find file: ");
+    if (!s8empty(reldir)) {
+      struct s8 dir_with_slash = s8from_fmt("%s/", s8ascstr(reldir));
+      minibuffer_prompt_initial(ctx, s8ascstr(dir_with_slash), "find file: ");
+      s8delete(dir_with_slash);
+    } else {
+      minibuffer_prompt(ctx, "find file: ");
+    }
 
     s8delete(reldir);
-    s8delete(dir_with_slash);
-
     complete(minibuffer_buffer(), buffer_end(minibuffer_buffer()));
 
     return 0;
