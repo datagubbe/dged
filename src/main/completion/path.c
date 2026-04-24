@@ -19,7 +19,8 @@
 #include "dged/utf8.h"
 #include "dged/vec.h"
 
-#include "main/completion.h"
+#include "completion.h"
+#include "completion/matchers.h"
 
 static bool is_space(const struct codepoint *c) {
   // TODO: utf8 whitespace and other whitespace
@@ -33,6 +34,8 @@ struct path_completion {
   struct region replace;
   unsigned char type;
   on_complete_path_cb on_complete_path;
+  size_t match_begin;
+  size_t match_end;
 };
 
 static void path_selected(void *data, struct buffer_view *target) {
@@ -72,6 +75,7 @@ static struct region path_render(void *data, struct buffer *comp_buffer) {
   struct location start = buffer_end(comp_buffer);
   buffer_add(comp_buffer, buffer_end(comp_buffer), (uint8_t *)comp_path->name.s,
              comp_path->name.l);
+
   switch (comp_path->type) {
   case DT_DIR:
     if (!(s8eq(comp_path->name, s8(".")) || s8eq(comp_path->name, s8("..")))) {
@@ -79,8 +83,6 @@ static struct region path_render(void *data, struct buffer *comp_buffer) {
       struct location end = buffer_end(comp_buffer);
       buffer_add_text_property(comp_buffer, start, end,
                                (struct text_property){
-                                   .start = start,
-                                   .end = end,
                                    .type = TextProperty_Colors,
                                    .data.colors =
                                        (struct text_property_colors){
@@ -94,8 +96,6 @@ static struct region path_render(void *data, struct buffer *comp_buffer) {
     struct location end = buffer_end(comp_buffer);
     buffer_add_text_property(comp_buffer, start, end,
                              (struct text_property){
-                                 .start = start,
-                                 .end = end,
                                  .type = TextProperty_Colors,
                                  .data.colors =
                                      (struct text_property_colors){
@@ -108,14 +108,25 @@ static struct region path_render(void *data, struct buffer *comp_buffer) {
     break;
   }
 
+  if (comp_path->match_end > comp_path->match_begin) {
+    buffer_add_text_property(
+        comp_buffer,
+        (struct location){.col = comp_path->match_begin, .line = start.line},
+        (struct location){.col = comp_path->match_end - 1, .line = start.line},
+        (struct text_property){
+            .type = TextProperty_Colors,
+            .data.colors =
+                (struct text_property_colors){
+                    .set_fg = true,
+                    .fg = Color_Cyan,
+                },
+        });
+  }
+
   struct location end = buffer_end(comp_buffer);
   buffer_add(comp_buffer, buffer_end(comp_buffer), (uint8_t *)"\n", 1);
 
   return region_new(start, end);
-}
-
-static struct s8 path_filter_text(struct path_completion *path) {
-  return path->name;
 }
 
 static void path_cleanup(void *data) {
@@ -126,6 +137,14 @@ static void path_cleanup(void *data) {
 
 static bool is_hidden(const char *filename) {
   return filename[0] == '.' && filename[1] != '\0' && filename[1] != '.';
+}
+
+static int cmp_path_completions(const void *comp_a, const void *comp_b) {
+  struct completion *ca = (struct completion *)comp_a;
+  struct completion *cb = (struct completion *)comp_b;
+  struct path_completion *a = (struct path_completion *)ca->data;
+  struct path_completion *b = (struct path_completion *)cb->data;
+  return s8cmp(a->name, b->name);
 }
 
 static void path_complete(struct completion_context ctx, bool deletion,
@@ -204,23 +223,28 @@ static void path_complete(struct completion_context ctx, bool deletion,
     case DT_LNK:
       if (!is_hidden(de->d_name)) {
 
-        struct path_completion *comp_data =
-            calloc(1, sizeof(struct path_completion));
-        comp_data->name = s8new(de->d_name, strlen(de->d_name));
-        comp_data->replace = region_new(needle_start, needle_end);
-        comp_data->type = de->d_type;
-        comp_data->on_complete_path = on_complete_path;
+        size_t match_begin, match_end;
+        uint32_t score;
+        if (filter_contains(s8(file), s8(de->d_name), &match_begin, &match_end,
+                            &score)) {
+          struct path_completion *comp_data =
+              calloc(1, sizeof(struct path_completion));
+          comp_data->name = s8new(de->d_name, strlen(de->d_name));
+          comp_data->replace = region_new(needle_start, needle_end);
+          comp_data->type = de->d_type;
+          comp_data->on_complete_path = on_complete_path;
+          comp_data->match_begin = match_begin;
+          comp_data->match_end = match_end;
 
-        struct completion comp = {
-            .data = comp_data,
-            .render = path_render,
-            .selected = path_selected,
-            .cleanup = path_cleanup,
-            .filter_text = (completion_filter_text_fn)path_filter_text,
-            .sort_text = (completion_sort_text_fn)path_filter_text,
-        };
+          struct completion comp = {
+              .data = comp_data,
+              .render = path_render,
+              .selected = path_selected,
+              .cleanup = path_cleanup,
+          };
 
-        VEC_PUSH(&completions, comp);
+          VEC_PUSH(&completions, comp);
+        }
       }
       break;
     }
@@ -229,9 +253,9 @@ static void path_complete(struct completion_context ctx, bool deletion,
   closedir(d);
 
 done:
-  // qsort(completions, n, sizeof(struct completion), cmp_path_completions);
-  ctx.add_completions(s8(file), filter_contains, VEC_ENTRIES(&completions),
-                      VEC_SIZE(&completions));
+  qsort(VEC_ENTRIES(&completions), VEC_SIZE(&completions),
+        sizeof(struct completion), cmp_path_completions);
+  ctx.add_completions(VEC_ENTRIES(&completions), VEC_SIZE(&completions));
 
   free(path);
   s8delete(p1);

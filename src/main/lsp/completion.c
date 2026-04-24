@@ -1,7 +1,9 @@
 #include "completion.h"
 
 #include <stddef.h>
+#include <stdlib.h>
 
+#include "completion/matchers.h"
 #include "dged/s8.h"
 #include "dged/vec.h"
 #include "types.h"
@@ -17,7 +19,6 @@ struct completion_ctx {
   struct completion_context comp_ctx;
   struct completion_list completions;
   struct s8 cached_with;
-  struct completion *completion_data;
   uint64_t last_request;
 
   triggerchar_vec trigger_chars;
@@ -58,7 +59,6 @@ struct completion_ctx *create_completion_ctx(struct lsp_server *server,
       (struct completion_ctx *)calloc(1, sizeof(struct completion_ctx));
 
   ctx->server = server;
-  ctx->completion_data = NULL;
   ctx->completions.incomplete = false;
   ctx->cached_with.s = NULL;
   ctx->cached_with.l = 0;
@@ -74,10 +74,6 @@ struct completion_ctx *create_completion_ctx(struct lsp_server *server,
 
 void destroy_completion_ctx(struct completion_ctx *ctx) {
   completion_list_free(&ctx->completions);
-
-  if (ctx->completion_data != NULL) {
-    free(ctx->completion_data);
-  }
 
   s8delete(ctx->cached_with);
 
@@ -270,37 +266,45 @@ static struct s8 get_sort_text(struct lsp_completion_item *item) {
   return item->sort_text.l > 0 ? item->sort_text : item->label;
 }
 
-static void fill_completions(struct completion_ctx *lsp_ctx, struct s8 needle) {
-  if (lsp_ctx->completion_data != NULL) {
-    free(lsp_ctx->completion_data);
-    lsp_ctx->completion_data = NULL;
-  }
+static int compare_lsp_items(const void *item1, const void *item2) {
+  struct s8 sort1 = get_sort_text(
+      (struct lsp_completion_item *)((struct completion *)item1)->data);
+  struct s8 sort2 = get_sort_text(
+      (struct lsp_completion_item *)((struct completion *)item2)->data);
 
-  size_t ncomps = VEC_SIZE(&lsp_ctx->completions.items);
-  if (ncomps == 0) {
+  return s8cmp(sort1, sort2);
+}
+
+static void fill_completions(struct completion_ctx *lsp_ctx, struct s8 needle) {
+  if (VEC_EMPTY(&lsp_ctx->completions.items)) {
     return;
   }
 
-  // if there is more than a single item or the user has not typed that
-  // single item exactly, then add to the list of completions.
-  lsp_ctx->completion_data = calloc(ncomps, sizeof(struct completion));
+  VEC(struct completion) completions;
+  VEC_INIT(&completions, 16);
 
-  ncomps = 0;
   VEC_FOR_EACH(&lsp_ctx->completions.items,
                struct lsp_completion_item * lsp_item) {
-    struct completion *c = &lsp_ctx->completion_data[ncomps];
 
-    c->data = lsp_item;
-    c->render = lsp_item_render;
-    c->selected = lsp_item_selected;
-    c->cleanup = lsp_item_cleanup;
-    c->filter_text = (completion_filter_text_fn)get_filter_text;
-    c->sort_text = (completion_sort_text_fn)get_sort_text;
-    ++ncomps;
+    size_t match_begin, match_end;
+    uint32_t score;
+    if (filter_exact(needle, get_filter_text(lsp_item), &match_begin,
+                     &match_end, &score)) {
+      VEC_APPEND(&completions, struct completion * c);
+
+      c->data = lsp_item;
+      c->render = lsp_item_render;
+      c->selected = lsp_item_selected;
+      c->cleanup = lsp_item_cleanup;
+    }
   }
 
-  lsp_ctx->comp_ctx.add_completions(needle, filter_contains,
-                                    lsp_ctx->completion_data, ncomps);
+  qsort(VEC_ENTRIES(&completions), VEC_SIZE(&completions),
+        sizeof(struct completion), compare_lsp_items);
+
+  lsp_ctx->comp_ctx.add_completions(VEC_ENTRIES(&completions),
+                                    VEC_SIZE(&completions));
+  VEC_DESTROY(&completions);
 }
 
 static void handle_completion_response(struct lsp_server *server,

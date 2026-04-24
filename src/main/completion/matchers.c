@@ -1,5 +1,6 @@
+#include "matchers.h"
+
 #include "dged/s8.h"
-#include "main/completion.h"
 
 bool filter_exact(struct s8 needle, struct s8 item, size_t *match_begin,
                   size_t *match_end, uint32_t *score) {
@@ -11,7 +12,7 @@ bool filter_exact(struct s8 needle, struct s8 item, size_t *match_begin,
     return true;
   }
 
-  if (s8startswith(item, needle)) {
+  if (s8istartswith(item, needle)) {
     *match_begin = 0;
     *match_end = needle.l;
     *score = 1;
@@ -33,7 +34,7 @@ bool filter_contains(struct s8 needle, struct s8 item, size_t *match_begin,
   }
 
   ssize_t res = -1;
-  if ((res = s8findstr(item, needle)) != -1) {
+  if ((res = s8ifindstr(item, needle)) != -1) {
 
     *match_begin = res;
     *match_end = res + needle.l;

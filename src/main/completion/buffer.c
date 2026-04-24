@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include "completion/matchers.h"
 #include "dged/buffer.h"
 #include "dged/buffer_view.h"
 #include "dged/buffers.h"
@@ -20,6 +21,9 @@ typedef void (*on_buffer_selected_cb)(struct buffer *);
 struct buffer_completion {
   struct buffer *buffer;
   on_buffer_selected_cb on_buffer_selected;
+  size_t match_begin;
+  size_t match_end;
+  size_t score;
 };
 
 struct buffer_provider_data {
@@ -48,11 +52,6 @@ static struct region buffer_comp_render(void *data,
   return region_new(begin, end);
 }
 
-static struct s8 buffer_comp_filter_text(void *data) {
-  struct buffer_completion *bc = (struct buffer_completion *)data;
-  return s8(bc->buffer->name);
-}
-
 static void buffer_comp_cleanup(void *data) {
   struct buffer_completion *bc = (struct buffer_completion *)data;
   free(bc);
@@ -63,24 +62,31 @@ typedef VEC(struct completion) completion_vec;
 struct buffer_completions {
   completion_vec *completions;
   on_buffer_selected_cb on_buffer_selected;
+  struct s8 needle;
 };
 
 static void fill_buffer_completions(struct buffer *buffer, void *userdata) {
   struct buffer_completions *ctx = (struct buffer_completions *)userdata;
 
-  struct buffer_completion *comp_data =
-      calloc(1, sizeof(struct buffer_completion));
-  comp_data->buffer = buffer;
-  comp_data->on_buffer_selected = ctx->on_buffer_selected;
+  size_t match_begin, match_end;
+  uint32_t score;
+  if (filter_contains(ctx->needle, s8(buffer->name), &match_begin, &match_end,
+                      &score)) {
+    struct buffer_completion *comp_data =
+        calloc(1, sizeof(struct buffer_completion));
+    comp_data->buffer = buffer;
+    comp_data->on_buffer_selected = ctx->on_buffer_selected;
+    comp_data->match_begin = match_begin;
+    comp_data->match_end = match_end;
 
-  struct completion comp = (struct completion){
-      .render = buffer_comp_render,
-      .selected = buffer_comp_selected,
-      .cleanup = buffer_comp_cleanup,
-      .data = comp_data,
-      .filter_text = buffer_comp_filter_text,
-  };
-  VEC_PUSH(ctx->completions, comp);
+    struct completion comp = (struct completion){
+        .render = buffer_comp_render,
+        .selected = buffer_comp_selected,
+        .cleanup = buffer_comp_cleanup,
+        .data = comp_data,
+    };
+    VEC_PUSH(ctx->completions, comp);
+  }
 }
 
 static void buffer_complete(struct completion_context ctx, bool deletion,
@@ -118,13 +124,13 @@ static void buffer_complete(struct completion_context ctx, bool deletion,
   struct buffer_completions match_ctx = (struct buffer_completions){
       .completions = &completions,
       .on_buffer_selected = pd->on_buffer_selected,
+      .needle = s8(needle),
   };
 
   buffers_for_each(buffers, fill_buffer_completions, &match_ctx);
-  ctx.add_completions(s8(needle), filter_contains, VEC_ENTRIES(&completions),
-                      VEC_SIZE(&completions));
-  VEC_DESTROY(&completions);
   free(needle);
+  ctx.add_completions(VEC_ENTRIES(&completions), VEC_SIZE(&completions));
+  VEC_DESTROY(&completions);
 }
 
 static void cleanup_provider(void *data) {
