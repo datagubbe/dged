@@ -514,13 +514,14 @@ static struct s8 region_to_json(struct region region) {
 }
 
 static struct s8 diagnostic_to_json(struct diagnostic *diag) {
-  const char *fmt =
-      "{ \"range\": %.*s, \"message\": \"%.*s\", \"severity\": %d }";
+  const char *fmt = "{ \"range\": %.*s, \"message\": \"%.*s\", \"severity\": "
+                    "%d, \"source\": \"%.*s\" }";
 
   struct s8 range = region_to_json(diag->region);
   struct s8 message = escape_json_string(diag->message);
   struct s8 json = s8from_fmt(fmt, range.l, range.s, message.l, message.s,
-                              severity_to_json(diag->severity));
+                              severity_to_json(diag->severity), diag->source.l,
+                              diag->source.s);
 
   s8delete(message);
   s8delete(range);
