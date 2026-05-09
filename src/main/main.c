@@ -121,7 +121,7 @@ static void cleanup_buffer_bindings(struct buffer *buffer, void *userdata) {
   buffer_remove_keymaps(buffer);
 }
 
-#define INVALID_WATCH (uint32_t) - 1
+#define INVALID_WATCH (uint32_t)-1
 
 struct watched_file {
   uint32_t watch_id;

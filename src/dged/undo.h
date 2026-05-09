@@ -38,7 +38,7 @@ struct undo_record {
   } data;
 };
 
-#define INVALID_TOP (uint32_t) - 1
+#define INVALID_TOP (uint32_t)-1
 
 struct undo_stack {
   VEC(struct undo_record) records;

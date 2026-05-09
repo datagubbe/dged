@@ -62,7 +62,7 @@ struct lsp_diagnostics *diagnostics_create(void) {
 
   VEC_INIT(&d->buffer_diagnostics, 16);
   buffer_view_add_modeline_hook(diagnostics_modeline, d);
-  VEC_INIT(&g_active_diagnostic.diag_regions, 0);
+  VEC_INIT_EMPTY(&g_active_diagnostic.diag_regions);
   g_active_diagnostic.buffer = NULL;
   return d;
 }

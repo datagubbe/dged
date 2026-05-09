@@ -18,6 +18,12 @@
   (vec)->capacity = initial_capacity;                                          \
   (vec)->nentries = 0;
 
+#define VEC_INIT_EMPTY(vec)                                                    \
+  (vec)->entries = NULL;                                                       \
+  (vec)->temp = calloc(1, sizeof((vec)->entries[0]));                          \
+  (vec)->capacity = 0;                                                         \
+  (vec)->nentries = 0;
+
 #define VEC_DISOWN_ENTRIES(vec) (vec)->entries = NULL;
 
 #define VEC_DESTROY(vec)                                                       \

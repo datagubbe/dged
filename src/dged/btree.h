@@ -124,7 +124,9 @@
       VEC_PUSH(&to_delete, root);                                              \
       BINTREE_NEXT(root);                                                      \
     }                                                                          \
-    VEC_FOR_EACH(&to_delete, struct entry_type **e) { BINTREE_FREE_NODE(*e); } \
+    VEC_FOR_EACH(&to_delete, struct entry_type * *e) {                         \
+      BINTREE_FREE_NODE(*e);                                                   \
+    }                                                                          \
     VEC_DESTROY(&to_delete);                                                   \
   }
 

@@ -62,7 +62,7 @@ struct completion_ctx *create_completion_ctx(struct lsp_server *server,
   ctx->completions.incomplete = false;
   ctx->cached_with.s = NULL;
   ctx->cached_with.l = 0;
-  VEC_INIT(&ctx->completions.items, 0);
+  VEC_INIT_EMPTY(&ctx->completions.items);
 
   VEC_INIT(&ctx->trigger_chars, VEC_SIZE(trigger_chars));
   VEC_FOR_EACH(trigger_chars, struct s8 * s) {

@@ -33,8 +33,8 @@ typedef void (*remove_hook_cb)(void *userdata);
                                                                                \
   static inline void remove_##name##_hook(name##_hook_vec *hooks, uint32_t id, \
                                           remove_hook_cb callback) {           \
-    uint64_t found_at = (uint64_t) - 1;                                        \
-    VEC_FOR_EACH_INDEXED(hooks, struct name##_hook *h, idx) {                  \
+    uint64_t found_at = (uint64_t)-1;                                          \
+    VEC_FOR_EACH_INDEXED(hooks, struct name##_hook * h, idx) {                 \
       if (h->id == id) {                                                       \
         if (callback != NULL) {                                                \
           callback(h->userdata);                                               \
@@ -43,7 +43,7 @@ typedef void (*remove_hook_cb)(void *userdata);
         break;                                                                 \
       }                                                                        \
     }                                                                          \
-    if (found_at != (uint64_t) - 1) {                                          \
+    if (found_at != (uint64_t)-1) {                                            \
       if (found_at < VEC_SIZE(hooks) - 1) {                                    \
         VEC_SWAP(hooks, found_at, VEC_SIZE(hooks) - 1);                        \
       }                                                                        \

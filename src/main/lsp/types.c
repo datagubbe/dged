@@ -641,8 +641,8 @@ struct code_actions lsp_code_actions_from_json(struct json_value *json) {
     VEC_INIT(&actions.code_actions, json_array_len(jcmds));
     json_array_foreach(jcmds, &actions, lsp_action_from_json);
   } else { /* NULL or wrong type */
-    VEC_INIT(&actions.commands, 0);
-    VEC_INIT(&actions.code_actions, 0);
+    VEC_INIT_EMPTY(&actions.commands);
+    VEC_INIT_EMPTY(&actions.code_actions);
   }
 
   return actions;
@@ -782,7 +782,7 @@ struct workspace_edit workspace_edit_from_json(struct json_value *json) {
     VEC_INIT(&edit.changes, json_len(changes_obj));
     json_foreach(changes_obj, changes_from_json, &edit.changes);
   } else {
-    VEC_INIT(&edit.changes, 0);
+    VEC_INIT_EMPTY(&edit.changes);
   }
 
   struct json_value *document_changes = json_get(obj, s8("documentChanges"));
@@ -792,7 +792,7 @@ struct workspace_edit workspace_edit_from_json(struct json_value *json) {
     json_array_foreach(doc_changes_arr, &edit.document_changes,
                        document_change_from_json);
   } else {
-    VEC_INIT(&edit.document_changes, 0);
+    VEC_INIT_EMPTY(&edit.document_changes);
   }
 
   return edit;
