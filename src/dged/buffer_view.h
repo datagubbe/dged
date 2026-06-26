@@ -64,6 +64,9 @@ void buffer_view_backward_line(struct buffer_view *view);
 void buffer_view_forward_nlines(struct buffer_view *view, uint32_t nlines);
 void buffer_view_backward_nlines(struct buffer_view *view, uint32_t nlines);
 
+void buffer_view_scroll_backward(struct buffer_view *view, uint32_t nlines);
+void buffer_view_scroll_forward(struct buffer_view *view, uint32_t nlines);
+
 void buffer_view_forward_delete_char(struct buffer_view *view);
 void buffer_view_backward_delete_char(struct buffer_view *view);
 void buffer_view_delete_word(struct buffer_view *view);

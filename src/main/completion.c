@@ -2,7 +2,6 @@
 #include "completion.h"
 
 #include <dirent.h>
-#include <errno.h>
 #include <libgen.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -15,7 +14,6 @@
 #include "dged/command.h"
 #include "dged/display.h"
 #include "dged/minibuffer.h"
-#include "dged/path.h"
 #include "dged/window.h"
 
 #include "bindings.h"
@@ -39,55 +37,59 @@ static struct completion_state {
   VEC(struct completion_item) completions;
   struct buffer *completions_buffer;
   buffer_keymap_id keymap_id;
+  size_t completion_index;
   struct buffer *target;
   layer_id highlight_current_layer;
   bool insert_in_progress;
   bool paused;
 } g_state;
 
-static uint64_t completion_index() {
-  if (!completion_active()) {
-    return 0;
-  }
-
-  struct buffer_view *view = window_buffer_view(popup_window());
-  return view->dot.line;
-}
-
 static struct region active_completion_region(struct completion_state *state) {
   struct region reg =
       region_new((struct location){0, 0}, (struct location){0, 0});
-  if (completion_index() < VEC_SIZE(&state->completions)) {
-    reg = VEC_ENTRIES(&state->completions)[completion_index()].area;
+  if (state->completion_index < VEC_SIZE(&state->completions)) {
+    reg = VEC_ENTRIES(&state->completions)[state->completion_index].area;
   }
 
   return reg;
 }
 
+static ssize_t active_completion_from_location(struct completion_state *state,
+                                               struct location loc) {
+  VEC_FOR_EACH_INDEXED(&state->completions, struct completion_item * item,
+                       idx) {
+    if (region_is_inside(item->area, loc)) {
+      return idx;
+    }
+  }
+
+  return -1;
+}
+
 static int32_t goto_next_completion(struct command_ctx ctx, int argc,
                                     const char *argv[]) {
-  (void)ctx;
   (void)argc;
   (void)argv;
 
-  if (!completion_active()) {
-    return 0;
-  }
+  struct completion_state *state = (struct completion_state *)ctx.userdata;
+  size_t ncomps = VEC_SIZE(&state->completions);
+  state->completion_index = state->completion_index + 1 < ncomps
+                                ? state->completion_index + 1
+                                : state->completion_index;
 
-  struct buffer_view *view = window_buffer_view(popup_window());
-  if (view->dot.line + 1 < VEC_SIZE(&g_state.completions)) {
-    buffer_view_forward_line(view);
-  }
   return 0;
 }
 
 static int32_t goto_prev_completion(struct command_ctx ctx, int argc,
                                     const char *argv[]) {
-  (void)ctx;
   (void)argc;
   (void)argv;
 
-  buffer_view_backward_line(window_buffer_view(popup_window()));
+  struct completion_state *state = (struct completion_state *)ctx.userdata;
+  state->completion_index = state->completion_index > 0
+                                ? state->completion_index - 1
+                                : state->completion_index;
+
   return 0;
 }
 
@@ -124,8 +126,19 @@ static int32_t scroll_up_completions(struct command_ctx ctx, int argc,
 
   struct command *command = lookup_command(ctx.commands, "scroll-up");
   if (command != NULL) {
-    return execute_command(command, ctx.commands, popup_window(), ctx.buffers,
-                           ctx.display, argc, argv);
+    int32_t ret = execute_command(command, ctx.commands, popup_window(),
+                                  ctx.buffers, ctx.display, argc, argv);
+
+    if (ret == 0) {
+      struct completion_state *state = (struct completion_state *)ctx.userdata;
+      struct buffer_view *view = window_buffer_view(popup_window());
+      ssize_t comp_idx = active_completion_from_location(state, view->scroll);
+      if (comp_idx != -1) {
+        state->completion_index = comp_idx;
+      }
+    }
+
+    return ret;
   }
 
   return 0;
@@ -139,8 +152,19 @@ static int32_t scroll_down_completions(struct command_ctx ctx, int argc,
 
   struct command *command = lookup_command(ctx.commands, "scroll-down");
   if (command != NULL) {
-    return execute_command(command, ctx.commands, popup_window(), ctx.buffers,
-                           ctx.display, argc, argv);
+    int32_t ret = execute_command(command, ctx.commands, popup_window(),
+                                  ctx.buffers, ctx.display, argc, argv);
+
+    if (ret == 0) {
+      struct completion_state *state = (struct completion_state *)ctx.userdata;
+      struct buffer_view *view = window_buffer_view(popup_window());
+      ssize_t comp_idx = active_completion_from_location(state, view->scroll);
+      if (comp_idx != -1) {
+        state->completion_index = comp_idx;
+      }
+    }
+
+    return ret;
   }
 
   return 0;
@@ -148,45 +172,37 @@ static int32_t scroll_down_completions(struct command_ctx ctx, int argc,
 
 static int32_t goto_first_completion(struct command_ctx ctx, int argc,
                                      const char *argv[]) {
-  if (!completion_active()) {
-    return 0;
-  }
+  (void)argc;
+  (void)argv;
 
-  struct command *command = lookup_command(ctx.commands, "goto-beginning");
-  if (command != NULL) {
-    return execute_command(command, ctx.commands, popup_window(), ctx.buffers,
-                           ctx.display, argc, argv);
-  }
-
+  struct completion_state *state = (struct completion_state *)ctx.userdata;
+  state->completion_index = 0;
   return 0;
 }
 
 static int32_t goto_last_completion(struct command_ctx ctx, int argc,
                                     const char *argv[]) {
-  if (!completion_active()) {
-    return 0;
-  }
+  (void)argc;
+  (void)argv;
 
-  struct command *command = lookup_command(ctx.commands, "goto-end");
-  if (command != NULL) {
-    return execute_command(command, ctx.commands, popup_window(), ctx.buffers,
-                           ctx.display, argc, argv);
-  }
+  struct completion_state *state = (struct completion_state *)ctx.userdata;
+  size_t ncomps = VEC_SIZE(&state->completions);
+  state->completion_index = ncomps > 0 ? ncomps - 1 : 0;
 
   return 0;
 }
 
-COMMAND_FN("next-completion", next_completion, goto_next_completion, NULL)
-COMMAND_FN("prev-completion", prev_completion, goto_prev_completion, NULL)
-COMMAND_FN("insert-completion", insert_completion, insert_completion, NULL)
+COMMAND_FN("next-completion", next_completion, goto_next_completion, &g_state)
+COMMAND_FN("prev-completion", prev_completion, goto_prev_completion, &g_state)
+COMMAND_FN("insert-completion", insert_completion, insert_completion, &g_state)
 COMMAND_FN("scroll-up-completions", scroll_up_completions,
-           scroll_up_completions, NULL);
+           scroll_up_completions, &g_state);
 COMMAND_FN("scroll-down-completions", scroll_down_completions,
-           scroll_down_completions, NULL);
+           scroll_down_completions, &g_state);
 COMMAND_FN("goto-first-completion", goto_first_completion,
-           goto_first_completion, NULL);
+           goto_first_completion, &g_state);
 COMMAND_FN("goto-last-completion", goto_last_completion, goto_last_completion,
-           NULL);
+           &g_state);
 
 static void clear_completions(struct completion_state *state) {
   if (g_state.completions_buffer != NULL) {
@@ -239,12 +255,6 @@ static void update_window_position(struct completion_state *state) {
   size_t available = window_width(root_wind) - xpos - 5;
   max_width = max_width >= available ? available : max_width;
 
-  // if we are opening anew, let's start on the first item
-  if (!popup_window_visible()) {
-    buffer_view_goto(window_buffer_view(popup_window()),
-                     (struct location){0, 0});
-  }
-
   windows_show_popup(ypos, xpos, max_width, height);
 }
 
@@ -265,6 +275,9 @@ static void open_completion(struct completion_state *state) {
   struct window *target_window = windows_get_active();
   struct buffer *buffer = window_buffer(target_window);
   if (!completion_active() || state->target != buffer) {
+
+    // if we are opening anew, let's start on the first item
+    state->completion_index = 0;
 
     // clear any previous keymaps
     if (g_state.keymap_id != (uint64_t)-1) {
@@ -295,6 +308,9 @@ static void open_completion(struct completion_state *state) {
 
     state->keymap_id = buffer_add_keymap(buffer, km);
     state->target = buffer;
+  } else {
+    state->completion_index =
+        state->completion_index > ncompletions ? 0 : state->completion_index;
   }
 
   // need to run next frame to have the correct position
@@ -352,6 +368,12 @@ static void update_comp_buffer(struct buffer *buffer, void *userdata) {
   }
 
   struct region reg = active_completion_region(state);
+
+  if (completion_active() && region_has_size(reg)) {
+    struct buffer_view *v = window_buffer_view(popup_window());
+    buffer_view_goto(v, (struct location){.col = 0, .line = reg.begin.line});
+  }
+
   if (region_has_size(reg)) {
     buffer_add_text_property_to_layer(buffer, reg.begin, reg.end,
                                       (struct text_property){
@@ -426,6 +448,7 @@ void init_completion(struct buffers *buffers) {
   VEC_INIT(&g_state.completions, 50);
   g_state.insert_in_progress = false;
   g_state.paused = false;
+  g_state.completion_index = 0;
 }
 
 void add_completion_providers(struct buffer *source,

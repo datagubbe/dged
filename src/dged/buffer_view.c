@@ -124,6 +124,19 @@ void buffer_view_backward_nlines(struct buffer_view *view, uint32_t nlines) {
                            (int64_t)view->dot.col);
 }
 
+void buffer_view_scroll_backward(struct buffer_view *view, uint32_t nlines) {
+  uint32_t target_line =
+      nlines < view->scroll.line ? view->scroll.line - nlines : 0;
+  struct location tgt = buffer_clamp(view->buffer, target_line, 0);
+  view->scroll.line = tgt.line;
+}
+
+void buffer_view_scroll_forward(struct buffer_view *view, uint32_t nlines) {
+  uint32_t target_line = view->scroll.line + nlines;
+  struct location tgt = buffer_clamp(view->buffer, target_line, 0);
+  view->scroll.line = tgt.line;
+}
+
 void buffer_view_goto_end_of_line(struct buffer_view *view) {
   view->dot.col = buffer_line_length(view->buffer, view->dot.line);
 }

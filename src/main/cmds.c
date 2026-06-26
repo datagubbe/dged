@@ -827,15 +827,26 @@ static int32_t scroll_up_cmd(struct command_ctx ctx, int argc,
   (void)argc;
   (void)argv;
 
+  struct buffer_view *bv = window_buffer_view(ctx.active_window);
   uint32_t height = window_height(ctx.active_window);
   uint32_t amount = height;
+  bool at_top = bv->scroll.line == 0;
+  if (at_top) {
+    bv->dot.line = 0;
+    return 0;
+  }
+
   if (height > 3) {
     amount = height - 3;
   }
 
-  struct buffer_view *bv = window_buffer_view(ctx.active_window);
-  buffer_view_backward_nlines(bv, amount);
-  bv->scroll.line = bv->dot.line;
+  buffer_view_scroll_backward(bv, amount);
+
+  if (bv->dot.line < bv->scroll.line ||
+      bv->dot.line >= bv->scroll.line + height) {
+    bv->dot.line = bv->scroll.line + height / 2;
+  }
+
   return 0;
 }
 
@@ -844,16 +855,26 @@ static int32_t scroll_down_cmd(struct command_ctx ctx, int argc,
   (void)argc;
   (void)argv;
 
+  struct buffer_view *bv = window_buffer_view(ctx.active_window);
   uint32_t height = window_height(ctx.active_window);
+
+  bool at_end = bv->scroll.line + height >= buffer_num_lines(bv->buffer);
+  if (at_end) {
+    bv->dot.line =
+        buffer_clamp(bv->buffer, buffer_num_lines(bv->buffer), 0).line;
+    return 0;
+  }
+
   uint32_t amount = height;
   if (height > 3) {
     amount = height - 3;
   }
 
-  struct buffer_view *bv = window_buffer_view(ctx.active_window);
-  buffer_view_forward_nlines(bv, amount);
-  if (bv->dot.line < buffer_num_lines(bv->buffer)) {
-    bv->scroll.line = bv->dot.line;
+  buffer_view_scroll_forward(bv, amount);
+
+  if (bv->dot.line < bv->scroll.line ||
+      bv->dot.line >= bv->scroll.line + height) {
+    bv->dot.line = bv->scroll.line + height / 2;
   }
 
   return 0;
