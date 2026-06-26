@@ -77,6 +77,7 @@ parse_capabilities(struct json_object *root, struct json_value *capabilities) {
       .text_document_sync.kind = TextDocumentSync_Full,
       .text_document_sync.open_close = false,
       .text_document_sync.save = false,
+      .text_document_sync.include_text = false,
       .position_encoding = PositionEncoding_Utf16,
   };
 
@@ -110,8 +111,19 @@ parse_capabilities(struct json_object *root, struct json_value *capabilities) {
           open_close != NULL ? open_close->value.boolean : false;
 
       struct json_value *save = json_get(tsync, s8("save"));
-      caps.text_document_sync.save =
-          save != NULL ? open_close->value.boolean : false;
+      if (save != NULL && save->type == Json_Bool) {
+        caps.text_document_sync.save = save->value.boolean;
+      } else if (save != NULL && save->type == Json_Object) {
+        caps.text_document_sync.save = true;
+      }
+
+      if (save != NULL && save->type == Json_Object) {
+        struct json_object *save_obj = save->value.object;
+        struct json_value *include_text = json_get(save_obj, s8("includeText"));
+        caps.text_document_sync.include_text =
+            include_text != NULL && include_text->type == Json_Bool &&
+            include_text->value.boolean;
+      }
     }
   }
 
@@ -353,10 +365,15 @@ struct s8 did_open_text_document_params_to_json(
 
 struct s8 did_save_text_document_params_to_json(
     struct did_save_text_document_params *params) {
-  const char *fmt = "{ \"textDocument\": { \"uri\": \"%.*s\" } }";
+  const char *fmt =
+      "{ \"textDocument\": { \"uri\": \"%.*s\" }, \"text\": \"%.*s\" }";
 
+  struct s8 escaped_content = escape_json_string(params->text);
   struct text_document_identifier *item = &params->text_document;
-  struct s8 json = s8from_fmt(fmt, item->uri.l, item->uri.s);
+  struct s8 json = s8from_fmt(fmt, item->uri.l, item->uri.s, escaped_content.l,
+                              escaped_content.s);
+
+  s8delete(escaped_content);
   return json;
 }
 

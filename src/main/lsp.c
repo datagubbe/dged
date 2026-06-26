@@ -50,6 +50,7 @@ struct lsp_server {
   enum text_document_sync_kind sync_kind;
   bool send_open_close;
   bool send_save;
+  bool send_content_on_save;
 
   enum position_encoding_kind position_encoding;
 
@@ -364,14 +365,24 @@ static void buffer_post_save(struct buffer *buffer, void *userdata) {
             (struct text_document_identifier){
                 .uri = text_document.uri,
             },
+        .text = (struct s8){.l = 0, .s = NULL},
     };
 
-    struct s8 json_payload = did_save_text_document_params_to_json(&params);
+    if (server->send_content_on_save) {
+      struct text_chunk new_text = buffer_text(buffer);
+      params.text = s8new((const char *)new_text.text, new_text.nbytes);
 
+      if (new_text.allocated) {
+        free(new_text.text);
+      }
+    }
+
+    struct s8 json_payload = did_save_text_document_params_to_json(&params);
     lsp_send(server->lsp,
              lsp_create_notification(s8("textDocument/didSave"), json_payload));
 
     versioned_text_document_identifier_free(&text_document);
+    s8delete(params.text);
     s8delete(json_payload);
   }
 }
@@ -589,6 +600,7 @@ static void handle_initialize(struct lsp_server *server,
   server->sync_kind = tsync->kind;
   server->send_open_close = tsync->open_close;
   server->send_save = tsync->save;
+  server->send_content_on_save = tsync->include_text;
   server->position_encoding = res.capabilities.position_encoding;
 
   if (res.capabilities.supports_completion) {

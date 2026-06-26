@@ -38,6 +38,7 @@ struct text_document_sync {
   enum text_document_sync_kind kind;
   bool open_close;
   bool save;
+  bool include_text;
 };
 
 enum position_encoding_kind {
@@ -127,6 +128,7 @@ struct did_change_text_document_params {
 
 struct did_save_text_document_params {
   struct text_document_identifier text_document;
+  struct s8 text;
 };
 
 struct text_document_content_change_event {
