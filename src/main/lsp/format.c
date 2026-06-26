@@ -59,7 +59,9 @@ void handle_format_response(struct lsp_server *server,
     apply_edits_buffer(server, buffer->buffer, edits, NULL);
 
     if (buffer->save) {
+      buffer_disable_hooks(buffer->buffer);
       buffer_to_file(buffer->buffer);
+      buffer_enable_hooks(buffer->buffer);
     }
   }
   resume_completion();

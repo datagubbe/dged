@@ -340,7 +340,8 @@ static void buffer_render_hook(struct buffer *buffer, struct location origin,
   VEC_DESTROY(&seen_colorings);
 }
 
-static void format_on_save(struct buffer *buffer, struct lsp_server *server) {
+static void format_on_save(struct buffer *buffer, void *userdata) {
+  struct lsp_server *server = (struct lsp_server *)userdata;
   struct setting *glob_fmt_on_save = settings_get("editor.format-on-save");
   struct setting *fmt_on_save =
       lang_setting(&buffer->lang, "language-server.format-on-save");
@@ -373,8 +374,6 @@ static void buffer_post_save(struct buffer *buffer, void *userdata) {
     versioned_text_document_identifier_free(&text_document);
     s8delete(json_payload);
   }
-
-  format_on_save(buffer, server);
 }
 
 static void buffer_pre_save(struct buffer *buffer, void *userdata) {
@@ -561,6 +560,7 @@ static void lsp_buffer_initialized(struct lsp_server *server,
     buffer_add_render_hook(buffer, buffer_render_hook, server);
     buffer_add_pre_save_hook(buffer, buffer_pre_save, server);
     buffer_add_post_save_hook(buffer, buffer_post_save, server);
+    buffer_add_post_save_hook_nonrecursive(buffer, format_on_save, server);
     buffer_add_reload_hook(buffer, buffer_reloaded, server);
 
     send_did_open(server, buffer);

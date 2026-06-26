@@ -178,6 +178,7 @@ static struct buffer create_internal(const char *name, char *filename) {
       .needs_render = false,
       .associated_path = NULL,
       .bulk_adding = false,
+      .hooks_enabled = true,
   };
 
   b.hooks = calloc(1, sizeof(struct hooks));
@@ -374,7 +375,9 @@ struct buffer buffer_create(const char *name) {
 
   struct buffer b = create_internal(name, NULL);
 
-  dispatch_hook(&g_create_hooks, struct create_hook, &b);
+  if (b.hooks_enabled) {
+    dispatch_hook(&g_create_hooks, struct create_hook, &b);
+  }
 
   return b;
 }
@@ -389,7 +392,9 @@ struct buffer buffer_from_file(const char *path) {
   }
   undo_push_boundary(&b.undo, (struct undo_boundary){.save_point = true});
 
-  dispatch_hook(&g_create_hooks, struct create_hook, &b);
+  if (b.hooks_enabled) {
+    dispatch_hook(&g_create_hooks, struct create_hook, &b);
+  }
 
   return b;
 }
@@ -446,7 +451,9 @@ void buffer_to_file(struct buffer *buffer) {
     return;
   }
 
-  dispatch_hook(&buffer->hooks->pre_save_hooks, struct pre_save_hook, buffer);
+  if (buffer->hooks_enabled) {
+    dispatch_hook(&buffer->hooks->pre_save_hooks, struct pre_save_hook, buffer);
+  }
 
   uint32_t nlines = text_num_lines(buffer->text);
   if (nlines > 0) {
@@ -487,7 +494,10 @@ void buffer_to_file(struct buffer *buffer) {
     buffer->last_write = sb.st_mtim;
   }
 
-  dispatch_hook(&buffer->hooks->post_save_hooks, struct post_save_hook, buffer);
+  if (buffer->hooks_enabled) {
+    dispatch_hook(&buffer->hooks->post_save_hooks, struct post_save_hook,
+                  buffer);
+  }
 }
 
 void buffer_set_filename(struct buffer *buffer, const char *filename) {
@@ -532,12 +542,16 @@ void buffer_reload(struct buffer *buffer) {
                               .col = 0, .row = buffer_num_lines(buffer)}});
     undo_push_boundary(&buffer->undo,
                        (struct undo_boundary){.save_point = true});
-    dispatch_hook(&buffer->hooks->reload_hooks, struct reload_hook, buffer);
+    if (buffer->hooks_enabled) {
+      dispatch_hook(&buffer->hooks->reload_hooks, struct reload_hook, buffer);
+    }
   }
 }
 
 void buffer_destroy(struct buffer *buffer) {
-  dispatch_hook(&buffer->hooks->destroy_hooks, struct destroy_hook, buffer);
+  if (buffer->hooks_enabled) {
+    dispatch_hook(&buffer->hooks->destroy_hooks, struct destroy_hook, buffer);
+  }
 
   lang_destroy(&buffer->lang);
 
@@ -620,13 +634,15 @@ struct location buffer_add(struct buffer *buffer, struct location at,
     uint32_t begin_idx = to_global_offset(buffer, at_bytes);
     uint32_t end_idx = to_global_offset(buffer, final_bytes);
 
-    dispatch_hook(&buffer->hooks->insert_hooks, struct insert_hook, buffer,
-                  (struct edit_location){
-                      .coordinates = region_new(initial, final),
-                      .bytes = region_new(at_bytes, final_bytes),
-                      .global_byte_begin = begin_idx,
-                      .global_byte_end = end_idx,
-                  });
+    if (buffer->hooks_enabled) {
+      dispatch_hook(&buffer->hooks->insert_hooks, struct insert_hook, buffer,
+                    (struct edit_location){
+                        .coordinates = region_new(initial, final),
+                        .bytes = region_new(at_bytes, final_bytes),
+                        .global_byte_begin = begin_idx,
+                        .global_byte_end = end_idx,
+                    });
+    }
   }
 
   return final;
@@ -655,13 +671,15 @@ void buffer_end_bulk_add(struct buffer *buffer, struct region updated) {
   uint32_t begin_idx = to_global_offset(buffer, begin_bytes);
   uint32_t end_idx = to_global_offset(buffer, end_bytes);
 
-  dispatch_hook(&buffer->hooks->insert_hooks, struct insert_hook, buffer,
-                (struct edit_location){
-                    .coordinates = updated,
-                    .bytes = region_new(begin_bytes, end_bytes),
-                    .global_byte_begin = begin_idx,
-                    .global_byte_end = end_idx,
-                });
+  if (buffer->hooks_enabled) {
+    dispatch_hook(&buffer->hooks->insert_hooks, struct insert_hook, buffer,
+                  (struct edit_location){
+                      .coordinates = updated,
+                      .bytes = region_new(begin_bytes, end_bytes),
+                      .global_byte_begin = begin_idx,
+                      .global_byte_end = end_idx,
+                  });
+  }
 }
 
 struct location buffer_set_text(struct buffer *buffer, uint8_t *text,
@@ -1124,25 +1142,29 @@ struct location buffer_delete(struct buffer *buffer, struct region region) {
   ++buffer->version;
   buffer->modified = true;
 
-  dispatch_hook(&buffer->hooks->pre_delete_hooks, struct pre_delete_hook,
-                buffer,
-                (struct edit_location){
-                    .coordinates = region,
-                    .bytes = region_new(begin_bytes, end_bytes),
-                    .global_byte_begin = begin_idx,
-                    .global_byte_end = end_idx,
-                });
+  if (buffer->hooks_enabled) {
+    dispatch_hook(&buffer->hooks->pre_delete_hooks, struct pre_delete_hook,
+                  buffer,
+                  (struct edit_location){
+                      .coordinates = region,
+                      .bytes = region_new(begin_bytes, end_bytes),
+                      .global_byte_begin = begin_idx,
+                      .global_byte_end = end_idx,
+                  });
+  }
 
   text_delete(buffer->text, begin_bytes.line, begin_bytes.col, end_bytes.line,
               end_bytes.col);
 
-  dispatch_hook(&buffer->hooks->delete_hooks, struct delete_hook, buffer,
-                (struct edit_location){
-                    .coordinates = region,
-                    .bytes = region_new(begin_bytes, end_bytes),
-                    .global_byte_begin = begin_idx,
-                    .global_byte_end = end_idx,
-                });
+  if (buffer->hooks_enabled) {
+    dispatch_hook(&buffer->hooks->delete_hooks, struct delete_hook, buffer,
+                  (struct edit_location){
+                      .coordinates = region,
+                      .bytes = region_new(begin_bytes, end_bytes),
+                      .global_byte_begin = begin_idx,
+                      .global_byte_end = end_idx,
+                  });
+  }
 
   return region.begin;
 }
@@ -1289,6 +1311,14 @@ uint32_t buffer_add_post_save_hook(struct buffer *buffer, post_save_cb callback,
                                userdata);
 }
 
+uint32_t buffer_add_post_save_hook_nonrecursive(struct buffer *buffer,
+                                                post_save_cb callback,
+                                                void *userdata) {
+  return insert_post_save_hook_recursive(&buffer->hooks->post_save_hooks,
+                                         &buffer->hooks->post_save_hook_id,
+                                         callback, userdata, false);
+}
+
 void buffer_remove_post_save_hook(struct buffer *buffer, uint32_t hook_id,
                                   remove_hook_cb callback) {
   remove_post_save_hook(&buffer->hooks->post_save_hooks, hook_id, callback);
@@ -1427,7 +1457,9 @@ void render_line(struct text_chunk *line, void *userdata) {
 }
 
 void buffer_update(struct buffer *buffer) {
-  dispatch_hook(&buffer->hooks->update_hooks, struct update_hook, buffer);
+  if (buffer->hooks_enabled) {
+    dispatch_hook(&buffer->hooks->update_hooks, struct update_hook, buffer);
+  }
 }
 
 void buffer_render(struct buffer *buffer, struct buffer_render_params *params) {
@@ -1435,8 +1467,10 @@ void buffer_render(struct buffer *buffer, struct buffer_render_params *params) {
     return;
   }
 
-  dispatch_hook(&buffer->hooks->render_hooks, struct render_hook, buffer,
-                params->origin, params->width, params->height);
+  if (buffer->hooks_enabled) {
+    dispatch_hook(&buffer->hooks->render_hooks, struct render_hook, buffer,
+                  params->origin, params->width, params->height);
+  }
 
   struct setting *show_ws = settings_get("editor.show-whitespace");
 
@@ -1617,4 +1651,12 @@ struct match_result
 buffer_find_next_in_line(struct buffer *buffer, struct location start,
                          bool (*predicate)(const struct codepoint *c)) {
   return find_next_in_line(buffer, start, predicate);
+}
+
+void buffer_disable_hooks(struct buffer *buffer) {
+  buffer->hooks_enabled = false;
+}
+
+void buffer_enable_hooks(struct buffer *buffer) {
+  buffer->hooks_enabled = true;
 }

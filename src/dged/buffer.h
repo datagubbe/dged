@@ -79,6 +79,9 @@ struct buffer {
   /** Bulk additions prevents callbacks from being called. */
   bool bulk_adding;
 
+  /** Are hooks currently enabled? */
+  bool hooks_enabled;
+
   /**
    * Version that increases with each edit (including undo).
    * Can be used to check if a buffer has changed.
@@ -578,6 +581,19 @@ void buffer_clear_text_properties(struct buffer *buffer);
 void buffer_clear_text_property_layer(struct buffer *buffer, layer_id layer);
 
 /**
+ * Disable buffer hooks.
+ *
+ * This is meant to be temporary and enabled again with @ref
+ * buffer_enable_hooks.
+ */
+void buffer_disable_hooks(struct buffer *buffer);
+
+/**
+ * Enable buffer hooks.
+ */
+void buffer_enable_hooks(struct buffer *buffer);
+
+/**
  * Buffer update hook callback function.
  *
  * @param buffer The buffer.
@@ -876,6 +892,21 @@ typedef void (*post_save_cb)(struct buffer *buffer, void *userdata);
  */
 uint32_t buffer_add_post_save_hook(struct buffer *buffer, post_save_cb callback,
                                    void *userdata);
+
+/**
+ * Add a non-recursive post-save hook, called when @p buffer has been saved.
+ *
+ * Non-recursive means that the hook is not called when save is triggered from
+ * the hook.
+ *
+ * @param buffer The buffer to add a post-save hook to.
+ * @param callback The function to call @p buffer is saved.
+ * @param userdata Data that is passed unmodified to the post-save hook.
+ * @returns The hook id.
+ */
+uint32_t buffer_add_post_save_hook_nonrecursive(struct buffer *buffer,
+                                                post_save_cb callback,
+                                                void *userdata);
 
 /**
  * Remove a buffer post-save hook.
