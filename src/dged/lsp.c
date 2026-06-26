@@ -13,6 +13,7 @@
 #include "jsonrpc.h"
 #include "process.h"
 #include "reactor.h"
+#include "vec.h"
 
 struct pending_write {
   char headers[256];
@@ -47,6 +48,10 @@ struct lsp {
   size_t content_len;
   size_t curr_content_len;
   uint8_t *reader_buffer;
+
+#ifdef DEBUG
+  int send_fd;
+#endif
 };
 
 struct lsp *lsp_create(char *const command[], struct reactor *reactor,
@@ -95,6 +100,15 @@ struct lsp *lsp_create(char *const command[], struct reactor *reactor,
   lsp->read_state = Read_Headers;
   lsp->curr_content_len = 0;
 
+#ifdef DEBUG
+  lsp->send_fd = -1;
+  const char *send_path = getenv("DGED_SEND_DEBUG_FILE");
+  if (send_path != NULL) {
+    lsp->send_fd = open(send_path, O_CREAT | O_TRUNC | O_WRONLY,
+                        S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+  }
+#endif
+
   VEC_INIT(&lsp->writes, 64);
   return lsp;
 }
@@ -108,6 +122,12 @@ void lsp_destroy(struct lsp *lsp) {
   if (lsp->command != NULL) {
     free((void *)lsp->command);
   }
+
+#ifdef DEBUG
+  if (lsp->send_fd != -1) {
+    close(lsp->send_fd);
+  }
+#endif
 
   VEC_DESTROY(&lsp->writes);
 
@@ -253,6 +273,14 @@ uint32_t lsp_update(struct lsp *lsp, struct lsp_message *msgs,
         to_write = w->headers_len - w->written;
         written =
             write(lsp->process->stdin_, w->headers + w->written, to_write);
+#ifdef DEBUG
+        if (lsp->send_fd != -1) {
+          if (w->written == 0) {
+            write(lsp->send_fd, "\n--------------\n", 16);
+          }
+          write(lsp->send_fd, w->headers + w->written, written);
+        }
+#endif
       }
 
       // did an error occur
@@ -263,6 +291,11 @@ uint32_t lsp_update(struct lsp *lsp, struct lsp_message *msgs,
         goto cleanup_writes;
       } else {
         w->written += written;
+      }
+
+      // if this happens, we are out of write space
+      if (written < to_write) {
+        goto cleanup_writes;
       }
 
       // write content next
@@ -270,6 +303,11 @@ uint32_t lsp_update(struct lsp *lsp, struct lsp_message *msgs,
         to_write = w->payload.l + w->headers_len - w->written;
         size_t offset = w->written - w->headers_len;
         written = write(lsp->process->stdin_, w->payload.s + offset, to_write);
+#ifdef DEBUG
+        if (lsp->send_fd != -1) {
+          write(lsp->send_fd, w->payload.s + offset, written);
+        }
+#endif
       }
 
       // did an error occur
@@ -280,6 +318,11 @@ uint32_t lsp_update(struct lsp *lsp, struct lsp_message *msgs,
         goto cleanup_writes;
       } else {
         w->written += written;
+      }
+
+      // if this happens, we are out of write space
+      if (written < to_write) {
+        goto cleanup_writes;
       }
     }
   }
@@ -293,8 +336,11 @@ cleanup_writes:
 
     VEC_FOR_EACH(&writes, struct pending_write * w) {
       if (w->written < w->payload.l + w->headers_len) {
-        // copying 256 bytes, goodbye vaccuum tubes...
-        VEC_PUSH(&lsp->writes, *w);
+        VEC_APPEND(&lsp->writes, struct pending_write * new);
+        memcpy(new->headers, w->headers, w->headers_len);
+        new->headers_len = w->headers_len;
+        new->payload = w->payload;
+        new->written = w->written;
       } else {
         s8delete(w->payload);
       }
