@@ -174,7 +174,6 @@ static struct region lsp_item_render(void *data, struct buffer *buffer) {
   struct location end = buffer_add(buffer, begin, txt.s, txt.l);
   s8delete(txt);
   s8delete(kind_str);
-  buffer_newline(buffer, buffer_end(buffer));
 
   return region_new(begin, end);
 }

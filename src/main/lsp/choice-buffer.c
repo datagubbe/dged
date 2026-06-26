@@ -131,7 +131,6 @@ choice_buffer_create(struct s8 title, struct buffers *buffers,
 
   struct location begin = buffer_end(b->buffer);
   buffer_add(b->buffer, buffer_end(b->buffer), title.s, title.l);
-  buffer_newline(b->buffer, buffer_end(b->buffer));
   buffer_add(b->buffer, buffer_end(b->buffer), (uint8_t *)"----------------",
              16);
   struct location end = buffer_end(b->buffer);
@@ -144,7 +143,6 @@ choice_buffer_create(struct s8 title, struct buffers *buffers,
                                        .fg = Color_Cyan,
                                    },
                            });
-  buffer_newline(b->buffer, buffer_end(b->buffer));
   buffer_newline(b->buffer, buffer_end(b->buffer));
 
   struct window *w = windows_get_active();
@@ -163,13 +161,13 @@ void choice_buffer_add_choice(struct choice_buffer *buffer, struct s8 text,
   buffer_set_readonly(buffer->buffer, false);
   VEC_APPEND(&buffer->choices, struct choice * new_choice);
 
+  struct location at = buffer_end(buffer->buffer);
+
   new_choice->data = data;
   new_choice->callback = NULL;
-  new_choice->region.begin = buffer_end(buffer->buffer);
-  buffer_add(buffer->buffer, buffer_end(buffer->buffer), (uint8_t *)"- ", 2);
-  buffer_add(buffer->buffer, buffer_end(buffer->buffer), text.s, text.l);
-  new_choice->region.end = buffer_end(buffer->buffer);
-  buffer_newline(buffer->buffer, buffer_end(buffer->buffer));
+  new_choice->region.begin = at;
+  at = buffer_add(buffer->buffer, at, (uint8_t *)"- ", 2);
+  new_choice->region.end = buffer_add(buffer->buffer, at, text.s, text.l);
   buffer_set_readonly(buffer->buffer, false);
 }
 
@@ -179,13 +177,14 @@ void choice_buffer_add_choice_with_callback(struct choice_buffer *buffer,
   buffer_set_readonly(buffer->buffer, false);
   VEC_APPEND(&buffer->choices, struct choice * new_choice);
 
+  struct location at = buffer_end(buffer->buffer);
+
   new_choice->data = data;
   new_choice->callback = callback;
-  new_choice->region.begin = buffer_end(buffer->buffer);
-  buffer_add(buffer->buffer, buffer_end(buffer->buffer), (uint8_t *)"- ", 2);
-  buffer_add(buffer->buffer, buffer_end(buffer->buffer), text.s, text.l);
-  new_choice->region.end = buffer_end(buffer->buffer);
-  buffer_newline(buffer->buffer, buffer_end(buffer->buffer));
+  new_choice->region.begin = at;
+  at = buffer_add(buffer->buffer, at, (uint8_t *)"- ", 2);
+  at = buffer_add(buffer->buffer, at, text.s, text.l);
+  new_choice->region.end = at;
   buffer_set_readonly(buffer->buffer, false);
 }
 

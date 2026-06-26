@@ -103,16 +103,14 @@ static int32_t insert_completion(struct command_ctx ctx, int argc,
     return 0;
   }
 
-  struct buffer_view *bv = window_buffer_view(popup_window());
-  struct window *target_window = windows_get_active();
-  struct buffer_view *target = window_buffer_view(target_window);
-  VEC_FOR_EACH(&g_state.completions, struct completion_item * item) {
-    if (region_is_inside(item->area, bv->dot)) {
-      g_state.insert_in_progress = true;
-      item->completion.selected(item->completion.data, target);
-      g_state.insert_in_progress = false;
-      return 0;
-    }
+  if (g_state.completion_index < VEC_SIZE(&g_state.completions)) {
+    struct window *target_window = windows_get_active();
+    struct buffer_view *target = window_buffer_view(target_window);
+    struct completion_item *item =
+        &VEC_ENTRIES(&g_state.completions)[g_state.completion_index];
+    g_state.insert_in_progress = true;
+    item->completion.selected(item->completion.data, target);
+    g_state.insert_in_progress = false;
   }
 
   return 0;

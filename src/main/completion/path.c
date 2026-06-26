@@ -154,7 +154,8 @@ static void path_complete(struct completion_context ctx, bool deletion,
   struct location needle_end = ctx.location;
   if (ctx.buffer == minibuffer_buffer()) {
     txt = minibuffer_content();
-    needle_end = buffer_end(minibuffer_buffer());
+    needle_end = buffer_previous_char(minibuffer_buffer(),
+                                      buffer_end(minibuffer_buffer()));
   } else {
     struct match_result start =
         buffer_find_prev_in_line(ctx.buffer, ctx.location, is_space);

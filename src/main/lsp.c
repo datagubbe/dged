@@ -1018,7 +1018,6 @@ void lang_servers_update(void) {
       struct lsp_message *msg = &msgs[mi];
       buffer_add(output_buf, buffer_end(output_buf), msg->payload.s,
                  msg->payload.l);
-      buffer_add(output_buf, buffer_end(output_buf), (uint8_t *)"\n", 1);
 
       switch (msg->type) {
       case Lsp_Response:
