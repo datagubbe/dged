@@ -562,7 +562,6 @@ static int32_t dired_cmd(struct command_ctx ctx, int argc, const char *argv[]) {
   struct buffer *dired_buf = buffers_find(ctx.buffers, "*dired*");
   if (dired_buf == NULL) {
     struct buffer new_buf = buffer_create("*dired*");
-    new_buf.lazy_row_add = false;
     new_buf.retain_properties = true;
     dired_buf = buffers_add(ctx.buffers, new_buf);
 

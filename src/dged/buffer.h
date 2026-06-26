@@ -61,9 +61,6 @@ struct buffer {
   /** Can this buffer be changed */
   bool readonly;
 
-  /** Can rows be added lazily to this buffer */
-  bool lazy_row_add;
-
   /** If true, force whitespace indication off for this buffer */
   bool force_show_ws_off;
 

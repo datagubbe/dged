@@ -101,7 +101,6 @@ choice_buffer_create(struct s8 title, struct buffers *buffers,
 
   // set up
   struct buffer buf = buffer_create("*something-choices*");
-  buf.lazy_row_add = false;
   buf.retain_properties = true;
   b->buffer = buffers_add(b->buffers, buf);
   // TODO: error?

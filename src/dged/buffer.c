@@ -170,7 +170,6 @@ static struct buffer create_internal(const char *name, char *filename) {
       .text = text_create(10),
       .modified = false,
       .readonly = false,
-      .lazy_row_add = true,
       .retain_properties = false,
       .lang =
           filename != NULL ? lang_from_filename(filename) : lang_from_id("fnd"),
@@ -195,13 +194,6 @@ static struct buffer create_internal(const char *name, char *filename) {
   undo_init(&b.undo, 100);
 
   return b;
-}
-
-static void strip_final_newline(struct buffer *b) {
-  uint32_t nlines = text_num_lines(b->text);
-  if (nlines > 0 && buffer_line_length(b, nlines - 1) == 0) {
-    text_delete(b->text, nlines - 1, 0, nlines - 1, 1);
-  }
 }
 
 static void buffer_read_from_file(struct buffer *b) {
@@ -234,8 +226,6 @@ static void buffer_read_from_file(struct buffer *b) {
 
     fclose(file);
 
-    // if last line is empty, remove it
-    strip_final_newline(b);
   } else {
     minibuffer_echo("Error opening %s: %s", b->filename, strerror(errno));
     s8delete(fullname);
@@ -681,9 +671,6 @@ struct location buffer_set_text(struct buffer *buffer, uint8_t *text,
   text_clear(buffer->text);
   text_append(buffer->text, text, nbytes, &lines_added);
 
-  // if last line is empty, remove it
-  strip_final_newline(buffer);
-
   return buffer_clamp(buffer, lines_added,
                       buffer_line_length(buffer, lines_added));
 }
@@ -777,8 +764,7 @@ struct location buffer_previous_line(struct buffer *buffer,
 
 struct location buffer_next_char(struct buffer *buffer, struct location dot) {
   if (dot.col == buffer_line_length(buffer, dot.line)) {
-    uint32_t lastline = buffer->lazy_row_add ? buffer_num_lines(buffer)
-                                             : buffer_num_lines(buffer) - 1;
+    uint32_t lastline = buffer_num_lines(buffer);
     if (dot.line == lastline) {
       return dot;
     }
@@ -834,8 +820,7 @@ struct location buffer_next_word(struct buffer *buffer, struct location dot) {
 }
 
 struct location buffer_next_line(struct buffer *buffer, struct location dot) {
-  uint32_t lastline = buffer->lazy_row_add ? buffer_num_lines(buffer)
-                                           : buffer_num_lines(buffer) - 1;
+  uint32_t lastline = buffer_num_lines(buffer);
   if (dot.line == lastline) {
     return dot;
   }
@@ -856,14 +841,10 @@ struct location buffer_clamp(struct buffer *buffer, int64_t line, int64_t col) {
 
   // clamp line
   if (line >= buffer_num_lines(buffer)) {
-    if (buffer->lazy_row_add) {
-      line = buffer_num_lines(buffer);
+    line = buffer_num_lines(buffer);
 
-      // the "new" line is always empty
-      col = 0;
-    } else {
-      line = buffer_num_lines(buffer) - 1;
-    }
+    // the "new" line is always empty
+    col = 0;
   } else if (line < 0) {
     line = 0;
   }
@@ -883,14 +864,7 @@ struct location buffer_clamp(struct buffer *buffer, int64_t line, int64_t col) {
 
 struct location buffer_end(struct buffer *buffer) {
   uint32_t nlines = buffer_num_lines(buffer);
-
-  if (buffer->lazy_row_add) {
-    return (struct location){.line = nlines, .col = 0};
-  } else {
-    nlines = nlines == 0 ? 0 : nlines - 1;
-    return (struct location){.line = nlines,
-                             .col = buffer_line_length(buffer, nlines)};
-  }
+  return (struct location){.line = nlines, .col = 0};
 }
 
 uint32_t buffer_num_lines(struct buffer *buffer) {
@@ -1601,12 +1575,6 @@ void buffer_sort_lines(struct buffer *buffer, uint32_t start_line,
   }
 
   free(lines);
-
-  // if the last line we are sorting is the last line in the buffer,
-  // we have added one extra unwanted newline
-  if (end == nlines - 1) {
-    strip_final_newline(buffer);
-  }
 
   if (txt.allocated) {
     free(txt.text);

@@ -323,7 +323,6 @@ int main(int argc, char *argv[]) {
   struct buffers buflist = {0};
   buffers_init(&buflist, 32);
   struct buffer minibuffer = buffer_create("minibuffer");
-  minibuffer.lazy_row_add = false;
   minibuffer_init(&minibuffer, &buflist);
 
   buffers_add_add_hook(&buflist, watch_file, (void *)reactor);
@@ -388,7 +387,6 @@ int main(int argc, char *argv[]) {
   struct buffer *welcome_buffer =
       buffers_add(&buflist, buffer_create("*welcome*"));
   welcome_buffer->force_show_ws_off = true;
-  welcome_buffer->lazy_row_add = false;
   buffer_set_readonly(welcome_buffer, true);
   buffer_set_text(welcome_buffer, (uint8_t *)welcome_text, welcome_text_len);
 

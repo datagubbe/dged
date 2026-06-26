@@ -44,11 +44,11 @@ static struct region buffer_comp_render(void *data,
                                         struct buffer *comp_buffer) {
   struct buffer *buffer = ((struct buffer_completion *)data)->buffer;
   struct location begin = buffer_end(comp_buffer);
-  buffer_add(comp_buffer, buffer_end(comp_buffer), (uint8_t *)buffer->name,
-             strlen(buffer->name));
+  struct location at = buffer_add(comp_buffer, begin, (uint8_t *)buffer->name,
+                                  strlen(buffer->name));
 
-  struct location end = buffer_end(comp_buffer);
-  buffer_newline(comp_buffer, buffer_end(comp_buffer));
+  struct location end = at;
+  buffer_newline(comp_buffer, at);
   return region_new(begin, end);
 }
 

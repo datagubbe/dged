@@ -73,15 +73,14 @@ static struct region path_render(void *data, struct buffer *comp_buffer) {
   struct path_completion *comp_path = (struct path_completion *)data;
 
   struct location start = buffer_end(comp_buffer);
-  buffer_add(comp_buffer, buffer_end(comp_buffer), (uint8_t *)comp_path->name.s,
-             comp_path->name.l);
+  struct location at = buffer_add(
+      comp_buffer, start, (uint8_t *)comp_path->name.s, comp_path->name.l);
 
   switch (comp_path->type) {
   case DT_DIR:
     if (!(s8eq(comp_path->name, s8(".")) || s8eq(comp_path->name, s8("..")))) {
-      buffer_add(comp_buffer, buffer_end(comp_buffer), (uint8_t *)"/", 1);
-      struct location end = buffer_end(comp_buffer);
-      buffer_add_text_property(comp_buffer, start, end,
+      at = buffer_add(comp_buffer, at, (uint8_t *)"/", 1);
+      buffer_add_text_property(comp_buffer, start, at,
                                (struct text_property){
                                    .type = TextProperty_Colors,
                                    .data.colors =
@@ -93,8 +92,7 @@ static struct region path_render(void *data, struct buffer *comp_buffer) {
     }
     break;
   case DT_LNK: {
-    struct location end = buffer_end(comp_buffer);
-    buffer_add_text_property(comp_buffer, start, end,
+    buffer_add_text_property(comp_buffer, start, at,
                              (struct text_property){
                                  .type = TextProperty_Colors,
                                  .data.colors =
@@ -123,8 +121,8 @@ static struct region path_render(void *data, struct buffer *comp_buffer) {
         });
   }
 
-  struct location end = buffer_end(comp_buffer);
-  buffer_add(comp_buffer, buffer_end(comp_buffer), (uint8_t *)"\n", 1);
+  struct location end = at;
+  at = buffer_newline(comp_buffer, at);
 
   return region_new(start, end);
 }

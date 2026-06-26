@@ -406,7 +406,6 @@ static void completions_buffer_deleted(struct buffer *buffer, void *userdata) {
 void init_completion(struct buffers *buffers) {
   if (g_state.completions_buffer == NULL) {
     struct buffer b = buffer_create("*completions*");
-    b.lazy_row_add = false;
     b.force_show_ws_off = true;
     b.retain_properties = true;
     g_state.completions_buffer = buffers_add(buffers, b);

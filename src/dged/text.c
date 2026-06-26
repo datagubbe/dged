@@ -259,6 +259,16 @@ void delete_line(struct text *text, uint32_t line) {
   text->lines[text->nlines].nbytes = 0;
 }
 
+static void trim_final_newline(struct text *text) {
+  if (text->nlines == 0) {
+    return;
+  }
+
+  if (text->lines[text->nlines - 1].nbytes == 0) {
+    delete_line(text, text->nlines - 1);
+  }
+}
+
 static void text_insert_at_inner(struct text *text, uint32_t line,
                                  uint32_t offset, uint8_t *bytes,
                                  uint32_t nbytes, uint32_t *lines_added) {
@@ -302,11 +312,13 @@ void text_append(struct text *text, uint8_t *bytes, uint32_t nbytes,
   uint32_t line = text->nlines > 0 ? text->nlines - 1 : 0;
   uint32_t offset = text_line_size(text, line);
   text_insert_at_inner(text, line, offset, bytes, nbytes, lines_added);
+  trim_final_newline(text);
 }
 
 void text_insert_at(struct text *text, uint32_t line, uint32_t offset,
                     uint8_t *bytes, uint32_t nbytes, uint32_t *lines_added) {
   text_insert_at_inner(text, line, offset, bytes, nbytes, lines_added);
+  trim_final_newline(text);
 }
 
 void text_delete(struct text *text, uint32_t start_line, uint32_t start_offset,
@@ -372,20 +384,23 @@ void text_delete(struct text *text, uint32_t start_line, uint32_t start_offset,
   /* Special case for the last line of the buffer:
    * - if it is the last line in the buffer, and it turns out empty, remove it.
    */
-  if (start_line + 1 == text->nlines && firstline->nbytes == 0) {
-    delete_line(text, start_line);
-  }
+  trim_final_newline(text);
 }
 
 void text_for_each_chunk(struct text *text, chunk_cb callback, void *userdata) {
   // if representation of text is changed, this can be changed as well
-  text_for_each_line(text, 0, text->nlines, callback, userdata);
+  text_for_each_line(text, 0, text_num_lines(text), callback, userdata);
 }
 
 void text_for_each_line(struct text *text, uint32_t line, uint32_t nlines,
                         chunk_cb callback, void *userdata) {
-  uint32_t nlines_max =
-      (line + nlines) > text->nlines ? text->nlines : (line + nlines);
+  uint32_t tlines = text_num_lines(text);
+  uint32_t nlines_max = (line + nlines) > tlines ? tlines : (line + nlines);
+
+  if (nlines_max == 0) {
+    return;
+  }
+
   for (uint32_t li = line; li < nlines_max; ++li) {
     struct line *src_line = &text->lines[li];
     struct text_chunk line = (struct text_chunk){
@@ -394,6 +409,7 @@ void text_for_each_line(struct text *text, uint32_t line, uint32_t nlines,
         .nbytes = src_line->nbytes,
         .line = li,
     };
+
     callback(&line, userdata);
   }
 }

@@ -654,7 +654,6 @@ static void create_lsp_client(struct buffer *buffer, void *userdata) {
     struct buffer *stderr_buf = buffers_find(g_lsp_data.buffers, bufname);
     if (stderr_buf == NULL) {
       struct buffer buf = buffer_create(bufname);
-      buf.lazy_row_add = false;
       stderr_buf = buffers_add(g_lsp_data.buffers, buf);
       buffer_set_readonly(stderr_buf, true);
     }
@@ -845,13 +844,6 @@ void apply_edits_buffer(struct lsp_server *server, struct buffer *buffer,
       at = buffer_delete(buffer, reg);
     }
 
-    /* do not add a final newline, they are always added when saving buffers */
-    if (at.line + 1 == buffer_num_lines(buffer) &&
-        at.col == buffer_line_length(buffer, at.line) &&
-        s8eq(edit->new_text, s8("\n"))) {
-      return;
-    }
-
     struct location after =
         buffer_add(buffer, at, edit->new_text.s, edit->new_text.l);
     if (point != NULL) {
@@ -1006,7 +998,6 @@ void lang_servers_update(void) {
     struct buffer *output_buf = buffers_find(g_lsp_data.buffers, bufname);
     if (output_buf == NULL) {
       struct buffer buf = buffer_create(bufname);
-      buf.lazy_row_add = false;
       output_buf = buffers_add(g_lsp_data.buffers, buf);
     }
 

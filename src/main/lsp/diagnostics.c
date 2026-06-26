@@ -153,7 +153,6 @@ static struct buffer *update_diagnostics_buffer(struct lsp_server *server,
   struct buffer *db = buffers_find(buffers, DIAGNOSTIC_BUFNAME);
   if (db == NULL) {
     struct buffer buf = buffer_create(DIAGNOSTIC_BUFNAME);
-    buf.lazy_row_add = false;
     buf.retain_properties = true;
     db = buffers_add(buffers, buf);
 

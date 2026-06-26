@@ -303,7 +303,6 @@ int32_t timers(struct command_ctx ctx, int argc, const char *argv[]) {
   struct buffer *b = buffers_find(ctx.buffers, "*timers*");
   if (b == NULL) {
     struct buffer new_buf = buffer_create("*timers*");
-    new_buf.lazy_row_add = false;
     b = buffers_add(ctx.buffers, new_buf);
     buffer_add_update_hook(b, timers_refresh, NULL);
   }

@@ -105,7 +105,6 @@ static void handle_references_response(struct lsp_server *server,
   struct buffer *b = buffers_find(buffers, "*lsp-references*");
   if (b == NULL) {
     b = buffers_add(buffers, buffer_create("*lsp-references*"));
-    b->lazy_row_add = false;
     b->retain_properties = true;
     static struct command ref_close = {
         .name = "ref_close",
