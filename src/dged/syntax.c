@@ -610,7 +610,7 @@ static void create_parser(struct buffer *buffer, void *userdata) {
   if (!ts_parser_set_language(hl->parser, lang)) {
     message("failed to assign language to parser, abi version %d, lib version: "
             "%d, min compatible lib version: %d",
-            ts_language_version(lang), TREE_SITTER_LANGUAGE_VERSION,
+            ts_language_abi_version(lang), TREE_SITTER_LANGUAGE_VERSION,
             TREE_SITTER_MIN_COMPATIBLE_LANGUAGE_VERSION);
     ts_parser_delete(hl->parser);
     free((void *)lang_root);

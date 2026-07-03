@@ -133,16 +133,7 @@ FILES = $(DEPS) \
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-grammars:
-	@if [ "$(SYNTAX_ENABLE)" = "true" ] && [ -n "$$BUNDLE_TREESITTER_GRAMMARS" ]; then \
-		IFS=":"; for p in "$$BUNDLE_TREESITTER_GRAMMARS"; do \
-			cp -rL --no-preserve=mode "$$p"/ grammars; \
-		done \
-	else \
-		mkdir -p ./grammars; \
-	fi
-
-dged: $(MAIN_OBJS) libdged.a grammars
+dged: $(MAIN_OBJS) libdged.a
 	$(CC) $(LDFLAGS) $(MAIN_OBJS) libdged.a -o dged -lm
 
 libdged.a: $(OBJS)
@@ -180,7 +171,6 @@ format:
 clean:
 	rm -f $(FILES)
 	rm -rf $(.CURDIR)/docs
-	rm -rf $(.OBJDIR)/grammars
 
 install: dged
 	install -d $(DESTDIR)/bin
@@ -188,9 +178,6 @@ install: dged
 
 	install -d $(DESTDIR)/$(MAN_DEST)/man1
 	install -m 644 $(.CURDIR)/dged.1 $(DESTDIR)/$(MAN_DEST)/dged.1
-
-	install -d $(DESTDIR)/$(datadir)/grammars
-	cp -RL $(.OBJDIR)/grammars "$(DESTDIR)/$(datadir)/"
 
 docs:
 	CURDIR=$(.CURDIR) doxygen $(.CURDIR)/Doxyfile
