@@ -111,6 +111,7 @@ static int32_t insert_completion(struct command_ctx ctx, int argc,
     g_state.insert_in_progress = true;
     item->completion.selected(item->completion.data, target);
     g_state.insert_in_progress = false;
+    g_state.completion_index = 0;
   }
 
   return 0;
@@ -307,8 +308,9 @@ static void open_completion(struct completion_state *state) {
     state->keymap_id = buffer_add_keymap(buffer, km);
     state->target = buffer;
   } else {
-    state->completion_index =
-        state->completion_index > ncompletions ? 0 : state->completion_index;
+    state->completion_index = state->completion_index >= ncompletions
+                                  ? ncompletions > 0 ? ncompletions - 1 : 0
+                                  : state->completion_index;
   }
 
   // need to run next frame to have the correct position
