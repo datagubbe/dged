@@ -10,6 +10,10 @@
 #include <string.h>
 #include <unistd.h>
 
+#if defined(USE_WINDOWS_PATHS)
+#include <shlwapi.h>
+#endif
+
 struct s8 expanduser(struct s8 path) {
   // replace tilde
   struct s8 res = {};
@@ -29,19 +33,6 @@ struct s8 expanduser(struct s8 path) {
 }
 
 struct s8 unexpanduser(struct s8 path) { return s8dup(path); }
-
-struct s8 working_dir() {
-#if defined(_WIN32)
-#error "implement"
-#else
-  const char *cwd = getcwd(NULL, 0);
-  if (cwd == NULL) {
-    return (struct s8){.s = NULL, .l = 0};
-  }
-
-  return s8(cwd);
-#endif
-}
 
 struct s8 canonicalize(struct s8 path) {
   struct s8 exp = expanduser(path);
@@ -68,8 +59,8 @@ struct s8 canonicalize(struct s8 path) {
 }
 
 bool is_absolute(struct s8 path) {
-#if defined(_WIN32)
-#error "implement"
+#if defined(USE_WINDOWS_PATHS)
+  return !PathIsRelative();
 #else
   return s8startswith(path, PATHSEP) || s8startswith(path, s8("~"));
 #endif
@@ -90,19 +81,13 @@ struct s8 join_path(struct s8 p1, struct s8 p2) {
 }
 
 struct s8 join_path_segments(struct s8 *segments, size_t nsegments) {
-#if defined(_WIN32)
-  const char pathsep = '\\';
-#else
-  const char pathsep = '/';
-#endif
-
   size_t orig_len = 0;
-  if (nsegments > 1 && segments[0].l == 1 && s8at(segments[0], 0) == pathsep) {
+  if (nsegments > 1 && segments[0].l == 1 && s8startswith(segments[0], PATHSEP)) {
     orig_len = segments[0].l;
     segments[0].l = 0;
   }
 
-  struct s8 joined = s8join(segments, nsegments, pathsep);
+  struct s8 joined = s8join(segments, nsegments, s8at(PATHSEP, 0));
 
   if (orig_len > 0) {
     segments[0].l = orig_len;
@@ -132,11 +117,7 @@ static bool is_valid_segment(struct s8 path, size_t start, size_t end) {
 }
 
 size_t path_segments(struct s8 path, struct s8 **segments) {
-#if defined(_WIN32)
-  const char pathsep = '\\';
-#else
-  const char pathsep = '/';
-#endif
+  const char pathsep = s8at(PATHSEP, 0);
 
   if (s8empty(path)) {
     *segments = NULL;
@@ -187,39 +168,6 @@ size_t path_segments(struct s8 path, struct s8 **segments) {
 
   *segments = res;
   return nsegments;
-}
-
-bool path_exists(struct s8 path) {
-#if defined(_WIN32)
-#error "implement"
-#else
-  return access(s8ascstr(path), F_OK) == 0;
-#endif
-}
-
-bool create_directories(struct s8 path) {
-  struct s8 *segments = NULL;
-  size_t nsegments = path_segments(path, &segments);
-
-  if (nsegments == 0) {
-    return true;
-  }
-
-  for (size_t i = 0; i < nsegments; ++i) {
-    struct s8 path = join_path_segments(segments, i + 1);
-    if (!path_exists(path)) {
-      if (mkdir(s8ascstr(path), 0777) == -1) {
-        s8delete(path);
-        free_path_segments(segments, nsegments);
-        return false;
-      }
-    }
-
-    s8delete(path);
-  }
-
-  free_path_segments(segments, nsegments);
-  return true;
 }
 
 struct s8 parent(struct s8 path) {

@@ -14,6 +14,7 @@ build:
 
 prefix ?= /usr/local
 DESTDIR ?= $(prefix)
+PKG_CONFIG ?= pkg-config
 datadir = share/dged
 
 CFLAGS ?= -g -O2
@@ -27,7 +28,7 @@ CFLAGS += -Werror -Wall -Wextra -std=c99\
 SYNTAX_ENABLE ?= true
 LSP_ENABLE ?= true
 
-HEADERS = src/dged/settings.h src/dged/minibuffer.h src/dged/keyboard.h src/dged/binding.h \
+HEADERS += src/dged/settings.h src/dged/minibuffer.h src/dged/keyboard.h src/dged/binding.h \
 	src/dged/buffers.h src/dged/text.h src/dged/display.h src/dged/hashmap.h src/dged/path.h \
 	src/dged/buffer.h src/dged/btree.h src/dged/command.h src/dged/allocator.h src/dged/reactor.h \
 	src/dged/vec.h src/dged/window.h src/dged/hash.h src/dged/undo.h src/dged/lang.h \
@@ -37,13 +38,14 @@ HEADERS = src/dged/settings.h src/dged/minibuffer.h src/dged/keyboard.h src/dged
 	src/dged/hook.h src/main/frame-hooks.h src/main/completion/buffer.h src/main/completion/command.h \
 	src/main/completion/path.h src/main/dired.h
 
-SOURCES = src/dged/binding.c src/dged/buffer.c src/dged/command.c src/dged/display.c \
+SOURCES += src/dged/binding.c src/dged/buffer.c src/dged/command.c src/dged/display.c \
 	src/dged/keyboard.c src/dged/minibuffer.c src/dged/text.c \
 	src/dged/utf8.c src/dged/buffers.c src/dged/window.c src/dged/allocator.c src/dged/undo.c \
 	src/dged/settings.c src/dged/lang.c src/dged/settings-parse.c src/dged/location.c \
-	src/dged/buffer_view.c src/dged/timers.c src/dged/s8.c src/dged/path.c src/dged/hash.c src/dged/bufread.c
+	src/dged/buffer_view.c src/dged/timers.c src/dged/s8.c src/dged/path.c src/dged/hash.c src/dged/bufread.c \
+	src/dged/path-${PATH_TYPE}.c
 
-MAIN_SOURCES = src/main/main.c src/main/cmds.c src/main/bindings.c src/main/search-replace.c src/main/completion.c \
+MAIN_SOURCES += src/main/main.c src/main/cmds.c src/main/bindings.c src/main/search-replace.c src/main/completion.c \
 			src/main/frame-hooks.c src/main/completion/buffer.c src/main/completion/command.c \
 			src/main/completion/path.c src/main/dired.c src/main/completion/matchers.c
 
@@ -51,7 +53,7 @@ MAIN_SOURCES = src/main/main.c src/main/cmds.c src/main/bindings.c src/main/sear
 # since they have their own implementation
 .if "$(HAS_EPOLL)" == true
   MAIN_SOURCES += src/dged/reactor-epoll.c
-.elif $(HAS_KQUEUE) == true
+.elif "$(HAS_KQUEUE)" == true
   MAIN_SOURCES += src/dged/reactor-kqueue.c
 .endif
 
@@ -59,7 +61,7 @@ MAIN_SOURCES = src/main/main.c src/main/cmds.c src/main/bindings.c src/main/sear
   SOURCES += src/dged/process-posix.c
 .endif
 
-TEST_SOURCES = test/assert.c test/buffer.c test/text.c test/utf8.c test/main.c \
+TEST_SOURCES += test/assert.c test/buffer.c test/text.c test/utf8.c test/main.c \
 	test/command.c test/keyboard.c test/fake-reactor.c test/allocator.c \
 	test/minibuffer.c test/undo.c test/settings.c test/container.c \
 	test/buflist.c test/bufread.c test/path.c
@@ -78,10 +80,10 @@ ASAN ?= false
   HEADERS += src/dged/syntax.h
   SOURCES += src/dged/syntax.c
 
-  treesitterflags != pkg-config tree-sitter --cflags
+  treesitterflags != $(PKG_CONFIG) tree-sitter --cflags
   CFLAGS += ${treesitterflags} -DSYNTAX_ENABLE
 
-  treesitterld != pkg-config tree-sitter --libs
+  treesitterld != $(PKG_CONFIG) tree-sitter --libs
   LDFLAGS += ${treesitterld}
 .endif
 
@@ -99,13 +101,15 @@ ASAN ?= false
 .endif
 
 UNAME_S != uname -s | tr '[:upper:]' '[:lower:]'
-.if exists(${.CURDIR}/${UNAME_S}.mk)
+.if "$(HOST)" == "" && exists(${.CURDIR}/${UNAME_S}.mk)
 .  include "$(.CURDIR)/$(UNAME_S).mk"
 .endif
 
-# add a define like LINUX/OPENBSD
+# add a define like LINUX/OPENBSD if we are not cross-compiling
+.if "$(HOST)" == ""
 UNAME_UPPER != uname -s | tr '[:lower:]' '[:upper:]'
 CFLAGS += -D$(UNAME_UPPER)
+.endif
 
 FORMAT_TOOL ?= clang-format
 MAN_DEST ?= share/man/man1

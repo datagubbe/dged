@@ -1,15 +1,9 @@
 { stdenv
-, clang-tools
-, bmake
-, pkg-config
 , tree-sitter
-, bear
 , lib
-, doxygen
-, valgrind
 , glibcLocalesUtf8
-, gdb
 , grammarBundle
+, buildPackages
 }:
 stdenv.mkDerivation {
   name = "dged";
@@ -18,7 +12,7 @@ stdenv.mkDerivation {
   doCheck = true;
   separateDebugInfo = true;
 
-  nativeBuildInputs = [
+  nativeBuildInputs = with buildPackages; [
     bmake
     pkg-config
     clang-tools
@@ -28,9 +22,7 @@ stdenv.mkDerivation {
     gdb
   ];
 
-  buildInputs = [
-    tree-sitter
-  ];
+  buildInputs = lib.optional (!stdenv.hostPlatform.isWindows) tree-sitter;
 
   buildPhase = ''
     bmake build

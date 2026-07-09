@@ -9,8 +9,10 @@
 #elif defined(USE_POSIX_PATHS)
 #define PATHSEP s8("/")
 #elif defined(_WIN32)
+#define USE_WINDOWS_PATHS
 #define PATHSEP s8("\\")
 #else
+#define USE_POSIX_PATHS
 #define PATHSEP s8("/")
 #endif
 

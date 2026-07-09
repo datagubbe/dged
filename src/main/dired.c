@@ -61,7 +61,18 @@ struct read_directory_res {
 };
 
 #if defined(_WIN32)
-#error "Implement me!"
+
+static struct s8 mode_string(mode_t mode) {
+  struct s8 modestr = s8new("----------", 10);
+  return modestr;
+}
+
+static struct read_directory_res read_directory(const char *path,
+                                                bool include_hidden) {
+  return (struct read_directory_res) {
+    .success = false;
+  };
+}
 #else
 
 static struct s8 mode_string(mode_t mode) {
