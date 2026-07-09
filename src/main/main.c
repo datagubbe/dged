@@ -66,6 +66,8 @@ static void terminate2(int sig) {
 
 static struct display *display = NULL;
 static bool display_resized = false;
+
+#if !defined(_WIN32)
 static void resized(int sig) {
   (void)sig;
   if (display != NULL) {
@@ -94,6 +96,7 @@ static void resume(int sig) {
   (void)sig;
   display_initialize(display);
 }
+#endif
 
 static void handle_crash(int sig) {
   (void)sig;
@@ -314,7 +317,10 @@ int main(int argc, char *argv[]) {
   }
 
   display_clear(display);
+
+#if defined(SIGWINCH)
   signal(SIGWINCH, resized);
+#endif
 
   struct keyboard kbd = keyboard_create(reactor);
 

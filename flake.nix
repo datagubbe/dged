@@ -15,6 +15,7 @@
           default = pkgs.callPackage ./dged.nix { grammarBundle = grammars; };
           gcc = default;
           clang = pkgs.callPackage ./dged.nix { stdenv = pkgs.clangStdenv; grammarBundle = grammars; };
+          windows = pkgs.pkgsCross.mingwW64.callPackage ./dged.nix { grammarBundle = grammars; };
         };
       }
     );

@@ -14,6 +14,7 @@ build:
 
 prefix ?= /usr/local
 DESTDIR ?= $(prefix)
+PKG_CONFIG ?= pkg-config
 datadir = share/dged
 
 CFLAGS ?= -g -O2
@@ -27,7 +28,7 @@ CFLAGS += -Werror -Wall -Wextra -std=c99\
 SYNTAX_ENABLE ?= true
 LSP_ENABLE ?= true
 
-HEADERS = src/dged/settings.h src/dged/minibuffer.h src/dged/keyboard.h src/dged/binding.h \
+HEADERS += src/dged/settings.h src/dged/minibuffer.h src/dged/keyboard.h src/dged/binding.h \
 	src/dged/buffers.h src/dged/text.h src/dged/display.h src/dged/hashmap.h src/dged/path.h \
 	src/dged/buffer.h src/dged/btree.h src/dged/command.h src/dged/allocator.h src/dged/reactor.h \
 	src/dged/vec.h src/dged/window.h src/dged/hash.h src/dged/undo.h src/dged/lang.h \
@@ -37,30 +38,33 @@ HEADERS = src/dged/settings.h src/dged/minibuffer.h src/dged/keyboard.h src/dged
 	src/dged/hook.h src/main/frame-hooks.h src/main/completion/buffer.h src/main/completion/command.h \
 	src/main/completion/path.h src/main/dired.h src/main/completion/project-file.h
 
-SOURCES = src/dged/binding.c src/dged/buffer.c src/dged/command.c src/dged/display.c \
+SOURCES += src/dged/binding.c src/dged/buffer.c src/dged/command.c src/dged/display.c \
 	src/dged/keyboard.c src/dged/minibuffer.c src/dged/text.c \
 	src/dged/utf8.c src/dged/buffers.c src/dged/window.c src/dged/allocator.c src/dged/undo.c \
 	src/dged/settings.c src/dged/lang.c src/dged/settings-parse.c src/dged/location.c \
-	src/dged/buffer_view.c src/dged/timers.c src/dged/s8.c src/dged/path.c src/dged/hash.c src/dged/bufread.c
+	src/dged/buffer_view.c src/dged/timers.c src/dged/s8.c src/dged/path.c src/dged/hash.c src/dged/bufread.c \
+	src/dged/path-${PATH_TYPE}.c
 
-MAIN_SOURCES = src/main/main.c src/main/cmds.c src/main/bindings.c src/main/search-replace.c src/main/completion.c \
+NON_TEST_SOURCES =
+.if "$(HAS_EPOLL)" == true
+  NON_TEST_SOURCES += src/dged/reactor-epoll.c
+.elif "$(HAS_KQUEUE)" == true
+  NON_TEST_SOURCES += src/dged/reactor-kqueue.c
+.endif
+
+
+MAIN_SOURCES += src/main/main.c src/main/cmds.c src/main/bindings.c src/main/search-replace.c src/main/completion.c \
 			src/main/frame-hooks.c src/main/completion/buffer.c src/main/completion/command.c \
 			src/main/completion/path.c src/main/dired.c src/main/completion/matchers.c \
 			src/main/completion/project-file.c
 
 # HACK: added to MAIN_SOURCES to not be picked up in tests
 # since they have their own implementation
-.if "$(HAS_EPOLL)" == true
-  MAIN_SOURCES += src/dged/reactor-epoll.c
-.elif $(HAS_KQUEUE) == true
-  MAIN_SOURCES += src/dged/reactor-kqueue.c
-.endif
-
 .if $(PROCESS_MODEL) == posix
   SOURCES += src/dged/process-posix.c
 .endif
 
-TEST_SOURCES = test/assert.c test/buffer.c test/text.c test/utf8.c test/main.c \
+TEST_SOURCES += test/assert.c test/buffer.c test/text.c test/utf8.c test/main.c \
 	test/command.c test/keyboard.c test/fake-reactor.c test/allocator.c \
 	test/minibuffer.c test/undo.c test/settings.c test/container.c \
 	test/buflist.c test/bufread.c test/path.c test/matchers.c
@@ -79,10 +83,10 @@ ASAN ?= false
   HEADERS += src/dged/syntax.h
   SOURCES += src/dged/syntax.c
 
-  treesitterflags != pkg-config tree-sitter --cflags
+  treesitterflags != $(PKG_CONFIG) tree-sitter --cflags
   CFLAGS += ${treesitterflags} -DSYNTAX_ENABLE
 
-  treesitterld != pkg-config tree-sitter --libs
+  treesitterld != $(PKG_CONFIG) tree-sitter --libs
   LDFLAGS += ${treesitterld}
 .endif
 
@@ -99,27 +103,20 @@ ASAN ?= false
   CFLAGS += -DLSP_ENABLE
 .endif
 
-UNAME_S != uname -s | tr '[:upper:]' '[:lower:]'
-.if exists(${.CURDIR}/${UNAME_S}.mk)
-.  include "$(.CURDIR)/$(UNAME_S).mk"
-.endif
-
-# add a define like LINUX/OPENBSD
-UNAME_UPPER != uname -s | tr '[:lower:]' '[:upper:]'
-CFLAGS += -D$(UNAME_UPPER)
-
 FORMAT_TOOL ?= clang-format
 MAN_DEST ?= share/man/man1
 
-DEPS = $(SOURCES:.c=.d) $(MAIN_SOURCES:.c=.d) $(TEST_SOURCES:.c=.d)
+DEPS = $(SOURCES:.c=.d) $(MAIN_SOURCES:.c=.d) $(TEST_SOURCES:.c=.d) $(NON_TEST_SOURCES:.c=.d)
 
 OBJS = $(SOURCES:.c=.o)
+NON_TEST_OBJS = $(NON_TEST_SOURCES:.c=.o)
 MAIN_OBJS = $(MAIN_SOURCES:.c=.o)
 TEST_OBJS = $(TEST_SOURCES:.c=.o)
 
 FILES = $(DEPS) \
 		$(MAIN_OBJS) \
 		$(OBJS) \
+		$(NON_TESTS_OBJS) \
 		$(TEST_OBJS) \
 		run-tests \
 		dged \
@@ -138,8 +135,8 @@ FILES = $(DEPS) \
 dged: $(MAIN_OBJS) libdged.a
 	$(CC) $(LDFLAGS) $(MAIN_OBJS) libdged.a -o dged -lm
 
-libdged.a: $(OBJS)
-	$(AR) -rc libdged.a $(OBJS)
+libdged.a: $(OBJS) $(NON_TEST_OBJS)
+	$(AR) -rc libdged.a $(OBJS) $(NON_TEST_OBJS)
 
 run-tests: $(TEST_OBJS) $(OBJS) src/main/completion/matchers.o
 	$(CC) $(LDFLAGS) $(TEST_OBJS) $(OBJS) src/main/completion/matchers.o -lm -o run-tests
