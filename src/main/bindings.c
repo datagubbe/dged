@@ -74,6 +74,7 @@ void set_default_buffer_bindings(struct keymap *keymap) {
       BINDING(Meta, 'y', "paste-older"),
       BINDING(Meta, 'w', "copy"),
 
+      BINDING(Ctrl, '/', "undo"),
       BINDING(Ctrl, '_', "undo"),
   };
 
@@ -117,6 +118,7 @@ void init_bindings(void) {
       BINDING(None, 'b', "switch-buffer"),
       BINDING(None, 'k', "kill-buffer"),
       BINDING(Ctrl, 'B', "buffer-list"),
+      BINDING(None, 'u', "undo"),
 
       BINDING(None, '>', "indent-alt"),
       BINDING(None, '<', "unindent-line"),
