@@ -39,6 +39,7 @@ struct text {
   uint32_t nproperty_layers;
   layer_id current_layer_id;
   enum line_endings line_ends;
+  bool inserting;
 };
 
 struct text *text_create(uint32_t initial_capacity) {
@@ -48,6 +49,7 @@ struct text *text_create(uint32_t initial_capacity) {
   txt->nlines = 0;
   txt->current_layer_id = 1;
   txt->line_ends = LineEnding_LF;
+  txt->inserting = false;
 
   VEC_INIT(&txt->properties, 32);
 
@@ -312,13 +314,19 @@ void text_append(struct text *text, uint8_t *bytes, uint32_t nbytes,
   uint32_t line = text->nlines > 0 ? text->nlines - 1 : 0;
   uint32_t offset = text_line_size(text, line);
   text_insert_at_inner(text, line, offset, bytes, nbytes, lines_added);
-  trim_final_newline(text);
+
+  if (!text->inserting) {
+    trim_final_newline(text);
+  }
 }
 
 void text_insert_at(struct text *text, uint32_t line, uint32_t offset,
                     uint8_t *bytes, uint32_t nbytes, uint32_t *lines_added) {
   text_insert_at_inner(text, line, offset, bytes, nbytes, lines_added);
-  trim_final_newline(text);
+
+  if (!text->inserting) {
+    trim_final_newline(text);
+  }
 }
 
 void text_delete(struct text *text, uint32_t start_line, uint32_t start_offset,
@@ -713,4 +721,11 @@ void text_clear_property_layer(struct text *text, layer_id layer) {
   }
 
   VEC_CLEAR(pv);
+}
+
+void text_begin_insert(struct text *text) { text->inserting = true; }
+
+void text_end_insert(struct text *text) {
+  trim_final_newline(text);
+  text->inserting = false;
 }

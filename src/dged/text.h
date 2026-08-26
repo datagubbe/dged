@@ -30,6 +30,9 @@ void text_destroy(struct text *text);
  */
 void text_clear(struct text *text);
 
+void text_begin_insert(struct text *text);
+void text_end_insert(struct text *text);
+
 void text_insert_at(struct text *text, uint32_t line, uint32_t offset,
                     uint8_t *bytes, uint32_t nbytes, uint32_t *lines_added);
 

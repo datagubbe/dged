@@ -209,6 +209,7 @@ static void buffer_read_from_file(struct buffer *b) {
       return;
     }
 
+    text_begin_insert(b->text);
     while (true) {
       uint8_t buff[4096];
       int bytes = fread(buff, 1, 4096, file);
@@ -221,10 +222,12 @@ static void buffer_read_from_file(struct buffer *b) {
         minibuffer_echo("error reading from %s: %s", b->filename,
                         strerror(errno));
         fclose(file);
+        text_end_insert(b->text);
         return;
       }
     }
 
+    text_end_insert(b->text);
     fclose(file);
 
   } else {
