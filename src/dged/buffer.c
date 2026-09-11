@@ -258,7 +258,7 @@ static bool is_word_break(const struct codepoint *codepoint) {
   uint32_t c = codepoint->codepoint;
   return c == ' ' || c == '.' || c == '(' || c == ')' || c == '[' || c == ']' ||
          c == '{' || c == '}' || c == ';' || c == '<' || c == '>' || c == ':' ||
-         c == '"' || c == '=' || c == ',';
+         c == '"' || c == '=' || c == ',' || c == '/' || c == '\\';
 }
 
 static bool is_word_char(const struct codepoint *c) {
