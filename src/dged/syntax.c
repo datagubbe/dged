@@ -12,6 +12,7 @@
 #include <tree_sitter/api.h>
 
 #include "buffer.h"
+#include "dged/lang.h"
 #include "display.h"
 #include "minibuffer.h"
 #include "path.h"
@@ -132,7 +133,7 @@ static const char *grammar_name_from_buffer(struct buffer *buffer) {
     return s->value.data.string_value;
   }
 
-  return buffer->lang.name;
+  return buffer->lang.id;
 }
 
 static const char *lang_folder(struct buffer *buffer, const char *path) {
@@ -145,9 +146,7 @@ static const char *lang_folder(struct buffer *buffer, const char *path) {
   memcpy(&fld[idx], path, tspath_len);
   idx += tspath_len;
   fld[idx++] = '/';
-  for (uint32_t i = 0; i < lang_len; ++i) {
-    fld[idx + i] = tolower(langname[i]);
-  }
+  memcpy(&fld[idx], langname, lang_len);
   idx += lang_len;
   fld[idx++] = '\0';
 
@@ -324,7 +323,7 @@ static TSQuery *setup_queries(const char *lang_root, TSTree *tree) {
       ++colno;
       ++byteoff;
     }
-    message("ts query error at (%d, %d): %s, %.*s", lineno, colno, msg);
+    message("ts query error at (%d, %d): %s", lineno, colno, msg);
 
     munmap(data, len);
     return NULL;
@@ -425,9 +424,16 @@ static void update_parser(struct buffer *buffer, struct location origin,
         highlight = false;
       } else if (s8eq(cname, s8("text"))) {
         highlight = false;
-      } else if (match_cname(cname, "string") || match_cname(cname, "text")) {
+      } else if (match_cname(cname, "string") || match_cname(cname, "text") ||
+                 s8eq(cname, s8("diff.plus"))) {
         highlight = true;
         color = Color_Green;
+      } else if (s8eq(cname, s8("diff.minus"))) {
+        highlight = true;
+        color = Color_Red;
+      } else if (s8eq(cname, s8("diff.delta"))) {
+        highlight = true;
+        color = Color_Magenta;
       } else if (match_cname(cname, "constant")) {
         highlight = true;
         color = Color_Yellow;
@@ -449,6 +455,8 @@ static void update_parser(struct buffer *buffer, struct location origin,
         highlight = true;
         color = Color_Cyan;
       } else if (match_cname(cname, "variable")) {
+        highlight = false;
+      } else if (match_cname(cname, "punctuation")) {
         highlight = false;
       } else if (match_cname(cname, "comment")) {
         highlight = true;
@@ -567,6 +575,10 @@ static void create_parser(struct buffer *buffer, void *userdata) {
   const char *lang_root = NULL, *langname = NULL;
   void *h = NULL;
 
+  if (lang_is_fundamental(&buffer->lang)) {
+    return;
+  }
+
   for (uint32_t i = 0; i < treesitter_path_len && langsym == NULL; ++i) {
     const char *path = treesitter_path[i];
     lang_root = lang_folder(buffer, path);
@@ -575,6 +587,8 @@ static void create_parser(struct buffer *buffer, void *userdata) {
     h = dlopen(s8ascstr(filename), RTLD_LAZY);
     s8delete(filename);
     if (h == NULL) {
+      message("failed to open parser @ %s for buffer %s: %s", lang_root,
+              buffer->name, dlerror());
       free((void *)lang_root);
       continue;
     }
@@ -592,11 +606,14 @@ static void create_parser(struct buffer *buffer, void *userdata) {
     function[prefix_len + lang_len] = '\0';
     langsym = dlsym(h, function);
 
-    free(function);
     if (langsym == NULL) {
+      message("failed load parser entry point \"%s\" for buffer %s: %s",
+              function, buffer->name, dlerror());
+      free(function);
       free((void *)lang_root);
       dlclose(h);
     }
+    free(function);
   }
 
   if (langsym == NULL) {
@@ -624,22 +641,21 @@ static void create_parser(struct buffer *buffer, void *userdata) {
   };
   hl->tree = ts_parser_parse(hl->parser, NULL, i);
   if (hl->tree == NULL) {
+    message("failed to parse %s", buffer->name);
     ts_parser_delete(hl->parser);
     free((void *)lang_root);
     return;
   }
+
   hl->query = setup_queries(lang_root, hl->tree);
-
   if (hl->query == NULL) {
-    ts_parser_delete(hl->parser);
-    free((void *)lang_root);
-    return;
-  }
-
-  VEC_INIT(&hl->predicates, 8);
-  uint32_t npatterns = ts_query_pattern_count(hl->query);
-  for (uint32_t pi = 0; pi < npatterns; ++pi) {
-    create_predicates(hl, pi);
+    message("no queries found @ %s for %s", lang_root, buffer->name);
+  } else {
+    VEC_INIT(&hl->predicates, 8);
+    uint32_t npatterns = ts_query_pattern_count(hl->query);
+    for (uint32_t pi = 0; pi < npatterns; ++pi) {
+      create_predicates(hl, pi);
+    }
   }
   hl->dlhandle = h;
 
@@ -688,7 +704,8 @@ struct syntax_node syntax_node_at(struct buffer *buffer, struct location at) {
 
   struct highlight *hl = highlight_for_buffer(buffer);
   if (hl == NULL) {
-    return (struct syntax_node){.valid = false};
+    return (struct syntax_node){.valid = false,
+                                .error = s8dup(s8("no highlight for buffer"))};
   }
 
   TSNode root = ts_tree_root_node(hl->tree);
@@ -713,6 +730,8 @@ void syntax_node_free(struct syntax_node *node) {
     s8delete(node->expr);
     s8delete(node->grammar_type);
     s8delete(node->type);
+  } else {
+    s8delete(node->error);
   }
 }
 

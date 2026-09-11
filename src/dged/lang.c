@@ -44,14 +44,23 @@ void languages_init(bool register_default) {
     define_lang("Bash", "bash", "^.*\\.bash$", 4, false);
     define_lang("C", "c", "^.*\\.(c|h)$", 2, false);
     define_lang("C++", "cxx", "^.*\\.(cpp|cxx|cc|c++|hh|h|hxx|hpp)$", 2, false);
-    define_lang("Rust", "rs", "^.*\\.rs$", 4, false);
-    define_lang("Nix", "nix", "^.*\\.nix$", 2, false);
-    define_lang("Make", "make", "^.*(Makefile|\\.mk)$", 4, true);
-    define_lang("Python", "python", "^.*\\.py$", 4, false);
-    define_lang("Markdown", "markdown", "^.*\\.md$", 4, false);
-    define_lang("Javascript", "javascript", "^.*\\.js$", 4, false);
+    define_lang("CSS", "css", "^.*\\.css", 2, false);
+    define_lang("Diff", "diff", "^.*\\.(diff|patch)", 2, false);
     define_lang("Git Commit Message", "gitcommit", "^.*COMMIT_EDITMSG$", 4,
                 false);
+    define_lang("HCL", "hcl", "^.*\\.tf", 2, false);
+    define_lang("HTML", "html", "^.*\\.(html|xhtml)", 2, false);
+    define_lang("JSON", "json", "^.*\\.json", 2, false);
+    define_lang("Javascript", "javascript", "^.*\\.js$", 4, false);
+    define_lang("Make", "make", "^.*(Makefile|\\.mk)$", 4, true);
+    define_lang("Markdown", "markdown", "^.*\\.md$", 4, false);
+    define_lang("Nix", "nix", "^.*\\.nix$", 2, false);
+    define_lang("Python", "python", "^.*\\.py$", 4, false);
+    define_lang("Rust", "rs", "^.*\\.rs$", 4, false);
+    define_lang("SASS", "scss", "^.*\\.scss", 2, false);
+    define_lang("Scheme", "scheme", "^.*\\.scm", 2, false);
+    define_lang("SQL", "sql", "^.*\\.sql", 2, false);
+    define_lang("YAML", "yaml", "^.*\\.(yaml|yml)", 2, false);
   }
 }
 

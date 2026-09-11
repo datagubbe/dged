@@ -16,7 +16,43 @@ linkFarm "tree-sitter-grammars" rec {
     '';
   });
   "rust" = tree-sitter-rust;
-  "hcl" = tree-sitter-hcl;
+
+  # TODO: somewhere to put the queries
+  "hcl" = tree-sitter-hcl.overrideAttrs (_: {
+    postInstall = ''
+      mkdir -p "$out"/queries
+      cat << 'EOF' >"$out"/queries/highlights.scm
+      [
+        "true"
+        "false"
+      ] @keyword
+
+      (comment) @comment
+      (numeric_lit) @number
+      (string_lit) @string
+      (quoted_template) @string
+
+      (object_elem key: (expression
+          (variable_expr
+            (identifier) @variable)))
+
+      [
+        (template_interpolation_start)
+        (template_interpolation_end)
+      ] @operator
+
+      (function_call
+        (identifier) @function)
+
+      (expression
+        (variable_expr
+          (identifier) @type)
+        (get_attr
+          (identifier) @type))
+
+      EOF
+    '';
+  });
   "nix" = tree-sitter-nix;
   "python" = tree-sitter-python;
   "make" = tree-sitter-make;
@@ -82,4 +118,17 @@ linkFarm "tree-sitter-grammars" rec {
       hash = "sha256-L3v+dQZhwC+kBOHf3YVbZjuCU+idbUDByEdUBmeGAlo=";
     };
   };
+  "yaml" = tree-sitter-yaml;
+  "json" = tree-sitter-json;
+  "sql" = tree-sitter-sql;
+  "diff" = tree-sitter-diff;
+  "css" = tree-sitter-css;
+  "html" = tree-sitter-html;
+  "scheme" = tree-sitter-scheme;
+  "scss" = tree-sitter-scss.overrideAttrs (a: {
+    postPatch = ''
+      substituteInPlace queries/highlights.scm \
+        --replace-fail "match?" "#match?"
+    '';
+  });
 }

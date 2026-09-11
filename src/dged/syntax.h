@@ -11,7 +11,10 @@ struct buffer;
 
 struct syntax_node {
   bool valid;
-  struct s8 type;
+  union {
+    struct s8 error;
+    struct s8 type;
+  };
   struct s8 grammar_type;
   struct s8 expr;
 };

@@ -695,6 +695,7 @@ static int32_t syntax_at_point_cmd(struct command_ctx ctx, int argc,
 
   struct syntax_node node = syntax_node_at(view->buffer, view->dot);
   if (!node.valid) {
+    minibuffer_display_timeout(4, "no syntax node: %s", node.error);
     return 0;
   }
 
