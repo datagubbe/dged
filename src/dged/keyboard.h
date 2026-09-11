@@ -40,6 +40,10 @@ enum modifiers {
 #define RIGHT Spec, 'C'
 /** Left arrow key */
 #define LEFT Spec, 'D'
+/** Page down key */
+#define PGDOWN Spec, '6'
+/** Page up key */
+#define PGUP Spec, '5'
 
 /**
  * A key press

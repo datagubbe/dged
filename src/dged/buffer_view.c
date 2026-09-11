@@ -154,55 +154,40 @@ void buffer_view_newline(struct buffer_view *view) {
 void buffer_view_indent(struct buffer_view *view) {
   buffer_push_undo_boundary(view->buffer);
   struct region reg = region_new(view->dot, view->mark);
+  uint32_t amt = 0;
   if (view->mark_set && region_has_size(reg)) {
     for (uint32_t line = reg.begin.line; line <= reg.end.line; ++line) {
       if (buffer_line_length(view->buffer, line) == 0) {
         continue;
       }
 
-      struct location after = buffer_indent(
-          view->buffer, (struct location){.line = line, .col = 0});
-      view->dot.col += after.col;
+      amt = buffer_indent(view->buffer, line);
     }
   } else {
-    view->dot = buffer_indent(view->buffer, view->dot);
+    amt = buffer_indent(view->buffer, view->dot.line);
   }
+
+  view->dot.col += amt;
   buffer_push_undo_boundary(view->buffer);
 }
 
-void buffer_view_indent_alt(struct buffer_view *view) {
+void buffer_view_unindent(struct buffer_view *view) {
   buffer_push_undo_boundary(view->buffer);
   struct region reg = region_new(view->dot, view->mark);
+  uint32_t amt = 0;
   if (view->mark_set && region_has_size(reg)) {
     for (uint32_t line = reg.begin.line; line <= reg.end.line; ++line) {
       if (buffer_line_length(view->buffer, line) == 0) {
         continue;
       }
 
-      struct location after = buffer_indent_alt(
-          view->buffer, (struct location){.line = line, .col = 0});
-      view->dot.col += after.col;
+      amt = buffer_unindent(view->buffer, line);
     }
   } else {
-    view->dot = buffer_indent_alt(view->buffer, view->dot);
+    amt = buffer_unindent(view->buffer, view->dot.line);
   }
-  buffer_push_undo_boundary(view->buffer);
-}
 
-void buffer_view_unindent_line(struct buffer_view *view) {
-  buffer_push_undo_boundary(view->buffer);
-  struct region reg = region_new(view->dot, view->mark);
-  if (view->mark_set && region_has_size(reg)) {
-    for (uint32_t line = reg.begin.line; line <= reg.end.line; ++line) {
-      if (buffer_line_length(view->buffer, line) == 0) {
-        continue;
-      }
-
-      buffer_unindent_line(view->buffer, line);
-    }
-  } else {
-    buffer_unindent_line(view->buffer, view->dot.line);
-  }
+  view->dot.col = view->dot.col > amt ? view->dot.col - amt : 0;
   buffer_push_undo_boundary(view->buffer);
 }
 

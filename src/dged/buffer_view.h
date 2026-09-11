@@ -75,8 +75,7 @@ void buffer_view_kill_line(struct buffer_view *view);
 
 void buffer_view_newline(struct buffer_view *view);
 void buffer_view_indent(struct buffer_view *view);
-void buffer_view_indent_alt(struct buffer_view *view);
-void buffer_view_unindent_line(struct buffer_view *view);
+void buffer_view_unindent(struct buffer_view *view);
 
 void buffer_view_copy(struct buffer_view *view);
 void buffer_view_cut(struct buffer_view *view);

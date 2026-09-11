@@ -53,13 +53,13 @@ void set_default_buffer_bindings(struct keymap *keymap) {
 
       BINDING(Ctrl, 'V', "scroll-down"),
       BINDING(Meta, 'v', "scroll-up"),
-      BINDING(Spec, '6', "scroll-down"),
-      BINDING(Spec, '5', "scroll-up"),
+      BINDING(PGDOWN, "scroll-down"),
+      BINDING(PGUP, "scroll-up"),
 
       BINDING(ENTER, "newline"),
       BINDING(NUMPAD_ENTER, "newline"),
       BINDING(TAB, "indent"),
-      BINDING(Spec, 'Z', "unindent-line"),
+      BINDING(Spec, 'Z', "unindent"),
 
       BINDING(Ctrl, 'K', "kill-line"),
       BINDING(DELETE, "delete-char"),
@@ -120,8 +120,9 @@ void init_bindings(void) {
       BINDING(Ctrl, 'B', "buffer-list"),
       BINDING(None, 'u', "undo"),
 
-      BINDING(None, '>', "indent-alt"),
-      BINDING(None, '<', "unindent-line"),
+      BINDING(TAB, "insert-tab"),
+      BINDING(None, '>', "indent"),
+      BINDING(None, '<', "unindent"),
 
       BINDING(None, '0', "window-close"),
       BINDING(None, '1', "window-close-others"),

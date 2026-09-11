@@ -779,8 +779,7 @@ BUFFER_VIEW_WRAPCMD(goto_end_of_line)
 BUFFER_VIEW_WRAPCMD(goto_beginning_of_line)
 BUFFER_VIEW_WRAPCMD(newline)
 BUFFER_VIEW_WRAPCMD(indent)
-BUFFER_VIEW_WRAPCMD(indent_alt)
-BUFFER_VIEW_WRAPCMD(unindent_line)
+BUFFER_VIEW_WRAPCMD(unindent)
 BUFFER_VIEW_WRAPCMD(set_mark)
 BUFFER_VIEW_WRAPCMD(clear_mark)
 BUFFER_VIEW_WRAPCMD(cut)
@@ -789,6 +788,15 @@ BUFFER_VIEW_WRAPCMD(paste_older)
 BUFFER_VIEW_WRAPCMD(goto_beginning)
 BUFFER_VIEW_WRAPCMD(goto_end)
 BUFFER_VIEW_WRAPCMD(sort_lines)
+
+static int32_t insert_tab_cmd(struct command_ctx ctx, int argc,
+                              const char *argv[]) {
+  (void)argc;
+  (void)argv;
+  struct buffer_view *bv = window_buffer_view(ctx.active_window);
+  buffer_view_add(bv, (uint8_t *)"\t", 1);
+  return 0;
+}
 
 static int32_t copy_cmd(struct command_ctx ctx, int argc, const char *argv[]) {
   (void)argc;
@@ -921,8 +929,8 @@ void register_buffer_commands(struct commands *commands) {
       {.name = "beginning-of-line", .fn = goto_beginning_of_line_cmd},
       {.name = "newline", .fn = newline_cmd},
       {.name = "indent", .fn = indent_cmd},
-      {.name = "indent-alt", .fn = indent_alt_cmd},
-      {.name = "unindent-line", .fn = unindent_line_cmd},
+      {.name = "insert-tab", .fn = insert_tab_cmd},
+      {.name = "unindent", .fn = unindent_cmd},
       {.name = "buffer-write-to-file", .fn = to_file_cmd},
       {.name = "set-mark", .fn = set_mark_cmd},
       {.name = "clear-mark", .fn = clear_mark_cmd},

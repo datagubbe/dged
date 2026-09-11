@@ -908,20 +908,20 @@ struct location buffer_newline(struct buffer *buffer, struct location at) {
   return buffer_add(buffer, at, (uint8_t *)"\n", 1);
 }
 
-struct location buffer_indent(struct buffer *buffer, struct location at) {
-  return do_indent(buffer, at, get_tab_width(buffer), use_tabs(buffer));
+uint32_t buffer_indent(struct buffer *buffer, uint32_t line) {
+  uint32_t tab_width = get_tab_width(buffer);
+  do_indent(buffer, (struct location){.line = line, .col = 0}, tab_width,
+            use_tabs(buffer));
+  return tab_width;
 }
 
-struct location buffer_indent_alt(struct buffer *buffer, struct location at) {
-  return do_indent(buffer, at, get_tab_width(buffer), !use_tabs(buffer));
-}
-
-void buffer_unindent_line(struct buffer *buffer, uint32_t line) {
+uint32_t buffer_unindent(struct buffer *buffer, uint32_t line) {
   if (line >= buffer_num_lines(buffer)) {
-    return;
+    return 0;
   }
 
   uint32_t tab_width = get_tab_width(buffer);
+  uint32_t removed = 0;
   struct text_chunk txt = buffer_line(buffer, line);
 
   // try to remove spaces first
@@ -935,6 +935,7 @@ void buffer_unindent_line(struct buffer *buffer, uint32_t line) {
     buffer_delete(
         buffer, region_new((struct location){.line = line, .col = 0},
                            (struct location){.line = line, .col = target_col}));
+    removed = tab_width;
     goto done;
   }
 
@@ -948,12 +949,15 @@ void buffer_unindent_line(struct buffer *buffer, uint32_t line) {
     buffer_delete(
         buffer, region_new((struct location){.line = line, .col = 0},
                            (struct location){.line = line, .col = tab_width}));
+    removed = tab_width;
   }
 
 done:
   if (txt.allocated) {
     free(txt.text);
   }
+
+  return removed;
 }
 
 void buffer_push_undo_boundary(struct buffer *buffer) {

@@ -362,30 +362,19 @@ struct location buffer_newline(struct buffer *buffer, struct location at);
  * Insert indentation in the buffer.
  *
  * @param [in] buffer The buffer to indent in.
- * @param [in] at The location to insert indentation at.
- * @returns The position after indenting.
+ * @param [in] line The line to indent.
+ * @returns the amount of indentation added
  */
-struct location buffer_indent(struct buffer *buffer, struct location at);
-
-/**
- * Insert alternative indentation in the buffer.
- *
- * Alternative indentation is spaces if it is normally using tabs
- * and vice versa.
- *
- * @param [in] buffer The buffer to indent in.
- * @param [in] at The location to insert indentation at.
- * @returns The position after indenting.
- */
-struct location buffer_indent_alt(struct buffer *buffer, struct location at);
+uint32_t buffer_indent(struct buffer *buffer, uint32_t line);
 
 /**
  * Decrease the indentation level for a line.
  *
  * @param [in] buffer The buffer to decrease indentation in.
  * @param [in] line The line to decrease indent for.
+ * @returns the amount of indentation removed
  */
-void buffer_unindent_line(struct buffer *buffer, uint32_t line);
+uint32_t buffer_unindent(struct buffer *buffer, uint32_t line);
 
 /**
  * Undo the last operation in the buffer.
