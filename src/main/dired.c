@@ -387,8 +387,9 @@ static int32_t dired_visit_cmd(struct command_ctx ctx, int argc,
       struct s8 new_path = join_path(state->current_path, entry->name);
       struct s8 path = canonicalize(new_path);
       const char *args[] = {s8ascstr(path)};
-      int32_t res = execute_command(cmd, ctx.commands, ctx.active_window,
-                                    ctx.buffers, ctx.display, 1, args);
+      int32_t res =
+          execute_command(cmd, ctx.commands, ctx.active_window, ctx.buffers,
+                          ctx.display, ctx.reactor, 1, args);
 
       s8delete(new_path);
       s8delete(path);

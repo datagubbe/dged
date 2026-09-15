@@ -37,6 +37,11 @@ struct command_ctx {
   struct display *display;
 
   /**
+   * The current reactor instance.
+   */
+  struct reactor *reactor;
+
+  /**
    * A registry of available commands.
    *
    * Can be used to execute other commands as part of a command implementation.
@@ -160,7 +165,8 @@ void register_commands(struct commands *command_list, struct command *commands,
  */
 int32_t execute_command(struct command *command, struct commands *commands,
                         struct window *active_window, struct buffers *buffers,
-                        struct display *display, int argc, const char *argv[]);
+                        struct display *display, struct reactor *reactor,
+                        int argc, const char *argv[]);
 
 /**
  * Hash the name of a command.

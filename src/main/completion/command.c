@@ -7,6 +7,7 @@
 #include "dged/buffer.h"
 #include "dged/buffer_view.h"
 #include "dged/command.h"
+#include "dged/display.h"
 #include "dged/minibuffer.h"
 #include "dged/utf8.h"
 
@@ -23,8 +24,8 @@ typedef void (*on_command_selected_cb)(struct command *);
 struct command_completion {
   struct command *command;
   on_command_selected_cb on_command_selected;
-  size_t match_begin;
-  size_t match_end;
+  struct match matches[16];
+  size_t nmatches;
 };
 
 struct command_provider_data {
@@ -43,10 +44,26 @@ static void command_comp_selected(void *data, struct buffer_view *target) {
 
 static struct region command_comp_render(void *data,
                                          struct buffer *comp_buffer) {
-  struct command *command = ((struct command_completion *)data)->command;
+  struct command_completion *command_comp = (struct command_completion *)data;
+  struct command *command = command_comp->command;
   struct location begin = buffer_end(comp_buffer);
   struct location at = buffer_add(comp_buffer, begin, (uint8_t *)command->name,
                                   strlen(command->name));
+
+  for (size_t i = 0; i < command_comp->nmatches; ++i) {
+    struct match *m = &command_comp->matches[i];
+    buffer_add_text_property(
+        comp_buffer, (struct location){.col = m->begin, .line = at.line},
+        (struct location){.col = m->end - 1, .line = at.line},
+        (struct text_property){
+            .type = TextProperty_Colors,
+            .data.colors =
+                (struct text_property_colors){
+                    .set_fg = true,
+                    .fg = Color_Cyan,
+                },
+        });
+  }
 
   struct location end = at;
   buffer_newline(comp_buffer, at);
@@ -70,16 +87,20 @@ struct buffer_completions {
 static void fill_commands(struct command *command, void *userdata) {
   struct buffer_completions *ctx = (struct buffer_completions *)userdata;
 
-  size_t match_begin, match_end;
-  uint32_t score;
-  if (filter_contains(ctx->needle, s8(command->name), &match_begin, &match_end,
-                      &score)) {
+  size_t nmatches = 0;
+  struct match matches[16] = {};
+  if (ctx->needle.l == 0 ||
+      (nmatches =
+           filter_contains(ctx->needle, s8(command->name), matches, 16)) > 0) {
     struct command_completion *comp_data =
         calloc(1, sizeof(struct command_completion));
     comp_data->command = command;
     comp_data->on_command_selected = ctx->on_command_selected;
-    comp_data->match_begin = match_begin;
-    comp_data->match_end = match_end;
+    comp_data->nmatches = nmatches;
+
+    if (nmatches > 0) {
+      memcpy(comp_data->matches, matches, sizeof(struct match) * nmatches);
+    }
 
     struct completion comp = (struct completion){
         .render = command_comp_render,

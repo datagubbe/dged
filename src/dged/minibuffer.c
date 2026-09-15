@@ -121,7 +121,7 @@ int32_t minibuffer_execute(void) {
     minibuffer_abort_prompt_internal(false);
     int32_t res =
         execute_command(c->self, c->commands, c->active_window, c->buffers,
-                        c->display, argc, (const char **)argv);
+                        c->display, c->reactor, argc, (const char **)argv);
 
     free(l);
 

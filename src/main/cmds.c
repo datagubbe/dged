@@ -33,6 +33,7 @@
 #include "completion/buffer.h"
 #include "completion/command.h"
 #include "completion/path.h"
+#include "completion/project-file.h"
 #include "dged/window.h"
 #include "search-replace.h"
 
@@ -112,7 +113,7 @@ int32_t run_interactive(struct command_ctx ctx, int argc, const char *argv[]) {
   struct command *cmd = lookup_command(ctx.commands, argv[0]);
   if (cmd != NULL) {
     return execute_command(cmd, ctx.commands, ctx.active_window, ctx.buffers,
-                           ctx.display, argc - 1, argv + 1);
+                           ctx.display, ctx.reactor, argc - 1, argv + 1);
   } else {
     minibuffer_echo_timeout(4, "command %s not found", argv[0]);
     return 11;
@@ -171,8 +172,8 @@ int32_t switch_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
   disable_completion(minibuffer_buffer());
 
   return execute_command(&do_switch_buffer_command, ctx.commands,
-                         ctx.active_window, ctx.buffers, ctx.display, argc,
-                         argv);
+                         ctx.active_window, ctx.buffers, ctx.display,
+                         ctx.reactor, argc, argv);
 }
 
 int32_t do_kill_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
@@ -216,8 +217,8 @@ int32_t kill_buffer(struct command_ctx ctx, int argc, const char *argv[]) {
   disable_completion(minibuffer_buffer());
 
   return execute_command(&do_switch_buffer_command, ctx.commands,
-                         ctx.active_window, ctx.buffers, ctx.display, argc,
-                         argv);
+                         ctx.active_window, ctx.buffers, ctx.display,
+                         ctx.reactor, argc, argv);
 }
 
 static struct location draw_timer_value(struct buffer *buffer, double value,
@@ -393,8 +394,8 @@ int32_t buflist_visit_cmd(struct command_ctx ctx, int argc, const char **argv) {
 int32_t buflist_close_cmd(struct command_ctx ctx, int argc,
                           const char *argv[]) {
   return execute_command(&do_switch_buffer_command, ctx.commands,
-                         ctx.active_window, ctx.buffers, ctx.display, argc,
-                         argv);
+                         ctx.active_window, ctx.buffers, ctx.display,
+                         ctx.reactor, argc, argv);
 }
 
 void buflist_refresh(struct buffer *buffer, void *userdata) {
@@ -444,7 +445,7 @@ int32_t buflist_kill_cmd(struct command_ctx ctx, int argc, const char *argv[]) {
     buffers_remove(ctx.buffers, bufname);
     free(bufname);
     execute_command(&buflist_refresh_command, ctx.commands, ctx.active_window,
-                    ctx.buffers, ctx.display, 0, NULL);
+                    ctx.buffers, ctx.display, ctx.reactor, 0, NULL);
   }
 
   return 0;
@@ -473,7 +474,7 @@ int32_t buflist_save_cmd(struct command_ctx ctx, int argc, const char *argv[]) {
     }
     free(bufname);
     execute_command(&buflist_refresh_command, ctx.commands, ctx.active_window,
-                    ctx.buffers, ctx.display, 0, NULL);
+                    ctx.buffers, ctx.display, ctx.reactor, 0, NULL);
   }
 
   return 0;
@@ -577,7 +578,7 @@ static int32_t open_file(struct command_ctx ctx, const char *pth) {
     if (cmd != NULL) {
       const char *argv[] = {pth};
       return execute_command(cmd, ctx.commands, ctx.active_window, ctx.buffers,
-                             ctx.display, 1, argv);
+                             ctx.display, ctx.reactor, 1, argv);
     }
 
     minibuffer_echo_timeout(4, "dired is not supported");
@@ -681,6 +682,23 @@ int32_t find_file_relative(struct command_ctx ctx, int argc,
   return 0;
 }
 
+int32_t find_file_in_project(struct command_ctx ctx, int argc,
+                             const char *argv[]) {
+  (void)argc;
+  (void)argv;
+  minibuffer_clear();
+  struct completion_provider providers[] = {
+      create_project_file_provider(ctx.reactor, find_file_comp_inserted)};
+  add_completion_providers(minibuffer_buffer(), providers, 1);
+
+  ctx.self = &find_file_command;
+
+  minibuffer_prompt(ctx, "find project file: ");
+  complete(minibuffer_buffer(), buffer_end(minibuffer_buffer()));
+
+  return 0;
+}
+
 #if defined(SYNTAX_ENABLE)
 static int32_t syntax_at_point_cmd(struct command_ctx ctx, int argc,
                                    const char *argv[]) {
@@ -724,6 +742,7 @@ void register_global_commands(struct commands *commands,
   struct command global_commands[] = {
       {.name = "find-file", .fn = find_file},
       {.name = "find-file-relative", .fn = find_file_relative},
+      {.name = "find-file-in-project", .fn = find_file_in_project},
       {.name = "write-file", .fn = write_file},
       {.name = "run-command-interactive", .fn = run_interactive},
       {.name = "switch-buffer", .fn = switch_buffer},

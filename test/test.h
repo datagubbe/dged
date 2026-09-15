@@ -23,5 +23,6 @@ void run_container_tests(void);
 void run_json_tests(void);
 void run_bufread_tests(void);
 void run_path_tests(void);
+void run_matcher_tests(void);
 
 #endif
