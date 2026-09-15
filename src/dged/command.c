@@ -48,7 +48,8 @@ struct command *lookup_command_by_hash(struct commands *commands,
 
 int32_t execute_command(struct command *command, struct commands *commands,
                         struct window *active_window, struct buffers *buffers,
-                        struct display *display, int argc, const char *argv[]) {
+                        struct display *display, struct reactor *reactor,
+                        int argc, const char *argv[]) {
 
   return command->fn(
       (struct command_ctx){
@@ -57,6 +58,7 @@ int32_t execute_command(struct command *command, struct commands *commands,
           .userdata = command->userdata,
           .commands = commands,
           .display = display,
+          .reactor = reactor,
           .self = command,
           .saved_argv = {0},
           .saved_argc = 0,

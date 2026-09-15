@@ -5,16 +5,22 @@
 
 #include "dged/s8.h"
 
-typedef bool (*filter_fn)(struct s8 needle, struct s8 item, size_t *match_begin,
-                          size_t *match_end, uint32_t *score);
+struct match {
+  size_t begin;
+  size_t end;
+  uint32_t score;
+};
 
-bool filter_exact(struct s8 needle, struct s8 item, size_t *match_begin,
-                  size_t *match_end, uint32_t *score);
+typedef size_t (*filter_fn)(struct s8 needle, struct s8 item,
+                            struct match *matches, size_t max_nmatches);
 
-bool filter_contains(struct s8 needle, struct s8 item, size_t *match_begin,
-                     size_t *match_end, uint32_t *score);
+size_t filter_exact(struct s8 needle, struct s8 item, struct match *matches,
+                    size_t max_nmatches);
 
-bool filter_fuzzy(struct s8 needle, struct s8 item, size_t *match_begin,
-                  size_t *match_end, uint32_t *score);
+size_t filter_contains(struct s8 needle, struct s8 item, struct match *matches,
+                       size_t max_nmatches);
+
+size_t filter_fuzzy(struct s8 needle, struct s8 item, struct match *matches,
+                    size_t max_nmatches);
 
 #endif

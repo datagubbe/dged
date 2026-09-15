@@ -64,6 +64,9 @@ int main(void) {
   run_json_tests();
 #endif
 
+  printf("\n🧮 \x1b[1;36mRunning matcher tests...\x1b[0m\n");
+  run_matcher_tests();
+
   struct timespec elapsed;
   clock_gettime(CLOCK_MONOTONIC, &elapsed);
   uint64_t elapsed_nanos =

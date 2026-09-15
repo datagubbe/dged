@@ -114,6 +114,7 @@ void init_bindings(void) {
       BINDING(Ctrl, 'S', "buffer-write-to-file"),
       BINDING(Ctrl, 'F', "find-file"),
       BINDING(Ctrl, 'G', "find-file-relative"),
+      BINDING(Ctrl, 'P', "find-file-in-project"),
       BINDING(Ctrl, 'W', "write-file"),
       BINDING(None, 'b', "switch-buffer"),
       BINDING(None, 'k', "kill-buffer"),

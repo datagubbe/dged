@@ -109,7 +109,7 @@ struct process_create_result process_create(char *const command[],
     result->stdout_ = stdout_read;
     result->stderr_ = stderr_read;
     result->id = (fd_t)pid;
-    result->impl = NULL;
+    result->impl = (void *)"posix";
   }
 
   return (struct process_create_result){

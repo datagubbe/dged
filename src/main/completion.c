@@ -125,8 +125,9 @@ static int32_t scroll_up_completions(struct command_ctx ctx, int argc,
 
   struct command *command = lookup_command(ctx.commands, "scroll-up");
   if (command != NULL) {
-    int32_t ret = execute_command(command, ctx.commands, popup_window(),
-                                  ctx.buffers, ctx.display, argc, argv);
+    int32_t ret =
+        execute_command(command, ctx.commands, popup_window(), ctx.buffers,
+                        ctx.display, ctx.reactor, argc, argv);
 
     if (ret == 0) {
       struct completion_state *state = (struct completion_state *)ctx.userdata;
@@ -151,8 +152,9 @@ static int32_t scroll_down_completions(struct command_ctx ctx, int argc,
 
   struct command *command = lookup_command(ctx.commands, "scroll-down");
   if (command != NULL) {
-    int32_t ret = execute_command(command, ctx.commands, popup_window(),
-                                  ctx.buffers, ctx.display, argc, argv);
+    int32_t ret =
+        execute_command(command, ctx.commands, popup_window(), ctx.buffers,
+                        ctx.display, ctx.reactor, argc, argv);
 
     if (ret == 0) {
       struct completion_state *state = (struct completion_state *)ctx.userdata;

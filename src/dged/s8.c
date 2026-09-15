@@ -168,22 +168,40 @@ char *s8tocstr(struct s8 s) {
 const char *s8ascstr(struct s8 s) { return (const char *)s.s; }
 
 ssize_t s8findstr(struct s8 s, struct s8 find) {
+  return s8findstrat(s, find, 0);
+}
+
+ssize_t s8ifindstr(struct s8 s, struct s8 find) {
+  return s8ifindstrat(s, find, 0);
+}
+
+static ssize_t find_internal(struct s8 s, struct s8 find, size_t offset,
+                             int (*cmp)(struct s8, struct s8),
+                             bool (*startswith)(struct s8, struct s8)) {
   if (s8empty(s) || s8empty(find)) {
     return -1;
   }
 
-  if (s.l < find.l) {
+  if (offset >= s.l) {
     return -1;
   }
 
-  if (s.l == find.l) {
-    return s8eq(s, find) ? 0 : -1;
+  struct s8 sub = {
+      .s = s.s + offset,
+      .l = s.l - offset,
+  };
+
+  if (sub.l < find.l) {
+    return -1;
   }
 
-  /* at this point, s is longer than find */
-  for (size_t i = 0; i < s.l; ++i) {
-    uint8_t *start = &s.s[i];
-    if (s8startswith((struct s8){.s = start, .l = s.l - i}, find)) {
+  if (sub.l == find.l) {
+    return cmp(sub, find) == 0 ? 0 : -1;
+  }
+
+  /* at this point, s (with offset) is longer than find */
+  for (size_t i = offset; i < s.l; ++i) {
+    if (startswith((struct s8){.s = s.s + i, .l = s.l - i}, find)) {
       return i;
     }
   }
@@ -191,28 +209,12 @@ ssize_t s8findstr(struct s8 s, struct s8 find) {
   return -1;
 }
 
-ssize_t s8ifindstr(struct s8 s, struct s8 find) {
-  if (s8empty(s) || s8empty(find)) {
-    return -1;
-  }
+ssize_t s8findstrat(struct s8 s, struct s8 find, size_t offset) {
+  return find_internal(s, find, offset, s8cmp, s8startswith);
+}
 
-  if (s.l < find.l) {
-    return -1;
-  }
-
-  if (s.l == find.l) {
-    return s8icmp(s, find) == 0 ? 0 : -1;
-  }
-
-  /* at this point, s is longer than find */
-  for (size_t i = 0; i < s.l; ++i) {
-    uint8_t *start = &s.s[i];
-    if (s8istartswith((struct s8){.s = start, .l = s.l - i}, find)) {
-      return i;
-    }
-  }
-
-  return -1;
+ssize_t s8ifindstrat(struct s8 s, struct s8 find, size_t offset) {
+  return find_internal(s, find, offset, s8icmp, s8istartswith);
 }
 
 bool s8startswith(struct s8 s, struct s8 prefix) {

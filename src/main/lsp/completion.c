@@ -285,10 +285,9 @@ static void fill_completions(struct completion_ctx *lsp_ctx, struct s8 needle) {
   VEC_FOR_EACH(&lsp_ctx->completions.items,
                struct lsp_completion_item * lsp_item) {
 
-    size_t match_begin, match_end;
-    uint32_t score;
-    if (filter_exact(needle, get_filter_text(lsp_item), &match_begin,
-                     &match_end, &score)) {
+    struct match matches[1] = {};
+    if (needle.l == 0 ||
+        filter_exact(needle, get_filter_text(lsp_item), matches, 1) > 0) {
       VEC_APPEND(&completions, struct completion * c);
 
       c->data = lsp_item;

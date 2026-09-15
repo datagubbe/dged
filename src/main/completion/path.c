@@ -34,8 +34,9 @@ struct path_completion {
   struct region replace;
   unsigned char type;
   on_complete_path_cb on_complete_path;
-  size_t match_begin;
-  size_t match_end;
+
+  struct match matches[16];
+  size_t nmatches;
 };
 
 static void path_selected(void *data, struct buffer_view *target) {
@@ -106,11 +107,11 @@ static struct region path_render(void *data, struct buffer *comp_buffer) {
     break;
   }
 
-  if (comp_path->match_end > comp_path->match_begin) {
+  for (size_t i = 0; i < comp_path->nmatches; ++i) {
+    struct match *m = &comp_path->matches[i];
     buffer_add_text_property(
-        comp_buffer,
-        (struct location){.col = comp_path->match_begin, .line = start.line},
-        (struct location){.col = comp_path->match_end - 1, .line = start.line},
+        comp_buffer, (struct location){.col = m->begin, .line = start.line},
+        (struct location){.col = m->end - 1, .line = start.line},
         (struct text_property){
             .type = TextProperty_Colors,
             .data.colors =
@@ -222,18 +223,23 @@ static void path_complete(struct completion_context ctx, bool deletion,
     case DT_LNK:
       if (!is_hidden(de->d_name)) {
 
-        size_t match_begin, match_end;
-        uint32_t score;
-        if (filter_contains(s8(file), s8(de->d_name), &match_begin, &match_end,
-                            &score)) {
+        struct match matches[16] = {};
+        size_t nmatches = 0;
+        struct s8 needle = s8(file);
+        if (needle.l == 0 || (nmatches = filter_contains(needle, s8(de->d_name),
+                                                         matches, 16)) > 0) {
           struct path_completion *comp_data =
               calloc(1, sizeof(struct path_completion));
           comp_data->name = s8new(de->d_name, strlen(de->d_name));
           comp_data->replace = region_new(needle_start, needle_end);
           comp_data->type = de->d_type;
           comp_data->on_complete_path = on_complete_path;
-          comp_data->match_begin = match_begin;
-          comp_data->match_end = match_end;
+          comp_data->nmatches = nmatches;
+
+          if (nmatches > 0) {
+            memcpy(comp_data->matches, matches,
+                   sizeof(struct match) * nmatches);
+          }
 
           struct completion comp = {
               .data = comp_data,

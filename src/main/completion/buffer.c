@@ -6,6 +6,7 @@
 #include "dged/buffer.h"
 #include "dged/buffer_view.h"
 #include "dged/buffers.h"
+#include "dged/display.h"
 #include "dged/minibuffer.h"
 
 #include "dged/vec.h"
@@ -21,9 +22,9 @@ typedef void (*on_buffer_selected_cb)(struct buffer *);
 struct buffer_completion {
   struct buffer *buffer;
   on_buffer_selected_cb on_buffer_selected;
-  size_t match_begin;
-  size_t match_end;
-  size_t score;
+
+  struct match matches[16];
+  size_t nmatches;
 };
 
 struct buffer_provider_data {
@@ -42,10 +43,26 @@ static void buffer_comp_selected(void *data, struct buffer_view *target) {
 
 static struct region buffer_comp_render(void *data,
                                         struct buffer *comp_buffer) {
-  struct buffer *buffer = ((struct buffer_completion *)data)->buffer;
+  struct buffer_completion *buffer_comp = (struct buffer_completion *)data;
+  struct buffer *buffer = buffer_comp->buffer;
   struct location begin = buffer_end(comp_buffer);
   struct location at = buffer_add(comp_buffer, begin, (uint8_t *)buffer->name,
                                   strlen(buffer->name));
+
+  for (size_t i = 0; i < buffer_comp->nmatches; ++i) {
+    struct match *m = &buffer_comp->matches[i];
+    buffer_add_text_property(
+        comp_buffer, (struct location){.col = m->begin, .line = at.line},
+        (struct location){.col = m->end - 1, .line = at.line},
+        (struct text_property){
+            .type = TextProperty_Colors,
+            .data.colors =
+                (struct text_property_colors){
+                    .set_fg = true,
+                    .fg = Color_Cyan,
+                },
+        });
+  }
 
   struct location end = at;
   buffer_newline(comp_buffer, at);
@@ -68,16 +85,20 @@ struct buffer_completions {
 static void fill_buffer_completions(struct buffer *buffer, void *userdata) {
   struct buffer_completions *ctx = (struct buffer_completions *)userdata;
 
-  size_t match_begin, match_end;
-  uint32_t score;
-  if (filter_contains(ctx->needle, s8(buffer->name), &match_begin, &match_end,
-                      &score)) {
+  size_t nmatches = 0;
+  struct match matches[16] = {};
+  if (ctx->needle.l == 0 ||
+      (nmatches = filter_contains(ctx->needle, s8(buffer->name), matches, 16)) >
+          0) {
     struct buffer_completion *comp_data =
         calloc(1, sizeof(struct buffer_completion));
     comp_data->buffer = buffer;
     comp_data->on_buffer_selected = ctx->on_buffer_selected;
-    comp_data->match_begin = match_begin;
-    comp_data->match_end = match_end;
+    comp_data->nmatches = nmatches;
+
+    if (nmatches > 0) {
+      memcpy(comp_data->matches, matches, sizeof(struct match) * nmatches);
+    }
 
     struct completion comp = (struct completion){
         .render = buffer_comp_render,

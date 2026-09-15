@@ -26,6 +26,8 @@ uint8_t s8at(struct s8 s, size_t index);
 ssize_t s8find(struct s8 s, uint8_t c);
 ssize_t s8findstr(struct s8 s, struct s8 find);
 ssize_t s8ifindstr(struct s8 s, struct s8 find);
+ssize_t s8findstrat(struct s8 s, struct s8 find, size_t offset);
+ssize_t s8ifindstrat(struct s8 s, struct s8 find, size_t offset);
 bool s8eq(struct s8 s1, struct s8 s2);
 int s8cmp(struct s8 s1, struct s8 s2);
 int s8icmp(struct s8 s1, struct s8 s2);
