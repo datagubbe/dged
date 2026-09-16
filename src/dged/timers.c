@@ -18,7 +18,7 @@ struct timer {
   struct timespec started_at;
 };
 
-HASHMAP_ENTRY_TYPE(timer_entry, struct timer);
+HASHMAP_ENTRY_TYPE(timer_entry, struct timer *);
 
 static struct timers {
   uint32_t frame_index;
@@ -30,11 +30,16 @@ void timers_init(void) {
   g_timers.frame_index = 0;
 }
 
-void timers_destroy(void) { HASHMAP_DESTROY(&g_timers.timers); }
+void timers_destroy(void) {
+  HASHMAP_FOR_EACH(&g_timers.timers, struct timer_entry * entry) {
+    free(entry->value);
+  }
+  HASHMAP_DESTROY(&g_timers.timers);
+}
 
 void timers_start_frame(void) {
   HASHMAP_FOR_EACH(&g_timers.timers, struct timer_entry * entry) {
-    struct timer *timer = &entry->value;
+    struct timer *timer = entry->value;
     timer->samples[g_timers.frame_index] = 0;
   }
 }
@@ -44,12 +49,14 @@ void timers_end_frame(void) {
 }
 
 struct timer *timer_start(const char *name) {
-  HASHMAP_GET(&g_timers.timers, struct timer_entry, name, struct timer * t);
-  if (t == NULL) {
+  HASHMAP_GET(&g_timers.timers, struct timer_entry, name, struct timer * *tp);
+  struct timer *t = NULL;
+  if (tp == NULL) {
     HASHMAP_APPEND(&g_timers.timers, struct timer_entry, name,
                    struct timer_entry * tnew);
-    struct timer *new_timer = &tnew->value;
+    tnew->value = calloc(1, sizeof(struct timer));
 
+    struct timer *new_timer = tnew->value;
     size_t namelen = strlen(name);
     namelen = namelen >= 32 ? 31 : namelen;
     memcpy(new_timer->name, name, namelen);
@@ -59,6 +66,8 @@ struct timer *timer_start(const char *name) {
     memset(new_timer->samples, 0, sizeof(uint64_t) * NUM_FRAME_SAMPLES);
 
     t = new_timer;
+  } else {
+    t = *tp;
   }
 
   clock_gettime(CLOCK_MONOTONIC, &t->started_at);
@@ -85,8 +94,8 @@ uint64_t timer_stop(struct timer *timer) {
 }
 
 struct timer *timer_get(const char *name) {
-  HASHMAP_GET(&g_timers.timers, struct timer_entry, name, struct timer * t);
-  return t;
+  HASHMAP_GET(&g_timers.timers, struct timer_entry, name, struct timer * *t);
+  return *t;
 }
 
 float timer_average(const struct timer *timer) {
@@ -106,7 +115,7 @@ const char *timer_name(const struct timer *timer) { return timer->name; }
 
 void timers_for_each(timer_callback callback, void *userdata) {
   HASHMAP_FOR_EACH(&g_timers.timers, struct timer_entry * entry) {
-    const struct timer *timer = &entry->value;
+    const struct timer *timer = entry->value;
     callback(timer, userdata);
   }
 }
@@ -122,7 +131,7 @@ timer_vec timers_sorted() {
   VEC_INIT(&vec, 16);
 
   HASHMAP_FOR_EACH(&g_timers.timers, struct timer_entry * entry) {
-    VEC_PUSH(&vec, &entry->value);
+    VEC_PUSH(&vec, entry->value);
   }
 
   qsort(VEC_ENTRIES(&vec), VEC_SIZE(&vec), sizeof(struct timer *),
