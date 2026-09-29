@@ -1,6 +1,11 @@
 #include "project-file.h"
 
+#include "config.h"
+
 #include <errno.h>
+#ifdef HAVE_FTS
+#include <fts.h>
+#endif
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
@@ -17,6 +22,10 @@
 #include "dged/s8.h"
 #include "dged/text.h"
 #include "dged/vec.h"
+
+#define run_provider(prov)                                                     \
+  if (prov)                                                                    \
+    return;
 
 struct project_file_state {
   uint32_t stdout_event;
@@ -156,6 +165,10 @@ static void read_project_files(struct buffer *buffer, void *userdata) {
         state->stdout_event = (uint32_t)-1;
 
         buffer_remove_update_hook(buffer, state->buffer_update_hook_id, NULL);
+
+        if (process_running(&state->process)) {
+          process_kill(&state->process);
+        }
         process_destroy(&state->process);
 
         if (!VEC_EMPTY(&state->files)) {
@@ -192,7 +205,8 @@ static void read_project_files(struct buffer *buffer, void *userdata) {
   }
 }
 
-bool try_git(struct project_file_state *state, struct buffer *buffer) {
+static bool git_provider(struct project_file_state *state,
+                         struct buffer *buffer) {
   bool success = false;
   struct s8 cwd = working_dir();
   struct s8 gitdata = join_path(cwd, s8(".git"));
@@ -223,6 +237,74 @@ bool try_git(struct project_file_state *state, struct buffer *buffer) {
 
   return success;
 }
+
+static bool fd_provider(struct project_file_state *state,
+                        struct buffer *buffer) {
+  bool success = false;
+  struct s8 cwd = working_dir();
+  char *const cmd[] = {"fd",
+                       "--print0",
+                       "--strip-cwd-prefix=always",
+                       "--full-path",
+                       (char *)s8ascstr(cwd),
+                       NULL};
+  struct process_create_result res = process_create(cmd, &state->process);
+  if (!res.ok) {
+    message("failed to run fd to list project files");
+  }
+
+  if (state->stdout_event != (uint32_t)-1) {
+    reactor_unregister_interest(state->reactor, state->stdout_event);
+  }
+
+  state->stdout_event = reactor_register_interest(
+      state->reactor, state->process.stdout_, ReadInterest);
+
+  state->buffer_update_hook_id =
+      buffer_add_update_hook(buffer, read_project_files, state);
+  success = true;
+
+  s8delete(cwd);
+
+  return success;
+}
+
+#ifdef HAVE_FTS
+static bool fts_provider(struct project_file_state *state,
+                         struct buffer *buffer) {
+  (void)state;
+  (void)buffer;
+  struct s8 cwd = working_dir();
+
+  char *const args[] = {(char *)s8ascstr(cwd), NULL};
+  FTS *fts = fts_open(args, FTS_NOSTAT, NULL);
+
+  if (fts == NULL) {
+    s8delete(cwd);
+    return false;
+  }
+
+  FTSENT *cur;
+  while ((cur = fts_read(fts)) != NULL) {
+    switch (cur->fts_info) {
+    case FTS_DEFAULT:
+    case FTS_F: {
+      struct s8 f = s8new(cur->fts_path, strlen(cur->fts_path));
+      struct s8 rel = relative_to(f, cwd);
+      VEC_PUSH(&state->files, rel);
+      s8delete(f);
+    } break;
+    }
+  }
+
+  if (!VEC_EMPTY(&state->files)) {
+    fill_completions(state);
+  }
+
+  s8delete(cwd);
+  return true;
+}
+#endif
 
 static bool is_space(const struct codepoint *c) {
   // TODO: utf8 whitespace and other whitespace
@@ -258,7 +340,13 @@ static void project_file_complete(struct completion_context ctx, bool deletion,
     VEC_FOR_EACH(&state->files, struct s8 * s) { s8delete(*s); }
 
     VEC_CLEAR(&state->files);
-    try_git(state, ctx.buffer);
+
+    run_provider(git_provider(state, ctx.buffer));
+    run_provider(fd_provider(state, ctx.buffer));
+
+#ifdef HAVE_FTS
+    run_provider(fts_provider(state, ctx.buffer));
+#endif
 
     clock_gettime(CLOCK_MONOTONIC, &ts);
     state->expires_at = ((ts.tv_sec + 25) * 1e9) + ts.tv_nsec;

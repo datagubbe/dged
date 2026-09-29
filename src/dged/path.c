@@ -253,7 +253,7 @@ struct s8 filename(struct s8 path) {
 
 struct s8 relative_to(struct s8 path, struct s8 root) {
   if (s8empty(path) || s8empty(root)) {
-    return path;
+    return s8dup(path);
   }
 
   if (!is_absolute(path) || !is_absolute(root)) {

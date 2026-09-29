@@ -137,6 +137,15 @@ else
     echo "unknown."
 fi
 
+echo -n "detecting if we have fts.h..."
+if ./scripts/has_header "fts.h"; then
+    echo "yes."
+    echo "#define HAVE_FTS 1" >> src/config.h
+else
+    echo "no."
+fi
+
+
 if [ "$enable_syntax" -ne 0 ]; then
     echo "enabling syntax highlighting."
     echo "SYNTAX_ENABLE = true" >> config.mk
