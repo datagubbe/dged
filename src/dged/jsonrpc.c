@@ -6,6 +6,16 @@
 
 struct jsonrpc_message jsonrpc_parse(const uint8_t *buf, uint64_t size) {
 
+  if (size == 0) {
+    return (struct jsonrpc_message){
+        .type = Jsonrpc_Response,
+        .document = (struct json_value){.type = Json_Null, .parent = NULL},
+        .message.response = (struct jsonrpc_response){
+            .id = (struct json_value){.type = Json_Null},
+            .ok = true,
+        }};
+  }
+
   struct json_result res = json_parse(buf, size);
   if (!res.ok) {
     return (struct jsonrpc_message){
@@ -23,6 +33,21 @@ struct jsonrpc_message jsonrpc_parse(const uint8_t *buf, uint64_t size) {
   }
 
   struct json_value doc = res.result.document;
+  if (doc.type != Json_Object) {
+    return (struct jsonrpc_message){
+        .type = Jsonrpc_Response,
+        .document = (struct json_value){.type = Json_Null, .parent = NULL},
+        .message.response = (struct jsonrpc_response){
+            .id = (struct json_value){.type = Json_Null},
+            .ok = false,
+            .value.error =
+                (struct jsonrpc_error){
+                    .code = 0,
+                    .message = s8("root document is not an object"),
+                },
+        }};
+  }
+
   struct json_object *obj = doc.value.object;
 
   if (json_contains(obj, s8("error"))) {

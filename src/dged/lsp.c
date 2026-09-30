@@ -155,9 +155,12 @@ static bool read_headers(struct lsp *lsp) {
       // end of individual header
       lsp->header_buffer[lsp->header_len] = '\0';
 
-      if (lsp->header_len > 15 &&
-          memcmp(lsp->header_buffer, "Content-Length:", 15) == 0) {
-        lsp->content_len = atoi((const char *)&lsp->header_buffer[16]);
+      if (lsp->header_len > 15) {
+        struct s8 header_name = s8new((const char *)lsp->header_buffer, 15);
+        if (s8icmp(header_name, s8("Content-Length:")) == 0) {
+          lsp->content_len = atoi((const char *)&lsp->header_buffer[16]);
+        }
+        s8delete(header_name);
       }
 
       lsp->header_len = 0;
@@ -180,6 +183,10 @@ static bool read_headers(struct lsp *lsp) {
 }
 
 static bool read_payload(struct lsp *lsp) {
+  if (lsp->content_len == 0) {
+    return true;
+  }
+
   ssize_t res =
       bufread_read(lsp->reader, &lsp->reader_buffer[lsp->curr_content_len],
                    lsp->content_len - lsp->curr_content_len);
@@ -263,7 +270,8 @@ uint32_t lsp_update(struct lsp *lsp, struct lsp_message *msgs,
   }
 
   // write pending requests
-  if (reactor_poll_event(lsp->reactor, lsp->stdin_event)) {
+  if (lsp->stdin_event != (uint32_t)-1 &&
+      reactor_poll_event(lsp->reactor, lsp->stdin_event)) {
     VEC_FOR_EACH(&lsp->writes, struct pending_write * w) {
       ssize_t written = 0;
       ssize_t to_write = 0;
@@ -354,7 +362,6 @@ cleanup_writes:
   }
 
   // process incoming messages
-  // TODO: handle the case where we might leave data
   if (reactor_poll_event(lsp->reactor, lsp->stdout_event)) {
     bool has_data = true;
     while (has_data) {

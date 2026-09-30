@@ -8,6 +8,8 @@
 #include "dged/bufread.h"
 
 #include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 
 #ifdef LINUX
@@ -43,6 +45,33 @@ static void test_read(void) {
            "Expected buffer to be monotonically increasing");
   }
   bufread_destroy(br);
+  close(memfd);
+
+#ifdef LINUX
+  memfd = memfd_create("bufread-test", 0);
+  ASSERT(memfd >= 0, "Failed to create memfd");
+#endif
+
+  int a = write(memfd, "abcdefghijklmn", 14);
+  (void)a;
+  lseek(memfd, 0, SEEK_SET);
+
+  uint8_t buf2[9] = {};
+  br = bufread_create(memfd, 8);
+
+  ASSERT(bufread_read(br, buf2, 8) == 8,
+         "Expected first read of 8 to return 8.");
+  ASSERT(memcmp(buf2, "abcdefgh", 8) == 0, "Expected to get abcd back");
+
+  ASSERT(bufread_read(br, buf2, 2) == 2, "Expected read of 2 to return 2.");
+  ASSERT(memcmp(buf2, "ij", 2) == 0, "Expected to get ij back");
+
+  ASSERT(bufread_read(br, buf2, 6) == 4,
+         "Expected read of 6 to return 4 because we are EOF");
+  ASSERT(memcmp(buf2, "klmn", 4) == 0, "Expected to get klmn back");
+
+  bufread_destroy(br);
+  close(memfd);
 }
 
 void test_empty_read(void) {

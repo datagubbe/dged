@@ -936,15 +936,16 @@ static void handle_request(struct lsp_server *server,
 
 static void handle_response(struct lsp_server *server,
                             struct lsp_response response) {
-  if (response.ok) {
-    struct lsp_pending_request *pending = NULL;
-    if (!request_response_received(server, response.id, &pending)) {
-      message("received response for id %d, server %s, which has no handler "
-              "registered",
-              response.id, lsp_server_name(server->lsp));
-      return;
-    }
 
+  struct lsp_pending_request *pending = NULL;
+  if (!request_response_received(server, response.id, &pending)) {
+    message("received response for id %d, server %s, which has no handler "
+            "registered",
+            response.id, lsp_server_name(server->lsp));
+    return;
+  }
+
+  if (response.ok) {
     if (pending->handler != NULL) {
       pending->handler(server, &response, pending->userdata);
     }

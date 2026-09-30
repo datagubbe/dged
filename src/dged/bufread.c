@@ -38,52 +38,6 @@ void bufread_destroy(struct bufread *br) {
   free(br);
 }
 
-static ssize_t fill(struct bufread *br) {
-  ssize_t rd = 0, ret = 0;
-
-  // special case for empty ring buffer
-  // in this case, reset read and write pos to beginning.
-  if (br->empty) {
-    if ((ret = read(br->fd, br->buf, br->capacity)) < 0) {
-      return ret;
-    }
-
-    rd = ret;
-    br->read_pos = 0;
-    br->write_pos = ret;
-    br->empty = false;
-
-    return rd;
-  }
-
-  size_t space_after =
-      br->read_pos < br->write_pos ? br->capacity - br->write_pos : 0;
-  if (space_after > 0) {
-    if ((ret = read(br->fd, &br->buf[br->write_pos], space_after)) < 0) {
-      return ret;
-    }
-  }
-
-  rd += ret;
-
-  // if we wrapped around, there might be more space
-  if (br->write_pos == br->capacity) {
-    br->write_pos = 0;
-    size_t space_before = br->read_pos;
-    if (space_before > 0) {
-      if ((ret = read(br->fd, &br->buf[0], space_before)) < 0) {
-        return ret;
-      }
-    }
-
-    br->write_pos += ret;
-    rd += ret;
-  }
-
-  br->empty = rd == 0;
-  return rd;
-}
-
 static size_t available(struct bufread *br) {
   if (br->write_pos > br->read_pos) {
     return br->write_pos - br->read_pos;
@@ -93,6 +47,53 @@ static size_t available(struct bufread *br) {
 
   /* read == write, either empty or full */
   return br->empty ? 0 : br->capacity;
+}
+
+static ssize_t fill(struct bufread *br) {
+  ssize_t ret = 0, rd = 0;
+
+  // special case for empty ring buffer
+  // in this case, reset read and write pos to beginning
+  // and read as much as possible.
+  if (br->empty) {
+    br->read_pos = 0;
+    br->write_pos = 0;
+
+    if ((ret = read(br->fd, br->buf, br->capacity)) <= 0) {
+      return ret;
+    }
+
+    br->write_pos = ret % br->capacity;
+    br->empty = false;
+    return ret;
+  }
+
+  // first fill the space we have left, either up until the
+  // read position or up until the end of the buffer
+  size_t end_pos = br->read_pos < br->write_pos ? br->capacity : br->read_pos;
+  size_t to_read = end_pos - br->write_pos;
+
+  if (to_read > 0) {
+    if ((ret = read(br->fd, &br->buf[br->write_pos], to_read)) < 0) {
+      return ret;
+    }
+
+    br->write_pos = (br->write_pos + ret) % br->capacity;
+    rd += ret;
+  }
+
+  // if we filled up until the end, there might
+  // be more space at the front
+  if (br->write_pos == 0 && br->read_pos > 0) {
+    if ((ret = read(br->fd, &br->buf[0], br->read_pos)) < 0) {
+      return ret;
+    }
+
+    br->write_pos += ret;
+    rd += ret;
+  }
+
+  return rd;
 }
 
 static void consume(struct bufread *br, size_t amount) {
@@ -110,18 +111,26 @@ ssize_t bufread_read(struct bufread *br, uint8_t *buf, size_t count) {
     return 0;
   }
 
-  // for read request larger than the internal buffer
-  // and an empty internal buffer, just go to the
-  // underlying source
+  /* For read requests larger than the internal buffer
+   * and an empty internal buffer, go to the
+   * underlying source.
+   */
   if (br->empty && count >= br->capacity) {
     return read(br->fd, buf, count);
   }
 
+  // make an effort to fill up the buffer
   if (available(br) < count && available(br) < br->capacity) {
     ssize_t fill_res = 0;
-    if ((fill_res = fill(br)) <= 0) {
+    if ((fill_res = fill(br)) < 0) {
       return fill_res;
     }
+  }
+
+  // if we get here and we are still empty,
+  // all hope is lost...
+  if (br->empty) {
+    return 0;
   }
 
   // read (at most) to end
@@ -138,8 +147,8 @@ ssize_t bufread_read(struct bufread *br, uint8_t *buf, size_t count) {
 
   // did we wrap around and have things left to read?
   if (br->read_pos == 0 && !br->empty && rd < count) {
-    to_read = br->write_pos;
-    to_read = to_read > count ? count : to_read;
+    size_t remaining = count - rd;
+    to_read = br->write_pos < remaining ? br->write_pos : remaining;
 
     memcpy(tgt, br->buf, to_read);
     tgt += to_read;
