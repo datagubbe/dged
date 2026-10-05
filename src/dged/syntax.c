@@ -609,10 +609,10 @@ static void create_parser(struct buffer *buffer, void *userdata) {
     if (langsym == NULL) {
       message("failed load parser entry point \"%s\" for buffer %s: %s",
               function, buffer->name, dlerror());
-      free(function);
       free((void *)lang_root);
       dlclose(h);
     }
+
     free(function);
   }
 
@@ -693,6 +693,15 @@ void syntax_init(uint32_t grammar_path_len, const char *grammar_path[]) {
         &l, "grammar",
         (struct setting_value){.type = Setting_String,
                                .data.string_value = "cpp"});
+    lang_destroy(&l);
+  }
+
+  l = lang_from_id("csharp");
+  if (!lang_is_fundamental(&l)) {
+    lang_setting_set_default(
+        &l, "grammar",
+        (struct setting_value){.type = Setting_String,
+                               .data.string_value = "c_sharp"});
     lang_destroy(&l);
   }
 

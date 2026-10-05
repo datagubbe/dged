@@ -53,6 +53,7 @@ linkFarm "tree-sitter-grammars" rec {
       EOF
     '';
   });
+  "c_sharp" = tree-sitter-c-sharp;
   "nix" = tree-sitter-nix;
   "python" = tree-sitter-python;
   "make" = tree-sitter-make;
@@ -118,6 +119,7 @@ linkFarm "tree-sitter-grammars" rec {
       hash = "sha256-L3v+dQZhwC+kBOHf3YVbZjuCU+idbUDByEdUBmeGAlo=";
     };
   };
+  "xml" = tree-sitter-xml;
   "yaml" = tree-sitter-yaml;
   "json" = tree-sitter-json;
   "sql" = tree-sitter-sql;
@@ -131,4 +133,9 @@ linkFarm "tree-sitter-grammars" rec {
         --replace-fail "match?" "#match?"
     '';
   });
+  "clojure" = tree-sitter-clojure;
+  "elixir" = tree-sitter-elixir;
+  "java" = tree-sitter-java;
+  "powershell" = tree-sitter-powershell;
+  "ruby" = tree-sitter-ruby;
 }
