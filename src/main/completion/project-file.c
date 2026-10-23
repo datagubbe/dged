@@ -102,11 +102,15 @@ static struct region project_file_render(void *data,
 }
 
 static void fill_completions(struct project_file_state *state) {
+  const size_t max_added = 40;
+
   VEC(struct completion) completions;
-  VEC_INIT(&completions, VEC_SIZE(&state->files));
+  VEC_INIT(&completions, max_added);
 
   struct match matches[32] = {};
   size_t nmatches = 0;
+
+  size_t nadded = 0;
 
   VEC_FOR_EACH(&state->files, struct s8 * f) {
     if (state->needle.l == 0 ||
@@ -126,6 +130,12 @@ static void fill_completions(struct project_file_state *state) {
       comp->selected = project_file_selected;
       comp->cleanup = project_file_cleanup;
       comp->render = project_file_render;
+
+      ++nadded;
+
+      if (nadded >= max_added) {
+        break;
+      }
     }
   }
 
@@ -157,8 +167,10 @@ static void read_project_files(struct buffer *buffer, void *userdata) {
       // end of data
       if (nread == 0) {
         if (!s8empty(state->current_read)) {
-          VEC_PUSH(&state->files, state->current_read);
+          VEC_PUSH(&state->files, s8dup(state->current_read));
           s8delete(state->current_read);
+          state->current_read.l = 0;
+          state->current_read.s = NULL;
         }
 
         reactor_unregister_interest(state->reactor, state->stdout_event);
@@ -183,12 +195,15 @@ static void read_project_files(struct buffer *buffer, void *userdata) {
       while (bytei < total) {
         if (buf[bytei] == '\0') {
           if (!s8empty(state->current_read)) {
-            struct s8 s =
-                s8from_fmt("%s%s", s8ascstr(state->current_read), &buf[start]);
-            VEC_PUSH(&state->files, s);
+            VEC_PUSH(
+                &state->files,
+                s8from_fmt("%s%s", s8ascstr(state->current_read), &buf[start]));
+            s8delete(state->current_read);
+            state->current_read.l = 0;
+            state->current_read.s = 0;
           } else {
-            struct s8 s = s8new((const char *)&buf[start], bytei - start);
-            VEC_PUSH(&state->files, s);
+            VEC_PUSH(&state->files,
+                     s8new((const char *)&buf[start], bytei - start));
           }
 
           start = bytei + 1;
@@ -332,15 +347,8 @@ static void project_file_complete(struct completion_context ctx, bool deletion,
 
   s8delete(state->needle);
   state->needle = s8new((char *)txt.text, txt.nbytes);
-  struct timespec ts;
-  clock_gettime(CLOCK_MONOTONIC, &ts);
 
-  if ((ts.tv_sec * 1e9 + ts.tv_nsec) > state->expires_at) {
-
-    VEC_FOR_EACH(&state->files, struct s8 * s) { s8delete(*s); }
-
-    VEC_CLEAR(&state->files);
-
+  if (VEC_EMPTY(&state->files)) {
     run_provider(git_provider(state, ctx.buffer));
     run_provider(fd_provider(state, ctx.buffer));
 
@@ -348,8 +356,6 @@ static void project_file_complete(struct completion_context ctx, bool deletion,
     run_provider(fts_provider(state, ctx.buffer));
 #endif
 
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    state->expires_at = ((ts.tv_sec + 25) * 1e9) + ts.tv_nsec;
   } else {
     fill_completions(state);
   }
