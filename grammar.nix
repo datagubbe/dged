@@ -138,4 +138,14 @@ linkFarm "tree-sitter-grammars" rec {
   "java" = tree-sitter-java;
   "powershell" = tree-sitter-powershell;
   "ruby" = tree-sitter-ruby;
+  "meson" = tree-sitter.buildGrammar {
+    language = "meson";
+    version = "1.3.0";
+    src = fetchFromGitHub {
+      owner = "tree-sitter-grammars";
+      repo = "tree-sitter-meson";
+      rev = "aa8d472034956f94f51f2ef2cbfec4cc07efbfde";
+      hash = "sha256-UJREw7mQqJTKcD2owKJ4GZkkch/KGTIy9/+Fdl3W3ik=";
+    };
+  };
 }

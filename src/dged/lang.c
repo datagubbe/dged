@@ -68,6 +68,7 @@ void languages_init(bool register_default) {
     define_lang("Java", "java", "^.*\\.java$", 4, false);
     define_lang("Powershell", "powershell", "^.*\\.(ps1|psm)$", 4, false);
     define_lang("Ruby", "ruby", "^.*\\.(rb|erb)$", 2, false);
+    define_lang("Meson", "meson", "^.*meson.build$", 2, false);
   }
 }
 
