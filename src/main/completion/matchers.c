@@ -44,15 +44,21 @@ size_t filter_fuzzy(struct s8 needle, struct s8 item, struct match *matches,
   size_t ni = 0, i = 0;
   size_t nmatches = 0;
 
+  // score consecutive chars higher
+  size_t multiplier = 1;
+
   while (ni < needle.l && i < item.l) {
     unsigned char wanted = tolower(needle.s[ni]);
     unsigned char current = tolower(item.s[i]);
 
     if (wanted == current) {
       if (nmatches > 0 && matches[nmatches - 1].end == i) {
-        ++matches[nmatches - 1].score;
+        matches[nmatches - 1].score += 1 * multiplier;
         matches[nmatches - 1].end = i + 1;
+        ++multiplier;
       } else {
+        multiplier = 1;
+
         if (nmatches == max_nmatches) {
           return nmatches;
         }

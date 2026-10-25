@@ -20,6 +20,7 @@
 #include "dged/process.h"
 #include "dged/reactor.h"
 #include "dged/s8.h"
+#include "dged/settings.h"
 #include "dged/text.h"
 #include "dged/vec.h"
 
@@ -80,6 +81,19 @@ static struct region project_file_render(void *data,
   struct location at = buffer_add(comp_buffer, start, projfile_comp->file.s,
                                   projfile_comp->file.l);
 
+  struct setting *show_score =
+      settings_get("project-file-completion.show-score");
+  if (show_score != NULL && show_score->value.type == Setting_Bool &&
+      show_score->value.data.bool_value) {
+    size_t score = 0;
+    for (size_t i = 0; i < projfile_comp->nmatches; ++i) {
+      score += projfile_comp->matches[i].score;
+    }
+    struct s8 score_txt = s8from_fmt(" (%d)", score);
+    at = buffer_add(comp_buffer, at, score_txt.s, score_txt.l);
+    s8delete(score_txt);
+  }
+
   for (size_t i = 0; i < projfile_comp->nmatches; ++i) {
     struct match *m = &projfile_comp->matches[i];
     buffer_add_text_property(
@@ -101,8 +115,32 @@ static struct region project_file_render(void *data,
   return region_new(start, end);
 }
 
+static int compare_by_score(const void *a, const void *b) {
+  struct project_file_completion *first = (struct project_file_completion *)a;
+  struct project_file_completion *second = (struct project_file_completion *)b;
+
+  size_t first_score = 0;
+  for (size_t i = 0; i < first->nmatches; ++i) {
+    first_score += first->matches[i].score;
+  }
+
+  size_t second_score = 0;
+  for (size_t i = 0; i < second->nmatches; ++i) {
+    second_score += second->matches[i].score;
+  }
+
+  if (first_score < second_score) {
+    return 1;
+  } else if (first_score > second_score) {
+    return -1;
+  }
+
+  return 0;
+}
+
 static void fill_completions(struct project_file_state *state) {
   const size_t max_added = 40;
+  size_t nadded = 0;
 
   VEC(struct completion) completions;
   VEC_INIT(&completions, max_added);
@@ -110,21 +148,68 @@ static void fill_completions(struct project_file_state *state) {
   struct match matches[32] = {};
   size_t nmatches = 0;
 
-  size_t nadded = 0;
+  if (state->needle.l < 3) {
+    // take the x first in this case
+    VEC_FOR_EACH(&state->files, struct s8 * f) {
+      if (state->needle.l == 0 ||
+          (nmatches = filter_fuzzy(state->needle, *f, matches, 32)) > 0) {
+        VEC_APPEND(&completions, struct completion * comp);
 
-  VEC_FOR_EACH(&state->files, struct s8 * f) {
-    if (state->needle.l == 0 ||
-        (nmatches = filter_fuzzy(state->needle, *f, matches, 32)) > 0) {
+        struct project_file_completion *data =
+            calloc(1, sizeof(struct project_file_completion));
+
+        data->file = *f;
+        if (nmatches > 0) {
+          memcpy(data->matches, matches, sizeof(struct match) * nmatches);
+        }
+        data->nmatches = nmatches;
+        data->on_complete = state->on_complete;
+
+        comp->data = data;
+        comp->selected = project_file_selected;
+        comp->cleanup = project_file_cleanup;
+        comp->render = project_file_render;
+
+        ++nadded;
+        if (nadded >= max_added) {
+          break;
+        }
+      }
+    }
+  } else {
+    // take the x first that matches
+    VEC(struct project_file_completion) matched;
+    VEC_INIT(&matched, VEC_SIZE(&state->files));
+    VEC_FOR_EACH(&state->files, struct s8 * f) {
+      if ((nmatches = filter_fuzzy(state->needle, *f, matches, 32)) > 0) {
+
+        if (nmatches == 0) {
+          continue;
+        }
+
+        VEC_APPEND(&matched, struct project_file_completion * pfc);
+        memcpy(pfc->matches, matches, sizeof(struct match) * nmatches);
+        pfc->file = *f;
+        pfc->nmatches = nmatches;
+        pfc->on_complete = state->on_complete;
+      }
+    }
+
+    qsort(VEC_ENTRIES(&matched), VEC_SIZE(&matched),
+          sizeof(struct project_file_completion), compare_by_score);
+
+    VEC_FOR_EACH(&matched, struct project_file_completion * pfc) {
+
       VEC_APPEND(&completions, struct completion * comp);
-
       struct project_file_completion *data =
           calloc(1, sizeof(struct project_file_completion));
-      data->file = *f;
-      if (nmatches > 0) {
-        memcpy(data->matches, matches, sizeof(struct match) * nmatches);
+      data->file = pfc->file;
+      data->nmatches = pfc->nmatches;
+      if (pfc->nmatches > 0) {
+        memcpy(data->matches, pfc->matches,
+               sizeof(struct match) * pfc->nmatches);
       }
-      data->nmatches = nmatches;
-      data->on_complete = state->on_complete;
+      data->on_complete = pfc->on_complete;
 
       comp->data = data;
       comp->selected = project_file_selected;
@@ -132,11 +217,12 @@ static void fill_completions(struct project_file_state *state) {
       comp->render = project_file_render;
 
       ++nadded;
-
       if (nadded >= max_added) {
         break;
       }
     }
+
+    VEC_DESTROY(&matched);
   }
 
   state->add_callback(VEC_ENTRIES(&completions), VEC_SIZE(&completions));
@@ -382,6 +468,10 @@ create_project_file_provider(struct reactor *reactor,
   state->on_complete = on_complete_path;
   state->reactor = reactor;
   VEC_INIT(&state->files, 32);
+
+  settings_set_default(
+      "project-file-completion.show-score",
+      (struct setting_value){.data.bool_value = false, .type = Setting_Bool});
 
   return (struct completion_provider){
       .name = "project-file",
