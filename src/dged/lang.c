@@ -42,6 +42,7 @@ static struct language g_fundamental = {
 void languages_init(bool register_default) {
   if (register_default) {
     define_lang("Bash", "bash", "^.*\\.bash$", 4, false);
+    define_lang("Shell", "sh", "^.*\\.sh$", 4, false);
     define_lang("C", "c", "^.*\\.(c|h)$", 2, false);
     define_lang("C++", "cxx", "^.*\\.(cpp|cxx|cc|c++|hh|h|hxx|hpp)$", 2, false);
     define_lang("C#", "csharp", "^.*\\.cs$", 4, false);

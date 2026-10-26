@@ -705,6 +705,15 @@ void syntax_init(uint32_t grammar_path_len, const char *grammar_path[]) {
     lang_destroy(&l);
   }
 
+  l = lang_from_id("sh");
+  if (!lang_is_fundamental(&l)) {
+    lang_setting_set_default(
+        &l, "grammar",
+        (struct setting_value){.type = Setting_String,
+                               .data.string_value = "bash"});
+    lang_destroy(&l);
+  }
+
   VEC_INIT(&g_buffer_highlights, 16);
   buffer_add_create_hook(create_parser, NULL);
 }
