@@ -233,11 +233,10 @@ static void read_project_files(struct buffer *buffer, void *userdata) {
   struct project_file_state *state = (struct project_file_state *)userdata;
 
   uint8_t buf[4096];
-
   if (reactor_poll_event(state->reactor, state->stdout_event)) {
     ssize_t nread = 4096;
     while (nread == 4096) {
-      ssize_t nread = read(state->process.stdout_, buf, 4096);
+      nread = read(state->process.stdout_, buf, 4096);
 
       // error
       if (nread < 0) {
@@ -306,12 +305,35 @@ static void read_project_files(struct buffer *buffer, void *userdata) {
   }
 }
 
+static bool is_git_dir(struct s8 dir) {
+  struct s8 *segments;
+  size_t nsegs = path_segments(dir, &segments);
+  size_t i = nsegs;
+  while (i > 0) {
+    struct s8 p = join_path_segments(segments, i);
+    struct s8 gitdir = join_path(p, s8(".git"));
+
+    bool exists = path_exists(gitdir);
+    s8delete(gitdir);
+    s8delete(p);
+
+    if (exists) {
+      free_path_segments(segments, nsegs);
+      return true;
+    }
+
+    --i;
+  }
+
+  free_path_segments(segments, nsegs);
+  return false;
+}
+
 static bool git_provider(struct project_file_state *state,
                          struct buffer *buffer) {
   bool success = false;
   struct s8 cwd = working_dir();
-  struct s8 gitdata = join_path(cwd, s8(".git"));
-  if (path_exists(gitdata)) {
+  if (is_git_dir(cwd)) {
     char *const cmd[] = {
         "git",      "-C",       (char *)s8ascstr(cwd), "ls-files",
         "--cached", "--others", "--exclude-standard",  "-z",
@@ -334,7 +356,6 @@ static bool git_provider(struct project_file_state *state,
   }
 
   s8delete(cwd);
-  s8delete(gitdata);
 
   return success;
 }

@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -86,19 +87,32 @@ struct process_create_result process_create(char *const command[],
     close(stderr_read);
 
     if (dup2(stdin_read, STDIN_FILENO) < 0) {
-      exit(16);
+      _exit(16);
+    }
+
+    if (stdin_read != STDIN_FILENO) {
+      close(stdin_read);
     }
 
     if (dup2(stdout_write, STDOUT_FILENO) < 0) {
-      exit(16);
+      _exit(16);
+    }
+
+    if (stdout_write != STDOUT_FILENO) {
+      close(stdout_write);
     }
 
     if (dup2(stderr_write, STDERR_FILENO) < 0) {
-      exit(16);
+      _exit(16);
+    }
+
+    if (stderr_write != STDERR_FILENO) {
+      close(stderr_write);
     }
 
     if (execvp(command[0], command) < 0) {
-      exit(16);
+      fprintf(stderr, "execvp %s failed: %s\n", command[0], strerror(errno));
+      _exit(16);
     }
   } else {
     close(stdin_read);
