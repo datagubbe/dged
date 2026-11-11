@@ -24,8 +24,19 @@ struct process_create_result {
   const char *error_message;
 };
 
+struct process_redirect {
+  bool _stdin;
+  bool _stderr;
+  bool _stdout;
+};
+
 struct process_create_result process_create(char *const command[],
                                             struct process *result);
+
+struct process_create_result
+process_create_capture(char *const command[],
+                       struct process_redirect redirect_configuration,
+                       struct process *result);
 
 void process_destroy(struct process *p);
 

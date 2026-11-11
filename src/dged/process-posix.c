@@ -50,9 +50,23 @@ static int create_pipe(int *read_end, int *write_end, bool read_nonblock,
 
 struct process_create_result process_create(char *const command[],
                                             struct process *result) {
+  return process_create_capture(command,
+                                (struct process_redirect){
+                                    ._stdout = true,
+                                    ._stderr = true,
+                                    ._stdin = true,
+                                },
+                                result);
+}
+
+struct process_create_result
+process_create_capture(char *const command[],
+                       struct process_redirect redirect_configuration,
+                       struct process *result) {
 
   int stdin_read, stdin_write;
-  if (create_pipe(&stdin_read, &stdin_write, false, true) < 0) {
+  if (redirect_configuration._stdin &&
+      create_pipe(&stdin_read, &stdin_write, false, true) < 0) {
     return (struct process_create_result){
         .ok = false,
         .error_message = strerror(errno),
@@ -60,7 +74,8 @@ struct process_create_result process_create(char *const command[],
   }
 
   int stdout_read, stdout_write;
-  if (create_pipe(&stdout_read, &stdout_write, true, false) < 0) {
+  if (redirect_configuration._stdout &&
+      create_pipe(&stdout_read, &stdout_write, true, false) < 0) {
     return (struct process_create_result){
         .ok = false,
         .error_message = strerror(errno),
@@ -68,7 +83,8 @@ struct process_create_result process_create(char *const command[],
   }
 
   int stderr_read, stderr_write;
-  if (create_pipe(&stderr_read, &stderr_write, true, false) < 0) {
+  if (redirect_configuration._stderr &&
+      create_pipe(&stderr_read, &stderr_write, true, false) < 0) {
     return (struct process_create_result){
         .ok = false,
         .error_message = strerror(errno),
@@ -82,46 +98,68 @@ struct process_create_result process_create(char *const command[],
         .error_message = strerror(errno),
     };
   } else if (pid == 0) {
-    close(stdin_write);
-    close(stdout_read);
-    close(stderr_read);
 
-    if (dup2(stdin_read, STDIN_FILENO) < 0) {
-      _exit(16);
+    if (redirect_configuration._stdin) {
+      close(stdin_write);
+      if (dup2(stdin_read, STDIN_FILENO) < 0) {
+        _exit(16);
+      }
+
+      if (stdin_read != STDIN_FILENO) {
+        close(stdin_read);
+      }
     }
 
-    if (stdin_read != STDIN_FILENO) {
-      close(stdin_read);
+    if (redirect_configuration._stdout) {
+      close(stdout_read);
+      if (dup2(stdout_write, STDOUT_FILENO) < 0) {
+        _exit(16);
+      }
+
+      if (stdout_write != STDOUT_FILENO) {
+        close(stdout_write);
+      }
     }
 
-    if (dup2(stdout_write, STDOUT_FILENO) < 0) {
-      _exit(16);
-    }
+    if (redirect_configuration._stderr) {
+      close(stderr_read);
+      if (dup2(stderr_write, STDERR_FILENO) < 0) {
+        _exit(16);
+      }
 
-    if (stdout_write != STDOUT_FILENO) {
-      close(stdout_write);
-    }
-
-    if (dup2(stderr_write, STDERR_FILENO) < 0) {
-      _exit(16);
-    }
-
-    if (stderr_write != STDERR_FILENO) {
-      close(stderr_write);
+      if (stderr_write != STDERR_FILENO) {
+        close(stderr_write);
+      }
     }
 
     if (execvp(command[0], command) < 0) {
       fprintf(stderr, "execvp %s failed: %s\n", command[0], strerror(errno));
       _exit(16);
     }
-  } else {
-    close(stdin_read);
-    close(stdout_write);
-    close(stderr_write);
 
-    result->stdin_ = stdin_write;
-    result->stdout_ = stdout_read;
-    result->stderr_ = stderr_read;
+  } else {
+
+    if (redirect_configuration._stdin) {
+      close(stdin_read);
+      result->stdin_ = stdin_write;
+    } else {
+      result->stdin_ = (fd_t)-1;
+    }
+
+    if (redirect_configuration._stdout) {
+      close(stdout_write);
+      result->stdout_ = stdout_read;
+    } else {
+      result->stdout_ = (fd_t)-1;
+    }
+
+    if (redirect_configuration._stderr) {
+      close(stderr_write);
+      result->stderr_ = stderr_read;
+    } else {
+      result->stderr_ = (fd_t)-1;
+    }
+
     result->id = (fd_t)pid;
     result->impl = (void *)"posix";
   }

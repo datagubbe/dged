@@ -338,7 +338,14 @@ static bool git_provider(struct project_file_state *state,
         "git",      "-C",       (char *)s8ascstr(cwd), "ls-files",
         "--cached", "--others", "--exclude-standard",  "-z",
         NULL};
-    struct process_create_result res = process_create(cmd, &state->process);
+    struct process_create_result res =
+        process_create_capture(cmd,
+                               (struct process_redirect){
+                                   ._stdout = true,
+                                   ._stderr = false,
+                                   ._stdin = false,
+                               },
+                               &state->process);
     if (!res.ok) {
       message("failed to run git to list project files");
     }
@@ -370,7 +377,14 @@ static bool fd_provider(struct project_file_state *state,
                        "--full-path",
                        (char *)s8ascstr(cwd),
                        NULL};
-  struct process_create_result res = process_create(cmd, &state->process);
+  struct process_create_result res =
+      process_create_capture(cmd,
+                             (struct process_redirect){
+                                 ._stdout = true,
+                                 ._stderr = false,
+                                 ._stdin = false,
+                             },
+                             &state->process);
   if (!res.ok) {
     message("failed to run fd to list project files");
   }
